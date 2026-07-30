@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { Account, Credentials } from '../domain/account'
+import type { Calendar, CalendarEvent } from '../domain/calendar'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
@@ -90,6 +91,19 @@ export interface ContactRow {
   payload: Envelope<Contact>
 }
 
+export interface CalendarRow {
+  accountId: string
+  id: string
+  payload: Envelope<Calendar>
+}
+
+export interface EventRow {
+  accountId: string
+  id: string
+  calendarIds: string[]
+  payload: Envelope<CalendarEvent>
+}
+
 export interface KeyringRow {
   accountId: string
   kdf: { algo: 'argon2id' | 'pbkdf2'; salt: Uint8Array; params: Record<string, number> }
@@ -112,6 +126,8 @@ export class MelDb extends Dexie {
   keyring!: Table<KeyringRow, string>
   addressBooks!: Table<AddressBookRow, AccountScopedKey>
   contacts!: Table<ContactRow, AccountScopedKey>
+  calendars!: Table<CalendarRow, AccountScopedKey>
+  events!: Table<EventRow, AccountScopedKey>
 
   constructor() {
     super('mel')
@@ -130,6 +146,10 @@ export class MelDb extends Dexie {
     this.version(2).stores({
       addressBooks: '&[accountId+id], accountId',
       contacts: '&[accountId+id], accountId, *addressBookIds, [accountId+sortKey]',
+    })
+    this.version(3).stores({
+      calendars: '&[accountId+id], accountId',
+      events: '&[accountId+id], accountId, *calendarIds',
     })
   }
 }

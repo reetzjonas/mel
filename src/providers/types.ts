@@ -84,6 +84,16 @@ export interface VacationSettings {
   text: string
 }
 
+export interface CalendarProvider {
+  syncCalendars(sinceState?: string): Promise<SyncPage<import('../domain/calendar').Calendar>>
+  syncEvents(sinceState?: string): Promise<SyncPage<import('../domain/calendar').CalendarEvent>>
+  createEvent(
+    event: import('../domain/calendar').CalendarEvent,
+  ): Promise<{ id: string | null; failure: SetFailure | null }>
+  updateEvent(event: import('../domain/calendar').CalendarEvent): Promise<SetFailure | null>
+  destroyEvents(ids: string[]): Promise<SetFailure | null>
+}
+
 export interface ContactsProvider {
   syncAddressBooks(sinceState?: string): Promise<SyncPage<AddressBook>>
   syncContacts(sinceState?: string): Promise<SyncPage<Contact>>
@@ -102,6 +112,7 @@ export interface ProviderConnection {
   capabilities: AccountCapabilities
   mail: MailProvider | null
   contacts: ContactsProvider | null
+  calendars: CalendarProvider | null
   push: PushInfo | null
 }
 

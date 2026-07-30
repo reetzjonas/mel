@@ -1,3 +1,4 @@
+import type { CalendarEvent } from '../domain/calendar'
 import type { Contact } from '../domain/contact'
 import type { OutgoingEmail } from '../domain/identity'
 import { JmapError } from '../providers/jmap/client/transport'
@@ -13,6 +14,9 @@ export type OutboxAction =
   | { kind: 'contact.create'; contact: Contact; tempId: string }
   | { kind: 'contact.update'; contact: Contact }
   | { kind: 'contact.destroy'; ids: string[] }
+  | { kind: 'event.create'; event: CalendarEvent; tempId: string }
+  | { kind: 'event.update'; event: CalendarEvent }
+  | { kind: 'event.destroy'; ids: string[] }
 
 const BASE_BACKOFF_MS = 5_000
 const MAX_BACKOFF_MS = 5 * 60_000
@@ -148,6 +152,40 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
       const contacts = conn.contacts
       if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
       const failure = await contacts.destroyContacts(action.ids)
+      if (failure && failure.type !== 'notFound') {
+        const err = new Error(failure.description ?? failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
+        throw err
+      }
+      return
+    }
+    case 'event.create': {
+      const cal = conn.calendars
+      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      const r = await cal.createEvent(action.event)
+      if (r.failure) {
+        const err = new Error(r.failure.description ?? r.failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = r.failure.permanent
+        throw err
+      }
+      await db.events.delete([accountId, action.tempId])
+      return
+    }
+    case 'event.update': {
+      const cal = conn.calendars
+      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      const failure = await cal.updateEvent(action.event)
+      if (failure) {
+        const err = new Error(failure.description ?? failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
+        throw err
+      }
+      return
+    }
+    case 'event.destroy': {
+      const cal = conn.calendars
+      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      const failure = await cal.destroyEvents(action.ids)
       if (failure && failure.type !== 'notFound') {
         const err = new Error(failure.description ?? failure.type)
         ;(err as Error & { permanent?: boolean }).permanent = failure.permanent

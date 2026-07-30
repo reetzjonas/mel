@@ -1,9 +1,11 @@
 import type { Table } from 'dexie'
+import type { Calendar, CalendarEvent } from '../domain/calendar'
 import { contactSortKey, type AddressBook, type Contact } from '../domain/contact'
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
 import {
   CannotCalculateChanges,
+  type CalendarProvider,
   type ContactsProvider,
   type MailProvider,
   type SyncPage,
@@ -201,6 +203,28 @@ async function syncContacts(accountId: string, contacts: ContactsProvider) {
   )
 }
 
+async function syncCalendarData(accountId: string, calendars: CalendarProvider) {
+  await syncCollection<Calendar>(
+    accountId,
+    'Calendar',
+    db.calendars as unknown as Table<SyncRow, [string, string]>,
+    (s) => calendars.syncCalendars(s),
+    (c) => ({ accountId, id: c.id, payload: sealPlain(c) }),
+  )
+  await syncCollection<CalendarEvent>(
+    accountId,
+    'CalendarEvent',
+    db.events as unknown as Table<SyncRow, [string, string]>,
+    (s) => calendars.syncEvents(s),
+    (e) => ({
+      accountId,
+      id: e.id,
+      calendarIds: Object.keys(e.calendarIds),
+      payload: sealPlain(e),
+    }),
+  )
+}
+
 const running = new Map<string, Promise<void>>()
 
 /**
@@ -218,6 +242,7 @@ export function syncAccount(accountId: string): Promise<void> {
         await syncEmails(accountId, conn.mail)
       }
       if (conn.contacts) await syncContacts(accountId, conn.contacts)
+      if (conn.calendars) await syncCalendarData(accountId, conn.calendars)
     })
   })().finally(() => running.delete(accountId))
   running.set(accountId, run)
