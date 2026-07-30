@@ -20,6 +20,7 @@ export default defineConfig({
         '**/calendar.spec.ts',
         '**/encryption.spec.ts',
         '**/offline.spec.ts',
+        '**/folders-drafts.spec.ts',
       ],
     },
   ],

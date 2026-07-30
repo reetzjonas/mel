@@ -91,6 +91,52 @@ export async function sendMail(
   return { undo: () => cancel(seq) }
 }
 
+/** Autosave a draft to the server; replaces the previous autosave. */
+export async function saveDraft(
+  accountId: string,
+  identity: Identity,
+  fields: {
+    to: EmailAddress[]
+    cc: EmailAddress[]
+    subject: string
+    html: string
+    text: string
+    inReplyTo?: string[]
+    references?: string[]
+  },
+  replaceId: string | null,
+): Promise<string | null> {
+  if (!navigator.onLine) return replaceId
+  const drafts = await roleMailboxId(accountId, 'drafts')
+  if (!drafts) return replaceId
+  const conn = await connectionFor(accountId)
+  if (!conn.mail) return replaceId
+  const mail: OutgoingEmail = {
+    identityId: identity.id,
+    from: { name: identity.name || null, email: identity.email },
+    to: fields.to,
+    cc: fields.cc,
+    bcc: [],
+    subject: fields.subject,
+    html: fields.html,
+    text: fields.text,
+    attachments: [],
+    inReplyTo: fields.inReplyTo ?? null,
+    references: fields.references ?? null,
+  }
+  try {
+    return (await conn.mail.saveDraft(mail, drafts, replaceId)) ?? replaceId
+  } catch {
+    return replaceId
+  }
+}
+
+/** Remove an autosaved draft (after the real send is queued). */
+export async function discardDraft(accountId: string, draftId: string): Promise<void> {
+  await enqueue(accountId, { kind: 'email.destroy', ids: [draftId] })
+  await db.emails.delete([accountId, draftId])
+}
+
 export function parseAddresses(input: string): EmailAddress[] {
   return input
     .split(/[,;]/)

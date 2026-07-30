@@ -61,6 +61,16 @@ const en = {
   'mail.searchNoResults': 'No results',
   'mail.searchClear': 'Clear search',
 
+  'folder.new': 'New folder',
+  'folder.newSub': 'New subfolder',
+  'folder.rename': 'Rename',
+  'folder.delete': 'Delete folder',
+  'folder.deleteConfirm': 'Delete this folder? Messages move to the parent/inbox.',
+  'folder.menu': 'Folder actions',
+  'folder.create': 'Create',
+  'folder.save': 'Save',
+  'folder.cancel': 'Cancel',
+
   'compose.new': 'New message',
   'compose.to': 'To',
   'compose.cc': 'Cc',
@@ -71,6 +81,7 @@ const en = {
   'compose.discard': 'Discard',
   'compose.placeholder': 'Write your message…',
   'compose.missingRecipient': 'Add at least one recipient',
+  'compose.draftSaved': 'Draft saved',
 
   'shortcuts.title': 'Keyboard shortcuts',
   'shortcuts.close': 'Close',
@@ -245,6 +256,16 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.searchNoResults': 'Keine Treffer',
   'mail.searchClear': 'Suche löschen',
 
+  'folder.new': 'Neuer Ordner',
+  'folder.newSub': 'Neuer Unterordner',
+  'folder.rename': 'Umbenennen',
+  'folder.delete': 'Ordner löschen',
+  'folder.deleteConfirm': 'Diesen Ordner löschen? Nachrichten wandern in den übergeordneten Ordner/Posteingang.',
+  'folder.menu': 'Ordner-Aktionen',
+  'folder.create': 'Anlegen',
+  'folder.save': 'Speichern',
+  'folder.cancel': 'Abbrechen',
+
   'compose.new': 'Neue Nachricht',
   'compose.to': 'An',
   'compose.cc': 'Cc',
@@ -255,6 +276,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'compose.discard': 'Verwerfen',
   'compose.placeholder': 'Nachricht schreiben…',
   'compose.missingRecipient': 'Mindestens einen Empfänger angeben',
+  'compose.draftSaved': 'Entwurf gespeichert',
 
   'shortcuts.title': 'Tastaturkürzel',
   'shortcuts.close': 'Schließen',

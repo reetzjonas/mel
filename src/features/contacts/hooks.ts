@@ -1,13 +1,19 @@
 import { useLiveQuery } from 'dexie-react-hooks'
-import type { Contact } from '../../domain/contact'
+import { displayName, type Contact } from '../../domain/contact'
 import { db } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useContacts(accountId: string | undefined): Contact[] | undefined {
   return useLiveQuery(async () => {
     if (!accountId) return []
-    const rows = await db.contacts.where('[accountId+sortKey]').between([accountId, ''], [accountId, '￿']).toArray()
-    return rows.map((r) => openEnvelope(r.payload))
+    const rows = await db.contacts.where('accountId').equals(accountId).toArray()
+    // Locale-aware sort by display name (stored sortKeys may predate the
+    // display-name ordering; contact lists are small enough to sort here).
+    return rows
+      .map((r) => openEnvelope(r.payload))
+      .sort((a, b) =>
+        displayName(a).localeCompare(displayName(b), undefined, { sensitivity: 'base' }),
+      )
   }, [accountId])
 }
 

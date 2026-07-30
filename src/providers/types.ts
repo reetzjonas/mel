@@ -68,6 +68,12 @@ export interface MailProvider {
   uploadBlob(data: Blob | ArrayBuffer, type: string): Promise<{ blobId: string; size: number }>
   /** Create the message and submit it in one request (moves it to Sent). */
   sendEmail(mail: OutgoingEmail, mailboxIds: { drafts: string; sent: string }): Promise<void>
+  /** Persist a draft (replacing a previous autosave); returns the new draft id. */
+  saveDraft(
+    mail: OutgoingEmail,
+    draftsMailboxId: string,
+    replaceId: string | null,
+  ): Promise<string | null>
   /** Server-side search; returns ids in relevance/date order plus snippets. */
   searchEmails(
     filter: import('../domain/search').SearchQuery,

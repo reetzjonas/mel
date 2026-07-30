@@ -73,6 +73,27 @@ function mapQuery(q: SearchQuery): EmailFilter {
   return { operator: 'AND', conditions: conds }
 }
 
+/** JSON Email object for a draft (text/html bodies, no submission). */
+function buildDraftObject(
+  mail: import('../../domain/identity').OutgoingEmail,
+  draftsMailboxId: string,
+): Record<string, unknown> {
+  return {
+    mailboxIds: { [draftsMailboxId]: true },
+    keywords: { $seen: true, $draft: true },
+    from: [mail.from],
+    to: mail.to.length ? mail.to : undefined,
+    cc: mail.cc.length ? mail.cc : undefined,
+    bcc: mail.bcc.length ? mail.bcc : undefined,
+    subject: mail.subject,
+    inReplyTo: mail.inReplyTo ?? undefined,
+    references: mail.references ?? undefined,
+    bodyValues: { t: { value: mail.text }, h: { value: mail.html } },
+    textBody: [{ partId: 't', type: 'text/plain' }],
+    htmlBody: [{ partId: 'h', type: 'text/html' }],
+  }
+}
+
 export function createJmapMail(
   transport: Transport,
   accountId: string,
@@ -264,6 +285,17 @@ export function createJmapMail(
       })
       const j = (await res.json()) as { blobId: string; size: number }
       return { blobId: j.blobId, size: j.size }
+    },
+
+    async saveDraft(mail, draftsMailboxId, replaceId) {
+      const b = new Batch(transport, USING)
+      const s = b.call<SetResponse<{ id: string }>>('Email/set', {
+        accountId,
+        create: { draft: buildDraftObject(mail, draftsMailboxId) },
+        destroy: replaceId ? [replaceId] : undefined,
+      })
+      await b.send()
+      return s.result.created?.['draft']?.id ?? null
     },
 
     async sendEmail(mail, mailboxIds) {

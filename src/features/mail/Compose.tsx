@@ -6,7 +6,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useUi, type ComposeInit } from '../../app/store'
 import type { Identity, OutgoingAttachment } from '../../domain/identity'
 import { t } from '../../lib/i18n'
-import { getIdentities, parseAddresses, sendMail, stageAttachment } from '../../services/send'
+import {
+  discardDraft,
+  getIdentities,
+  parseAddresses,
+  saveDraft,
+  sendMail,
+  stageAttachment,
+} from '../../services/send'
 import { Icon } from '../../ui/Icon'
 import { RecipientInput } from './RecipientInput'
 
@@ -26,6 +33,10 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const [editRevision, setEditRevision] = useState(0)
+  const [draftSaved, setDraftSaved] = useState(false)
+  const draftId = useRef<string | null>(null)
+  const draftBusy = useRef(false)
 
   useEffect(() => {
     void getIdentities(accountId).then((list) => {
@@ -42,7 +53,42 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     ],
     content: init.quotedHtml ? `<p></p>${init.quotedHtml}` : '',
     autofocus: init.to?.length ? 'start' : false,
+    onUpdate: () => setEditRevision((r) => r + 1),
   })
+
+  // Draft autosave: 2.5 s after the last change (text fields only; the real
+  // send builds its own message including attachments).
+  useEffect(() => {
+    if (editRevision === 0 && !subject && !to) return
+    const identity = identities.find((i) => i.id === identityId)
+    if (!identity || !editor) return
+    const timer = setTimeout(() => {
+      if (draftBusy.current) return
+      draftBusy.current = true
+      void saveDraft(
+        accountId,
+        identity,
+        {
+          to: parseAddresses(to),
+          cc: parseAddresses(cc),
+          subject,
+          html: editor.getHTML(),
+          text: editor.getText(),
+          inReplyTo: init.inReplyTo,
+          references: init.references,
+        },
+        draftId.current,
+      )
+        .then((id) => {
+          draftId.current = id
+          if (id) setDraftSaved(true)
+        })
+        .finally(() => {
+          draftBusy.current = false
+        })
+    }, 2500)
+    return () => clearTimeout(timer)
+  }, [to, cc, subject, editRevision, identityId, identities, accountId])
 
   async function attach(files: FileList | null) {
     if (!files) return
@@ -74,6 +120,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         inReplyTo: init.inReplyTo,
         references: init.references,
       })
+      if (draftId.current) void discardDraft(accountId, draftId.current)
       closeCompose()
       showSnackbar({
         message: t('mail.sending'),
@@ -212,6 +259,9 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             hidden
             onChange={(e) => void attach(e.target.files)}
           />
+          {draftSaved && (
+            <span className="ml-auto text-xs text-ink-muted">{t('compose.draftSaved')}</span>
+          )}
         </footer>
       </div>
     </div>

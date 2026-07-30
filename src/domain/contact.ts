@@ -49,8 +49,10 @@ export function displayName(c: Contact): string {
   )
 }
 
-/** Sort key: surname first, fallback chain, lowercased. */
+/**
+ * Sort key: matches the display name (given-name first), so the list order
+ * and its letter group headers agree.
+ */
 export function contactSortKey(c: Contact): string {
-  return (c.surname || c.given || c.fullName || c.organization || c.emails[0]?.value || '~')
-    .toLowerCase()
+  return displayName(c).toLowerCase()
 }
