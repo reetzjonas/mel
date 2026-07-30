@@ -1,0 +1,23 @@
+services:
+  stalwart:
+    # Pin >= v0.16: CORS preflight over HTTP/2 was broken before.
+    image: stalwartlabs/stalwart:v0.16
+    container_name: mel-stalwart
+    ports:
+      - '8080:8080' # HTTP: JMAP API + web-admin
+      - '1025:25' # SMTP in — used by seed.sh to inject test mail
+      - '1587:587'
+    environment:
+      # Recovery mode is enabled by seed.sh for initial provisioning only.
+      STALWART_RECOVERY_MODE: ${MEL_STALWART_RECOVERY:-0}
+      STALWART_RECOVERY_ADMIN: admin:meladmin
+      # Session/blob/eventsource URLs are built from this — without it the
+      # server advertises https://localhost/... which nothing serves in dev.
+      STALWART_PUBLIC_URL: http://localhost:8080
+    volumes:
+      - ./etc:/etc/stalwart
+      - stalwart-data:/var/lib/stalwart
+    restart: unless-stopped
+
+volumes:
+  stalwart-data:

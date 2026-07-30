@@ -1,0 +1,58 @@
+export interface EmailAddress {
+  name: string | null
+  email: string
+}
+
+/**
+ * Header-level view of a message: enough for list rendering and notification
+ * diffing. Bodies are fetched lazily (see EmailBody).
+ */
+export interface EmailHeader {
+  id: string
+  threadId: string
+  /** mailboxId → true (JMAP semantics: a message can be in several mailboxes). */
+  mailboxIds: Record<string, true>
+  /** Keywords like $seen, $flagged, $draft, $answered. */
+  keywords: Record<string, true>
+  from: EmailAddress[]
+  to: EmailAddress[]
+  cc: EmailAddress[]
+  subject: string | null
+  /** ISO 8601 UTC. */
+  receivedAt: string
+  sentAt: string | null
+  preview: string
+  hasAttachment: boolean
+  size: number
+}
+
+export interface EmailBodyPart {
+  partId: string | null
+  blobId: string | null
+  type: string
+  name: string | null
+  disposition: string | null
+  cid: string | null
+  size: number
+}
+
+/** Lazily fetched full body, cached separately from headers. */
+export interface EmailBody {
+  emailId: string
+  html: string | null
+  text: string | null
+  attachments: EmailBodyPart[]
+}
+
+export interface Thread {
+  id: string
+  emailIds: string[]
+}
+
+export const Keyword = {
+  seen: '$seen',
+  flagged: '$flagged',
+  draft: '$draft',
+  answered: '$answered',
+  forwarded: '$forwarded',
+} as const

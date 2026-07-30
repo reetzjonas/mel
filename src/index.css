@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: var(--mel-bg);
+  --color-surface: var(--mel-surface);
+  --color-surface-2: var(--mel-surface-2);
+  --color-line: var(--mel-line);
+  --color-ink: var(--mel-ink);
+  --color-ink-muted: var(--mel-ink-muted);
+  --color-accent: var(--mel-accent);
+  --color-accent-ink: var(--mel-accent-ink);
+  --color-danger: var(--mel-danger);
+}
+
+:root,
+[data-theme='light'] {
+  color-scheme: light;
+  --mel-bg: #f4f4f6;
+  --mel-surface: #ffffff;
+  --mel-surface-2: #ececef;
+  --mel-line: #dcdce1;
+  --mel-ink: #1c1c21;
+  --mel-ink-muted: #6b6b76;
+  --mel-accent: #2d5bd1;
+  --mel-accent-ink: #ffffff;
+  --mel-danger: #c62f2f;
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+  --mel-bg: #101014;
+  --mel-surface: #1a1a20;
+  --mel-surface-2: #23232b;
+  --mel-line: #32323c;
+  --mel-ink: #e8e8ec;
+  --mel-ink-muted: #9a9aa6;
+  --mel-accent: #6d8ee8;
+  --mel-accent-ink: #0d1220;
+  --mel-danger: #e06a6a;
+}
+
+html,
+body,
+#root {
+  height: 100dvh;
+}
+
+body {
+  @apply bg-bg text-ink antialiased;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+}
