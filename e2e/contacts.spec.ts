@@ -1,0 +1,46 @@
+import { expect, test, type Page } from '@playwright/test'
+
+// Desktop-only (state-mutating, see playwright.config.ts).
+async function login(page: Page) {
+  await page.goto('/mail')
+  await page.getByPlaceholder('alice@localhost').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+}
+
+test('create a contact, see details, use it in compose autocomplete', async ({ page }) => {
+  const surname = `Testling${Date.now() % 100000}`
+  const email = `erika.${surname.toLowerCase()}@example.org`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+
+  await page.getByTitle('New contact').click()
+  await page.getByLabel('First name').fill('Erika')
+  await page.getByLabel('Last name').fill(surname)
+  await page.locator('input[type="email"]').first().fill(email)
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  // Detail view shows the new contact.
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+  await expect(page.getByRole('article').getByText(email)).toBeVisible()
+
+  // Autocomplete in compose finds it.
+  await page.getByRole('link', { name: 'Mail' }).first().click()
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('erika')
+  await expect(page.getByRole('button', { name: new RegExp(email) })).toBeVisible({
+    timeout: 5000,
+  })
+  await page.getByRole('button', { name: new RegExp(email) }).click()
+  await expect(page.getByPlaceholder('To', { exact: true })).toHaveValue(`${email}, `)
+})
+
+test('contact "send email" opens compose prefilled', async ({ page }) => {
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('link', { name: /Erika|Carla|Muster|Testling/ }).first().click()
+  await page.getByRole('button', { name: 'Send email' }).click()
+  await expect(page.getByPlaceholder('To', { exact: true })).not.toHaveValue('')
+})

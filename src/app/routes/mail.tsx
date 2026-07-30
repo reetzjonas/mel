@@ -1,15 +1,12 @@
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { AddAccountForm } from '../../features/auth/AddAccountForm'
-import { Compose } from '../../features/mail/Compose'
-import { HelpOverlay } from '../../features/mail/HelpOverlay'
 import { MailboxSidebar } from '../../features/mail/MailboxSidebar'
 import { useAccounts, useMailboxes } from '../../features/mail/hooks'
 import { useMailShortcuts } from '../../features/mail/shortcuts'
 import { t } from '../../lib/i18n'
 import { startScheduler } from '../../sync/scheduler'
 import { Icon } from '../../ui/Icon'
-import { Snackbar } from '../../ui/Snackbar'
 import { useUi } from '../store'
 
 export const Route = createFileRoute('/mail')({
@@ -79,9 +76,6 @@ function MailLayout() {
         </button>
       )}
 
-      {compose && <Compose accountId={account.id} init={compose} />}
-      <HelpOverlay />
-      <Snackbar />
     </div>
   )
 }

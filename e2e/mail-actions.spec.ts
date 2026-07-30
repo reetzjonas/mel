@@ -13,16 +13,21 @@ const BOB = ['bob@localhost', 'korrekt-pferd-batterie-bob'] as const
 
 test('archive a mail and undo it', async ({ page }) => {
   await login(page, ...ALICE)
-  await expect(page.getByText('Projektstand')).toBeVisible({ timeout: 15_000 })
+  const firstRow = page.locator('[data-testid="virtuoso-item-list"] button').first()
+  await expect(firstRow).toBeVisible({ timeout: 15_000 })
+  // Whatever mail is on top — independent of previous runs' server state.
+  const subject = (await firstRow.locator('div').nth(1).innerText()).split('\n')[0]!.trim()
 
-  await page.getByText('Projektstand').first().click()
+  await firstRow.click()
   await page.getByTitle('Archive').click()
 
   await expect(page.getByText('Archived')).toBeVisible()
-  await expect(page.getByText('Projektstand')).toBeHidden()
+  await expect(page.getByText(subject).first()).toBeHidden()
 
   await page.getByRole('button', { name: 'Undo' }).click()
-  await expect(page.getByText('Projektstand').first()).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(subject).first()).toBeVisible({ timeout: 10_000 })
+  // Let the undo reach the server before the context is torn down.
+  await page.waitForTimeout(1500)
 })
 
 test('compose, send, and receive on the other account', async ({ page, browser }) => {

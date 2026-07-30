@@ -1,5 +1,6 @@
 import Dexie, { type Table } from 'dexie'
 import type { Account, Credentials } from '../domain/account'
+import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
 import type { Envelope } from './envelope'
@@ -74,6 +75,21 @@ export interface OutboxRow {
   payload: Envelope<unknown>
 }
 
+export interface AddressBookRow {
+  accountId: string
+  id: string
+  payload: Envelope<AddressBook>
+}
+
+export interface ContactRow {
+  accountId: string
+  id: string
+  addressBookIds: string[]
+  /** Lowercased sort key (surname/name/email). Plaintext-safe: needed for ordering. */
+  sortKey: string
+  payload: Envelope<Contact>
+}
+
 export interface KeyringRow {
   accountId: string
   kdf: { algo: 'argon2id' | 'pbkdf2'; salt: Uint8Array; params: Record<string, number> }
@@ -94,6 +110,8 @@ export class MelDb extends Dexie {
   blobCache!: Table<BlobCacheRow, AccountScopedKey>
   outbox!: Table<OutboxRow, number>
   keyring!: Table<KeyringRow, string>
+  addressBooks!: Table<AddressBookRow, AccountScopedKey>
+  contacts!: Table<ContactRow, AccountScopedKey>
 
   constructor() {
     super('mel')
@@ -108,6 +126,10 @@ export class MelDb extends Dexie {
       blobCache: '&[accountId+blobId], lastAccess',
       outbox: '++seq, accountId, status, notBefore',
       keyring: '&accountId',
+    })
+    this.version(2).stores({
+      addressBooks: '&[accountId+id], accountId',
+      contacts: '&[accountId+id], accountId, *addressBookIds, [accountId+sortKey]',
     })
   }
 }

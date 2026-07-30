@@ -8,6 +8,7 @@ import type { Identity, OutgoingAttachment } from '../../domain/identity'
 import { t } from '../../lib/i18n'
 import { getIdentities, parseAddresses, sendMail, stageAttachment } from '../../services/send'
 import { Icon } from '../../ui/Icon'
+import { RecipientInput } from './RecipientInput'
 
 function addressesToString(list: ComposeInit['to']): string {
   return (list ?? []).map((a) => a.email).join(', ')
@@ -123,13 +124,16 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             </select>
           )}
           <div className="flex items-center gap-2">
-            <input
-              className={field}
-              placeholder={t('compose.to')}
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              autoFocus={!init.to?.length}
-            />
+            <div className="flex-1">
+              <RecipientInput
+                accountId={accountId}
+                className={field}
+                placeholder={t('compose.to')}
+                value={to}
+                onChange={setTo}
+                autoFocus={!init.to?.length}
+              />
+            </div>
             {!showCc && (
               <button
                 type="button"
@@ -141,11 +145,12 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             )}
           </div>
           {showCc && (
-            <input
+            <RecipientInput
+              accountId={accountId}
               className={field}
               placeholder={t('compose.cc')}
               value={cc}
-              onChange={(e) => setCc(e.target.value)}
+              onChange={setCc}
             />
           )}
           <input

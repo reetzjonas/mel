@@ -1,4 +1,5 @@
 import type { Account, AccountCapabilities, Credentials } from '../domain/account'
+import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader } from '../domain/email'
 import type { Identity, OutgoingEmail } from '../domain/identity'
 import type { Mailbox } from '../domain/mailbox'
@@ -83,6 +84,14 @@ export interface VacationSettings {
   text: string
 }
 
+export interface ContactsProvider {
+  syncAddressBooks(sinceState?: string): Promise<SyncPage<AddressBook>>
+  syncContacts(sinceState?: string): Promise<SyncPage<Contact>>
+  createContact(contact: Contact): Promise<{ id: string | null; failure: SetFailure | null }>
+  updateContact(contact: Contact): Promise<SetFailure | null>
+  destroyContacts(ids: string[]): Promise<SetFailure | null>
+}
+
 export interface PushInfo {
   eventSourceUrl: string
   credentials: Credentials
@@ -92,6 +101,7 @@ export interface ProviderConnection {
   account: Account
   capabilities: AccountCapabilities
   mail: MailProvider | null
+  contacts: ContactsProvider | null
   push: PushInfo | null
 }
 

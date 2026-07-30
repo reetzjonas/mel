@@ -9,6 +9,7 @@ import {
   primaryMailAccount,
   sessionUrlFor,
 } from './client/session'
+import { createJmapContacts } from './contacts'
 import { createJmapMail } from './mail'
 
 async function buildConnection(
@@ -37,6 +38,7 @@ async function buildConnection(
     mail: capabilities.mail
       ? createJmapMail(transport, remoteAccountId, limits, resolved.uploadUrl, resolved.downloadUrl)
       : null,
+    contacts: capabilities.contacts ? createJmapContacts(transport, remoteAccountId) : null,
     push: {
       eventSourceUrl: resolved.eventSourceUrl,
       credentials: creds,

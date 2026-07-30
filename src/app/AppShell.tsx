@@ -1,12 +1,17 @@
 import { Link, Outlet } from '@tanstack/react-router'
+import { Compose } from '../features/mail/Compose'
+import { HelpOverlay } from '../features/mail/HelpOverlay'
+import { useAccounts } from '../features/mail/hooks'
 import { t } from '../lib/i18n'
 import { Icon } from '../ui/Icon'
+import { Snackbar } from '../ui/Snackbar'
 import { useTheme } from './ThemeProvider'
+import { useUi } from './store'
 
-const apps = [
-  { to: '/mail', key: 'app.mail' },
-  { to: '/calendar', key: 'app.calendar' },
-  { to: '/contacts', key: 'app.contacts' },
+const allApps = [
+  { to: '/mail', key: 'app.mail', cap: 'mail' },
+  { to: '/calendar', key: 'app.calendar', cap: 'calendars' },
+  { to: '/contacts', key: 'app.contacts', cap: 'contacts' },
 ] as const
 
 function AppSwitcherLink({ to, label }: { to: string; label: string }) {
@@ -37,6 +42,11 @@ function ThemeToggle() {
 }
 
 export function AppShell() {
+  const accounts = useAccounts()
+  const account = accounts?.[0]
+  const { compose } = useUi()
+  // Capability-gated app switcher; before login only Mail is shown.
+  const apps = allApps.filter((a) => a.cap === 'mail' || account?.capabilities[a.cap])
   return (
     <div className="flex h-full flex-col">
       <header className="hidden h-12 shrink-0 items-center gap-5 border-b border-line bg-surface px-4 sm:flex">
@@ -78,6 +88,10 @@ export function AppShell() {
           <Icon name="settings" size={18} />
         </Link>
       </nav>
+
+      {compose && account && <Compose accountId={account.id} init={compose} />}
+      <HelpOverlay />
+      <Snackbar />
     </div>
   )
 }

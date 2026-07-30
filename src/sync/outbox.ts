@@ -1,3 +1,4 @@
+import type { Contact } from '../domain/contact'
 import type { OutgoingEmail } from '../domain/identity'
 import { JmapError } from '../providers/jmap/client/transport'
 import { db } from '../storage/db'
@@ -9,6 +10,9 @@ export type OutboxAction =
   | { kind: 'email.update'; updates: Record<string, Record<string, unknown>> }
   | { kind: 'email.destroy'; ids: string[] }
   | { kind: 'email.send'; mail: OutgoingEmail; mailboxIds: { drafts: string; sent: string } }
+  | { kind: 'contact.create'; contact: Contact; tempId: string }
+  | { kind: 'contact.update'; contact: Contact }
+  | { kind: 'contact.destroy'; ids: string[] }
 
 const BASE_BACKOFF_MS = 5_000
 const MAX_BACKOFF_MS = 5 * 60_000
@@ -114,6 +118,41 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
     case 'email.destroy': {
       const r = await mail.setEmails({}, action.ids)
       throwIfAllPermanent(r.failed)
+      return
+    }
+    case 'contact.create': {
+      const contacts = conn.contacts
+      if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
+      const r = await contacts.createContact(action.contact)
+      if (r.failure) {
+        const err = new Error(r.failure.description ?? r.failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = r.failure.permanent
+        throw err
+      }
+      // The server row arrives via sync; drop the optimistic temp row.
+      await db.contacts.delete([accountId, action.tempId])
+      return
+    }
+    case 'contact.update': {
+      const contacts = conn.contacts
+      if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
+      const failure = await contacts.updateContact(action.contact)
+      if (failure) {
+        const err = new Error(failure.description ?? failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
+        throw err
+      }
+      return
+    }
+    case 'contact.destroy': {
+      const contacts = conn.contacts
+      if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
+      const failure = await contacts.destroyContacts(action.ids)
+      if (failure && failure.type !== 'notFound') {
+        const err = new Error(failure.description ?? failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
+        throw err
+      }
       return
     }
     case 'email.send': {

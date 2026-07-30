@@ -1,8 +1,20 @@
 import type { Table } from 'dexie'
+import { contactSortKey, type AddressBook, type Contact } from '../domain/contact'
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
-import { CannotCalculateChanges, type MailProvider, type SyncPage } from '../providers/types'
-import { db, type EmailRow, type MailboxRow } from '../storage/db'
+import {
+  CannotCalculateChanges,
+  type ContactsProvider,
+  type MailProvider,
+  type SyncPage,
+} from '../providers/types'
+import {
+  db,
+  type AddressBookRow,
+  type ContactRow,
+  type EmailRow,
+  type MailboxRow,
+} from '../storage/db'
 import { sealPlain } from '../storage/envelope'
 import { connectionFor } from './connections'
 
@@ -118,6 +130,77 @@ async function syncEmails(accountId: string, mail: MailProvider) {
   }
 }
 
+type SyncRow = { accountId: string; id: string; payload: unknown }
+
+/** Generic delta sync for the simple id-keyed collections (contacts, calendars …). */
+async function syncCollection<T extends { id: string }>(
+  accountId: string,
+  collection: string,
+  table: Table<SyncRow, [string, string]>,
+  fetch: (sinceState?: string) => Promise<SyncPage<T>>,
+  toRow: (v: T) => SyncRow,
+) {
+  let state = (await db.syncState.get([accountId, collection]))?.state
+  for (;;) {
+    let page: SyncPage<T>
+    try {
+      page = await fetch(state)
+    } catch (e) {
+      if (e instanceof CannotCalculateChanges) {
+        await table.where('accountId').equals(accountId).delete()
+        state = undefined
+        page = await fetch(undefined)
+      } else throw e
+    }
+    if (state === undefined) {
+      // Full fetch: drop local rows the server no longer has.
+      const serverIds = new Set(page.created.map((v) => v.id))
+      const local = await table.where('accountId').equals(accountId).toArray()
+      page.destroyedIds = local.filter((r) => !serverIds.has(r.id)).map((r) => r.id)
+    }
+    await db.transaction('rw', [table, db.syncState], async () => {
+      const rows = [...page.created, ...page.updated].map(toRow)
+      if (rows.length) await table.bulkPut(rows)
+      if (page.destroyedIds.length)
+        await table.bulkDelete(page.destroyedIds.map((id) => [accountId, id]))
+      await db.syncState.put({ accountId, collection, state: page.newState, updatedAt: Date.now() })
+    })
+    if (!page.hasMore) return
+    state = page.newState
+  }
+}
+
+function addressBookRow(accountId: string, b: AddressBook): AddressBookRow {
+  return { accountId, id: b.id, payload: sealPlain(b) }
+}
+
+function contactRow(accountId: string, c: Contact): ContactRow {
+  return {
+    accountId,
+    id: c.id,
+    addressBookIds: Object.keys(c.addressBookIds),
+    sortKey: contactSortKey(c),
+    payload: sealPlain(c),
+  }
+}
+
+async function syncContacts(accountId: string, contacts: ContactsProvider) {
+  await syncCollection<AddressBook>(
+    accountId,
+    'AddressBook',
+    db.addressBooks as unknown as Table<SyncRow, [string, string]>,
+    (s) => contacts.syncAddressBooks(s),
+    (b) => addressBookRow(accountId, b),
+  )
+  await syncCollection<Contact>(
+    accountId,
+    'ContactCard',
+    db.contacts as unknown as Table<SyncRow, [string, string]>,
+    (s) => contacts.syncContacts(s),
+    (c) => contactRow(accountId, c),
+  )
+}
+
 const running = new Map<string, Promise<void>>()
 
 /**
@@ -130,9 +213,11 @@ export function syncAccount(accountId: string): Promise<void> {
   const run = (async () => {
     await navigator.locks.request(`mel-sync-${accountId}`, async () => {
       const conn = await connectionFor(accountId)
-      if (!conn.mail) return
-      await syncMailboxes(accountId, conn.mail)
-      await syncEmails(accountId, conn.mail)
+      if (conn.mail) {
+        await syncMailboxes(accountId, conn.mail)
+        await syncEmails(accountId, conn.mail)
+      }
+      if (conn.contacts) await syncContacts(accountId, conn.contacts)
     })
   })().finally(() => running.delete(accountId))
   running.set(accountId, run)
