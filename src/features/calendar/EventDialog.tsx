@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { CalendarEvent, RecurrenceRule } from '../../domain/calendar'
+import type { Calendar, CalendarEvent, RecurrenceRule } from '../../domain/calendar'
 import { t } from '../../lib/i18n'
 
 const input =
@@ -32,16 +32,22 @@ function ruleFor(preset: RepeatPreset, startDate: string): RecurrenceRule | null
 
 export function EventDialog({
   initial,
+  calendars,
   onSave,
   onDelete,
   onClose,
 }: {
   initial: CalendarEvent
+  /** Omit or pass a single-item list to hide the calendar picker. */
+  calendars?: Calendar[]
   onSave: (e: CalendarEvent) => void
   onDelete: (() => void) | null
   onClose: () => void
 }) {
   const [title, setTitle] = useState(initial.title)
+  const [calendarId, setCalendarId] = useState(
+    Object.keys(initial.calendarIds)[0] ?? calendars?.[0]?.id ?? '',
+  )
   const [date, setDate] = useState(initial.start.slice(0, 10))
   const [time, setTime] = useState(initial.start.slice(11, 16) || '10:00')
   const [duration, setDuration] = useState(initial.duration || 'PT1H')
@@ -54,6 +60,7 @@ export function EventDialog({
     if (!title.trim() || !date) return
     onSave({
       ...initial,
+      calendarIds: calendarId ? { [calendarId]: true } : initial.calendarIds,
       title: title.trim(),
       start: allDay ? `${date}T00:00:00` : `${date}T${time}:00`,
       duration: allDay ? 'P1D' : duration,
@@ -81,6 +88,20 @@ export function EventDialog({
           onChange={(e) => setTitle(e.target.value)}
           autoFocus
         />
+        {calendars && calendars.length > 1 && (
+          <select
+            className={input}
+            aria-label={t('cal.calendar')}
+            value={calendarId}
+            onChange={(e) => setCalendarId(e.target.value)}
+          >
+            {calendars.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="flex gap-2">
           <label className="flex-1 space-y-1">
             <span className="text-xs text-ink-muted">{t('cal.startDate')}</span>

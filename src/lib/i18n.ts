@@ -164,6 +164,11 @@ const en = {
   'cal.deleted': 'Event deleted',
   'cal.min': 'min',
   'cal.hour': 'h',
+  'cal.calendar': 'Calendar',
+  'cal.view.month': 'Month',
+  'cal.view.week': 'Week',
+  'cal.view.day': 'Day',
+  'cal.calendars': 'Calendars',
 
   'crypto.unlockTitle': 'Unlock mel',
   'crypto.unlock': 'Unlock',
@@ -359,6 +364,11 @@ const de: Partial<Record<MsgKey, string>> = {
   'cal.deleted': 'Termin gelöscht',
   'cal.min': 'Min.',
   'cal.hour': 'Std.',
+  'cal.calendar': 'Kalender',
+  'cal.view.month': 'Monat',
+  'cal.view.week': 'Woche',
+  'cal.view.day': 'Tag',
+  'cal.calendars': 'Kalender',
 
   'crypto.unlockTitle': 'mel entsperren',
   'crypto.unlock': 'Entsperren',
