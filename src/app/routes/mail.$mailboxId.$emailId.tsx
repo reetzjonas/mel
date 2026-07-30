@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { ReadingPane } from '../../features/mail/ReadingPane'
-import { t } from '../../lib/i18n'
 import { useAccounts, useEmail } from '../../features/mail/hooks'
+import { t } from '../../lib/i18n'
 
 export const Route = createFileRoute('/mail/$mailboxId/$emailId')({
   component: EmailView,
@@ -21,5 +21,12 @@ function EmailView() {
       </div>
     )
   }
-  return <ReadingPane accountId={account.id} email={email} mailboxId={mailboxId} />
+  return (
+    <ReadingPane
+      accountId={account.id}
+      email={email}
+      mailboxId={mailboxId}
+      ownEmail={account.label}
+    />
+  )
 }

@@ -51,6 +51,8 @@ export interface JmapEmail {
   id: string
   blobId: string
   threadId: string
+  messageId?: string[] | null
+  references?: string[] | null
   mailboxIds: Record<string, boolean>
   keywords: Record<string, boolean>
   size: number
@@ -99,6 +101,8 @@ export const EMAIL_BODY_PROPS = [
   'textBody',
   'htmlBody',
   'attachments',
+  'messageId',
+  'references',
 ] as const
 
 export interface EmailFilterCondition {

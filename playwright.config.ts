@@ -9,7 +9,13 @@ export default defineConfig({
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'mobile', use: { ...devices['Pixel 7'] } },
+    {
+      name: 'mobile',
+      use: { ...devices['Pixel 7'] },
+      // State-mutating flows run on desktop only — both projects share one
+      // Stalwart account and would race each other.
+      testIgnore: ['**/mail-actions.spec.ts'],
+    },
   ],
   webServer: {
     command: 'npm run dev',

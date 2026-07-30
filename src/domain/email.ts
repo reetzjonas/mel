@@ -42,6 +42,9 @@ export interface EmailBody {
   html: string | null
   text: string | null
   attachments: EmailBodyPart[]
+  /** RFC 5322 Message-ID(s), needed for reply threading. */
+  messageId: string[] | null
+  references: string[] | null
 }
 
 export interface Thread {

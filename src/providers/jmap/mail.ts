@@ -1,32 +1,92 @@
 import type { EmailHeader } from '../../domain/email'
+import type { Identity } from '../../domain/identity'
 import type { Mailbox } from '../../domain/mailbox'
-import { CannotCalculateChanges, type MailProvider, type SyncPage } from '../types'
+import { isGroup, type SearchQuery } from '../../domain/search'
+import {
+  CannotCalculateChanges,
+  type MailProvider,
+  type SetFailure,
+  type SetOutcome,
+  type SyncPage,
+} from '../types'
 import { Batch, chunkIds } from './client/request'
 import type { Transport } from './client/transport'
-import { Cap, type ChangesResponse, type CoreCapability, type GetResponse, type QueryResponse } from './client/types/core'
+import { Cap, type ChangesResponse, type CoreCapability, type GetResponse, type QueryResponse, type SetError, type SetResponse } from './client/types/core'
 import {
   EMAIL_BODY_PROPS,
   EMAIL_HEADER_PROPS,
+  type EmailFilter,
   type JmapEmail,
   type JmapMailbox,
 } from './client/types/mail'
 import { toEmailBody, toEmailHeader, toMailbox } from './mappers/mail'
 
 const USING = [Cap.core, Cap.mail]
+const USING_SUBMIT = [Cap.core, Cap.mail, Cap.submission]
 const MAX_CHANGES = 256
 const QUERY_PAGE = 200
+
+/** Set-error types that will not succeed on retry. */
+const PERMANENT_SET_ERRORS = new Set([
+  'invalidProperties',
+  'invalidPatch',
+  'notFound',
+  'forbidden',
+  'overQuota',
+  'tooLarge',
+  'singleton',
+])
+
+function toFailure(e: SetError | undefined): SetFailure {
+  return {
+    type: e?.type ?? 'serverFail',
+    description: e?.description,
+    permanent: e ? PERMANENT_SET_ERRORS.has(e.type) : false,
+  }
+}
+
+export function jmapSearchFilter(q: SearchQuery, mailboxId?: string): EmailFilter {
+  const mapped = mapQuery(q)
+  if (mailboxId) return { operator: 'AND', conditions: [{ inMailbox: mailboxId }, mapped] }
+  return mapped
+}
+
+function mapQuery(q: SearchQuery): EmailFilter {
+  if (isGroup(q)) {
+    return { operator: q.op, conditions: q.children.map(mapQuery) }
+  }
+  const conds: EmailFilter[] = []
+  if (q.text) conds.push({ text: q.text })
+  if (q.from) conds.push({ from: q.from })
+  if (q.to) conds.push({ to: q.to })
+  if (q.subject) conds.push({ subject: q.subject })
+  if (q.hasAttachment !== undefined) conds.push({ hasAttachment: q.hasAttachment })
+  if (q.isUnread !== undefined)
+    conds.push(
+      q.isUnread ? { notKeyword: '$seen' } : { hasKeyword: '$seen' },
+    )
+  if (q.isFlagged) conds.push({ hasKeyword: '$flagged' })
+  if (q.before) conds.push({ before: `${q.before}T00:00:00Z` })
+  if (q.after) conds.push({ after: `${q.after}T00:00:00Z` })
+  if (conds.length === 0) return {}
+  if (conds.length === 1) return conds[0]!
+  return { operator: 'AND', conditions: conds }
+}
 
 export function createJmapMail(
   transport: Transport,
   accountId: string,
   limits: CoreCapability,
+  uploadUrl: string,
+  downloadUrl: string,
 ): MailProvider {
   const batch = () => new Batch(transport, USING)
 
   async function changesWithGet<TJmap, TOut>(
     type: 'Mailbox' | 'Email',
     sinceState: string,
-    properties: readonly string[],
+    // undefined → all properties; an empty array would mean "only id"!
+    properties: readonly string[] | undefined,
     map: (v: TJmap) => TOut,
   ): Promise<SyncPage<TOut>> {
     const b = batch()
@@ -72,7 +132,7 @@ export function createJmapMail(
           hasMore: false,
         }
       }
-      return changesWithGet<JmapMailbox, Mailbox>('Mailbox', sinceState, [], toMailbox)
+      return changesWithGet<JmapMailbox, Mailbox>('Mailbox', sinceState, undefined, toMailbox)
     },
 
     async syncEmailHeaders(sinceState) {
@@ -137,6 +197,191 @@ export function createJmapMail(
       await b.send()
       const e = g.result.list[0]
       return e ? toEmailBody(e) : null
+    },
+
+    async setEmails(updates, destroy) {
+      const b = batch()
+      const s = b.call<SetResponse<JmapEmail>>('Email/set', {
+        accountId,
+        update: Object.keys(updates).length ? updates : undefined,
+        destroy: destroy.length ? destroy : undefined,
+      })
+      await b.send()
+      const r = s.result
+      const failed: SetOutcome['failed'] = {}
+      for (const [id, err] of Object.entries({ ...r.notUpdated, ...r.notDestroyed }))
+        failed[id] = toFailure(err)
+      return {
+        updated: Object.keys(r.updated ?? {}),
+        destroyed: r.destroyed ?? [],
+        failed,
+      }
+    },
+
+    async editMailbox(edit) {
+      const b = batch()
+      const s = b.call<SetResponse<JmapMailbox>>('Mailbox/set', {
+        accountId,
+        create: edit.create ? { m0: edit.create } : undefined,
+        update: edit.update ? { [edit.update.id]: { ...edit.update, id: undefined } } : undefined,
+        destroy: edit.destroy ? [edit.destroy] : undefined,
+        onDestroyRemoveEmails: false,
+      })
+      await b.send()
+      const r = s.result
+      if (edit.create) {
+        const created = r.created?.['m0']
+        return created
+          ? { id: created.id, failure: null }
+          : { id: null, failure: toFailure(r.notCreated?.['m0']) }
+      }
+      const key = edit.update?.id ?? edit.destroy ?? ''
+      const err = r.notUpdated?.[key] ?? r.notDestroyed?.[key]
+      return { id: key, failure: err ? toFailure(err) : null }
+    },
+
+    async identities() {
+      const b = new Batch(transport, USING_SUBMIT)
+      const g = b.call<GetResponse<{ id: string; name: string; email: string; replyTo: Identity['replyTo'] }>>(
+        'Identity/get',
+        { accountId, ids: null },
+      )
+      await b.send()
+      return g.result.list.map((i) => ({
+        id: i.id,
+        name: i.name ?? '',
+        email: i.email,
+        replyTo: i.replyTo ?? null,
+      }))
+    },
+
+    async uploadBlob(data, type) {
+      const url = uploadUrl.replace('{accountId}', encodeURIComponent(accountId))
+      const res = await transport.fetchRaw(url, {
+        method: 'POST',
+        headers: { 'Content-Type': type || 'application/octet-stream' },
+        body: data,
+      })
+      const j = (await res.json()) as { blobId: string; size: number }
+      return { blobId: j.blobId, size: j.size }
+    },
+
+    async sendEmail(mail, mailboxIds) {
+      const create: Record<string, unknown> = {
+        mailboxIds: { [mailboxIds.drafts]: true },
+        keywords: { $seen: true, $draft: true },
+        from: [mail.from],
+        to: mail.to.length ? mail.to : undefined,
+        cc: mail.cc.length ? mail.cc : undefined,
+        bcc: mail.bcc.length ? mail.bcc : undefined,
+        subject: mail.subject,
+        inReplyTo: mail.inReplyTo ?? undefined,
+        references: mail.references ?? undefined,
+        bodyValues: {
+          t: { value: mail.text },
+          h: { value: mail.html },
+        },
+        textBody: [{ partId: 't', type: 'text/plain' }],
+        htmlBody: [{ partId: 'h', type: 'text/html' }],
+        attachments: mail.attachments.length
+          ? mail.attachments.map((a) => ({
+              blobId: a.blobId,
+              type: a.type,
+              name: a.name,
+              disposition: 'attachment',
+            }))
+          : undefined,
+      }
+      const b = new Batch(transport, USING_SUBMIT)
+      const setCall = b.call<SetResponse<JmapEmail>>('Email/set', {
+        accountId,
+        create: { draft: create },
+      })
+      const submit = b.call<SetResponse<unknown>>('EmailSubmission/set', {
+        accountId,
+        create: {
+          sub: { emailId: '#draft', identityId: mail.identityId },
+        },
+        onSuccessUpdateEmail: {
+          '#sub': {
+            [`mailboxIds/${mailboxIds.drafts}`]: null,
+            [`mailboxIds/${mailboxIds.sent}`]: true,
+            'keywords/$draft': null,
+          },
+        },
+      })
+      await b.send()
+      const notCreated = setCall.result.notCreated?.['draft'] ?? submit.result.notCreated?.['sub']
+      if (notCreated) {
+        const f = toFailure(notCreated)
+        const err = new Error(`${f.type}${f.description ? `: ${f.description}` : ''}`)
+        ;(err as Error & { permanent?: boolean }).permanent = f.permanent
+        throw err
+      }
+    },
+
+    async searchEmails(query, opts) {
+      const filter = jmapSearchFilter(query, opts.mailboxId)
+      const b = batch()
+      const q = b.call<QueryResponse>('Email/query', {
+        accountId,
+        filter,
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        limit: opts.limit ?? 50,
+      })
+      const sn = b.call<{ list: Array<{ emailId: string; subject: string | null; preview: string | null }> }>(
+        'SearchSnippet/get',
+        { accountId, filter, '#emailIds': q.ref('/ids') },
+      )
+      await b.send()
+      const snippets: Record<string, { subject: string | null; preview: string | null }> = {}
+      if (!sn.error) {
+        for (const s of sn.result.list)
+          snippets[s.emailId] = { subject: s.subject, preview: s.preview }
+      }
+      return { ids: q.result.ids, snippets }
+    },
+
+    async getVacation() {
+      const b = new Batch(transport, [Cap.core, Cap.mail, Cap.vacation])
+      const g = b.call<GetResponse<{ isEnabled: boolean; subject: string | null; textBody: string | null }>>(
+        'VacationResponse/get',
+        { accountId },
+      )
+      await b.send()
+      const v = g.result.list[0]
+      return {
+        enabled: v?.isEnabled ?? false,
+        subject: v?.subject ?? '',
+        text: v?.textBody ?? '',
+      }
+    },
+
+    async downloadBlob(blobId, type, name) {
+      const url = downloadUrl
+        .replace('{accountId}', encodeURIComponent(accountId))
+        .replace('{blobId}', encodeURIComponent(blobId))
+        .replace('{type}', encodeURIComponent(type))
+        .replace('{name}', encodeURIComponent(name))
+      const res = await transport.fetchRaw(url)
+      return res.blob()
+    },
+
+    async setVacation(v) {
+      const b = new Batch(transport, [Cap.core, Cap.mail, Cap.vacation])
+      const s = b.call<SetResponse<unknown>>('VacationResponse/set', {
+        accountId,
+        update: {
+          singleton: {
+            isEnabled: v.enabled,
+            subject: v.subject || null,
+            textBody: v.text || null,
+          },
+        },
+      })
+      await b.send()
+      const err = s.result.notUpdated?.['singleton']
+      if (err) throw new Error(err.description ?? err.type)
     },
   }
 }

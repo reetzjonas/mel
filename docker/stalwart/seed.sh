@@ -47,6 +47,7 @@ if [ ! -f etc/config.json ]; then
   RESP=$(jmap "$BOOT_AUTH" '[["x:Bootstrap/set",{"update":{"singleton":{
     "serverHostname":"localhost","defaultDomain":"localhost",
     "dataStore":{"@type":"RocksDb","path":"/var/lib/stalwart"},
+    "searchStore":{"@type":"Default"},
     "directory":{"@type":"Internal"},
     "generateDkimKeys":true,"requestTlsCertificate":false}}},"c0"]]')
   echo "$RESP" | grep -q '"updated"' || { echo "Bootstrap failed: $RESP"; exit 1; }

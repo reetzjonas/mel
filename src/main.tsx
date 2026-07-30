@@ -13,6 +13,8 @@ declare module '@tanstack/react-router' {
   }
 }
 
+import('./sync/outbox').then(({ useOutboxAutoFlush }) => useOutboxAutoFlush())
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>

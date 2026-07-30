@@ -1,9 +1,11 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
+import { useUi } from '../../app/store'
 import type { EmailAddress, EmailHeader } from '../../domain/email'
 import { formatListDate } from '../../lib/dates'
 import { t } from '../../lib/i18n'
+import { archiveEmail, deleteEmail } from '../../services/mailActions'
 import { Icon } from '../../ui/Icon'
 
 function senderLabel(from: EmailAddress[]): string {
@@ -11,22 +13,75 @@ function senderLabel(from: EmailAddress[]): string {
   return from.map((a) => a.name || a.email.split('@')[0]).join(', ')
 }
 
+const SWIPE_TRIGGER_PX = 90
+
+/** Touch swipe: right = archive, left = delete. */
+function useSwipe(onArchive: () => void, onDelete: () => void) {
+  const [dx, setDx] = useState(0)
+  const start = useRef<{ x: number; y: number } | null>(null)
+
+  return {
+    dx,
+    handlers: {
+      onTouchStart: (e: React.TouchEvent) => {
+        const touch = e.touches[0]
+        if (touch) start.current = { x: touch.clientX, y: touch.clientY }
+      },
+      onTouchMove: (e: React.TouchEvent) => {
+        const touch = e.touches[0]
+        if (!start.current || !touch) return
+        const deltaX = touch.clientX - start.current.x
+        const deltaY = touch.clientY - start.current.y
+        if (Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) setDx(deltaX)
+      },
+      onTouchEnd: () => {
+        if (dx > SWIPE_TRIGGER_PX) onArchive()
+        else if (dx < -SWIPE_TRIGGER_PX) onDelete()
+        setDx(0)
+        start.current = null
+      },
+    },
+  }
+}
+
 function Row({
+  accountId,
   email,
   selected,
   onOpen,
 }: {
+  accountId: string
   email: EmailHeader
   selected: boolean
   onOpen: () => void
 }) {
   const unread = !email.keywords['$seen']
+  const { showSnackbar } = useUi()
+
+  const doArchive = () =>
+    void archiveEmail(accountId, email.id).then((undo) => {
+      if (undo)
+        showSnackbar({ message: t('mail.archived'), actionLabel: t('mail.undo'), action: () => void undo() })
+    })
+  const doDelete = () =>
+    void deleteEmail(accountId, email.id).then((undo) => {
+      showSnackbar(
+        undo
+          ? { message: t('mail.deleted'), actionLabel: t('mail.undo'), action: () => void undo() }
+          : { message: t('mail.deleted') },
+      )
+    })
+
+  const { dx, handlers } = useSwipe(doArchive, doDelete)
+
   return (
     <button
       type="button"
       onClick={onOpen}
       data-selected={selected || undefined}
-      className="relative block w-full border-b border-line px-4 py-2.5 text-left transition-colors hover:bg-surface-2 data-selected:bg-accent/10"
+      {...handlers}
+      style={dx ? { transform: `translateX(${dx}px)` } : undefined}
+      className="relative block w-full border-b border-line bg-bg px-4 py-2.5 text-left transition-colors hover:bg-surface-2 data-selected:bg-accent/10"
     >
       {unread && (
         <span className="absolute top-1/2 left-1.5 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent" />
@@ -55,10 +110,12 @@ function Row({
 }
 
 export function ThreadList({
+  accountId,
   emails,
   mailboxId,
   selectedId,
 }: {
+  accountId: string
   emails: EmailHeader[]
   mailboxId: string
   selectedId: string | undefined
@@ -95,7 +152,12 @@ export function ThreadList({
       data={emails}
       computeItemKey={(_, e) => e.id}
       itemContent={(_, email) => (
-        <Row email={email} selected={email.id === selectedId} onOpen={() => open(email.id)} />
+        <Row
+          accountId={accountId}
+          email={email}
+          selected={email.id === selectedId}
+          onOpen={() => open(email.id)}
+        />
       )}
     />
   )

@@ -34,7 +34,13 @@ async function buildConnection(
   return {
     account,
     capabilities,
-    mail: capabilities.mail ? createJmapMail(transport, remoteAccountId, limits) : null,
+    mail: capabilities.mail
+      ? createJmapMail(transport, remoteAccountId, limits, resolved.uploadUrl, resolved.downloadUrl)
+      : null,
+    push: {
+      eventSourceUrl: resolved.eventSourceUrl,
+      credentials: creds,
+    },
   }
 }
 

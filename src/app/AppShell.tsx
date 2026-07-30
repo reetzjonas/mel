@@ -51,8 +51,15 @@ export function AppShell() {
             <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
           ))}
         </nav>
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
+          <Link
+            to="/settings"
+            title={t('settings.title')}
+            className="rounded-md p-2 text-ink-muted hover:bg-surface-2 hover:text-ink [&.active]:text-accent"
+          >
+            <Icon name="settings" />
+          </Link>
         </div>
       </header>
       <main className="min-h-0 flex-1">
@@ -63,6 +70,13 @@ export function AppShell() {
         {apps.map((a) => (
           <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
         ))}
+        <Link
+          to="/settings"
+          title={t('settings.title')}
+          className="rounded-full px-3.5 py-1 text-ink-muted [&.active]:bg-accent [&.active]:text-accent-ink"
+        >
+          <Icon name="settings" size={18} />
+        </Link>
       </nav>
     </div>
   )

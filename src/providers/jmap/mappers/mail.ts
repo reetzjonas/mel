@@ -76,6 +76,8 @@ export function toEmailBody(e: JmapEmail): EmailBody {
     emailId: e.id,
     html: partText(e, e.htmlBody),
     text: partText(e, e.textBody),
+    messageId: e.messageId ?? null,
+    references: e.references ?? null,
     attachments: (e.attachments ?? []).map((p) => ({
       partId: p.partId,
       blobId: p.blobId,

@@ -1,0 +1,122 @@
+import { fetchEventSource } from '@microsoft/fetch-event-source'
+import { authHeader } from '../providers/jmap/client/transport'
+import type { StateChange } from '../providers/jmap/client/types/core'
+import { db } from '../storage/db'
+import { openEnvelope } from '../storage/envelope'
+import { notifyNewMail } from '../services/notifications'
+import { connectionFor } from './connections'
+import { syncAccount } from './engine'
+import { flush } from './outbox'
+
+const POLL_FOREGROUND_MS = 30_000
+const POLL_HIDDEN_MS = 5 * 60_000
+const SSE_MAX_FAILURES = 3
+
+interface Controller {
+  abort: AbortController
+  pollTimer: ReturnType<typeof setTimeout> | null
+  sseFailures: number
+  stopped: boolean
+}
+
+const controllers = new Map<string, Controller>()
+
+async function tick(accountId: string) {
+  try {
+    await flush(accountId)
+    await syncAccount(accountId)
+    await notifyNewMail(accountId)
+  } catch {
+    /* transient; next tick retries */
+  }
+}
+
+function schedulePoll(accountId: string, ctl: Controller) {
+  if (ctl.stopped) return
+  if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
+  const interval = document.hidden ? POLL_HIDDEN_MS : POLL_FOREGROUND_MS
+  ctl.pollTimer = setTimeout(() => {
+    void tick(accountId).finally(() => schedulePoll(accountId, ctl))
+  }, interval)
+}
+
+async function startSse(accountId: string, ctl: Controller) {
+  const conn = await connectionFor(accountId)
+  if (!conn.push) {
+    schedulePoll(accountId, ctl)
+    return
+  }
+  const url = conn.push.eventSourceUrl
+    .replace('{types}', '*')
+    .replace('{closeafter}', 'no')
+    .replace('{ping}', '30')
+
+  try {
+    await fetchEventSource(url, {
+      signal: ctl.abort.signal,
+      headers: { Authorization: authHeader(conn.push.credentials) },
+      openWhenHidden: true,
+      onopen: async (res) => {
+        if (!res.ok) throw new Error(`SSE ${res.status}`)
+        ctl.sseFailures = 0
+      },
+      onmessage: (ev) => {
+        if (ev.event !== 'state' || !ev.data) return
+        try {
+          const change = JSON.parse(ev.data) as StateChange
+          if (change.changed) void tick(accountId)
+        } catch {
+          /* malformed event */
+        }
+      },
+      onerror: (err) => {
+        ctl.sseFailures++
+        if (ctl.sseFailures >= SSE_MAX_FAILURES) {
+          throw err instanceof Error ? err : new Error('SSE failed')
+        }
+        // returning undefined lets fetch-event-source retry with backoff
+      },
+    })
+  } catch {
+    if (!ctl.stopped) schedulePoll(accountId, ctl)
+  }
+}
+
+/** Start live updates for an account: SSE when available, polling fallback. */
+export function startScheduler(accountId: string) {
+  if (controllers.has(accountId)) return
+  const ctl: Controller = {
+    abort: new AbortController(),
+    pollTimer: null,
+    sseFailures: 0,
+    stopped: false,
+  }
+  controllers.set(accountId, ctl)
+  void tick(accountId)
+  void startSse(accountId, ctl)
+
+  const onVisibility = () => {
+    if (!document.hidden) void tick(accountId)
+  }
+  const onOnline = () => void tick(accountId)
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('online', onOnline)
+}
+
+export function stopScheduler(accountId: string) {
+  const ctl = controllers.get(accountId)
+  if (!ctl) return
+  ctl.stopped = true
+  ctl.abort.abort()
+  if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
+  controllers.delete(accountId)
+}
+
+/** Newest inbox arrivals, used by notifications to diff. */
+export async function inboxUnreadSince(accountId: string, sinceMs: number) {
+  const rows = await db.emails
+    .where('[accountId+receivedAt]')
+    .between([accountId, sinceMs], [accountId, Infinity])
+    .toArray()
+  return rows.filter((r) => r.unread === 1).map((r) => openEnvelope(r.payload))
+}

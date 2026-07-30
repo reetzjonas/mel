@@ -1,5 +1,6 @@
 import { Link } from '@tanstack/react-router'
 import { useState } from 'react'
+import { useUi } from '../../app/store'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
 import { syncAccount } from '../../sync/engine'
@@ -31,8 +32,18 @@ export function MailboxSidebar({
       .finally(() => setRefreshing(false))
   }
 
+  const { openCompose } = useUi()
+
   return (
     <nav className="flex h-full flex-col overflow-y-auto px-2 py-3">
+      <button
+        type="button"
+        onClick={() => openCompose({})}
+        className="mb-3 hidden items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-medium text-accent-ink hover:opacity-90 lg:flex"
+      >
+        <Icon name="compose" size={15} />
+        {t('compose.new')}
+      </button>
       <div className="mb-2 flex items-center justify-between px-2">
         <span
           className="truncate text-xs font-semibold tracking-wide text-ink-muted uppercase"
