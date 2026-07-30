@@ -43,6 +43,15 @@ test('create a single and a weekly recurring event in the month view', async ({ 
       timeout: 10_000,
     })
     .toBeGreaterThan(1)
+
+  // Clean up so repeated runs don't fill the day cells past the chip cap.
+  for (const name of [weekly, title]) {
+    await page.getByRole('button', { name: new RegExp(name) }).first().click()
+    await page.getByRole('button', { name: 'Delete event' }).click()
+    await expect(page.getByRole('button', { name: new RegExp(name) })).toHaveCount(0, {
+      timeout: 10_000,
+    })
+  }
 })
 
 test('edit and delete an event', async ({ page }) => {
