@@ -50,21 +50,39 @@ function ActionButton({
   )
 }
 
-async function downloadAttachment(
-  accountId: string,
-  blobId: string,
-  type: string,
-  name: string,
-) {
+/** Types the browser can render directly — opened in a new tab instead of saved. */
+const PREVIEWABLE = /^(image\/|application\/pdf|text\/|audio\/|video\/)/
+
+async function fetchAttachment(accountId: string, blobId: string, type: string, name: string) {
   const conn = await connectionFor(accountId)
-  if (!conn.mail) return
+  if (!conn.mail) return null
   const blob = await conn.mail.downloadBlob(blobId, type, name)
-  const url = URL.createObjectURL(blob)
+  // Re-wrap with the declared type so the browser previews instead of saving.
+  return URL.createObjectURL(new Blob([blob], { type }))
+}
+
+async function openAttachment(accountId: string, blobId: string, type: string, name: string) {
+  const url = await fetchAttachment(accountId, blobId, type, name)
+  if (!url) return
+  if (PREVIEWABLE.test(type)) {
+    window.open(url, '_blank', 'noopener')
+  } else {
+    const a = document.createElement('a')
+    a.href = url
+    a.download = name
+    a.click()
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+async function downloadAttachment(accountId: string, blobId: string, type: string, name: string) {
+  const url = await fetchAttachment(accountId, blobId, type, name)
+  if (!url) return
   const a = document.createElement('a')
   a.href = url
   a.download = name
   a.click()
-  setTimeout(() => URL.revokeObjectURL(url), 30_000)
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
 export function ReadingPane({
@@ -204,18 +222,33 @@ export function ReadingPane({
         <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2">
           {body.attachments.map((a, i) =>
             a.blobId ? (
-              <button
+              <span
                 key={i}
-                type="button"
-                onClick={() =>
-                  void downloadAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
-                }
-                className="flex items-center gap-1.5 rounded-full bg-surface-2 px-3 py-1 text-xs hover:text-accent"
+                className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs"
               >
-                <Icon name="paperclip" size={11} />
-                {a.name ?? 'attachment'}
-                <span className="text-ink-muted">({Math.ceil(a.size / 1024)} KB)</span>
-              </button>
+                <button
+                  type="button"
+                  title={t('mail.openAttachment')}
+                  onClick={() =>
+                    void openAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
+                  }
+                  className="flex items-center gap-1.5 py-1 pr-1.5 pl-3 hover:text-accent"
+                >
+                  <Icon name="paperclip" size={11} />
+                  {a.name ?? 'attachment'}
+                  <span className="text-ink-muted">({Math.max(1, Math.round(a.size / 1024))} KB)</span>
+                </button>
+                <button
+                  type="button"
+                  title={t('mail.downloadAttachment')}
+                  onClick={() =>
+                    void downloadAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
+                  }
+                  className="border-l border-line px-2 py-1 text-ink-muted hover:text-accent"
+                >
+                  <Icon name="download" size={12} />
+                </button>
+              </span>
             ) : null,
           )}
         </footer>

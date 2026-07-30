@@ -5,8 +5,8 @@ import { useUi } from '../../app/store'
 import type { EmailAddress, EmailHeader } from '../../domain/email'
 import { formatListDate } from '../../lib/dates'
 import { t } from '../../lib/i18n'
-import { archiveEmail, deleteEmail } from '../../services/mailActions'
-import { Icon } from '../../ui/Icon'
+import { archiveEmail, deleteEmail, markRead, setFlagged } from '../../services/mailActions'
+import { Icon, type IconName } from '../../ui/Icon'
 
 function senderLabel(from: EmailAddress[]): string {
   if (!from.length) return t('mail.unknownSender')
@@ -44,6 +44,32 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
   }
 }
 
+function QuickAction({
+  icon,
+  label,
+  onClick,
+  active,
+}: {
+  icon: IconName
+  label: string
+  onClick: () => void
+  active?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      onClick={(e) => {
+        e.stopPropagation()
+        onClick()
+      }}
+      className={`rounded-md p-1.5 hover:bg-surface-2 ${active ? 'text-accent' : 'text-ink-muted hover:text-ink'}`}
+    >
+      <Icon name={icon} size={14} />
+    </button>
+  )
+}
+
 function Row({
   accountId,
   email,
@@ -56,6 +82,7 @@ function Row({
   onOpen: () => void
 }) {
   const unread = !email.keywords['$seen']
+  const flagged = Boolean(email.keywords['$flagged'])
   const { showSnackbar } = useUi()
 
   const doArchive = () =>
@@ -75,22 +102,40 @@ function Row({
   const { dx, handlers } = useSwipe(doArchive, doDelete)
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
       data-selected={selected || undefined}
       {...handlers}
       style={dx ? { transform: `translateX(${dx}px)` } : undefined}
-      className="relative block w-full border-b border-line bg-bg px-4 py-2.5 text-left transition-colors hover:bg-surface-2 data-selected:bg-accent/10"
+      className="group relative block w-full cursor-pointer border-b border-line bg-bg px-4 py-2.5 text-left transition-colors hover:bg-surface-2 data-selected:bg-accent/10"
     >
       {unread && (
         <span className="absolute top-1/2 left-1.5 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-accent" />
       )}
+      {/* Quick actions: desktop hover only (mobile has swipe gestures) */}
+      <span className="absolute top-1.5 right-2 z-10 hidden items-center rounded-lg border border-line bg-surface shadow-sm group-hover:lg:flex">
+        <QuickAction
+          icon={unread ? 'mail' : 'mailUnread'}
+          label={unread ? t('mail.markRead') : t('mail.markUnread')}
+          onClick={() => void markRead(accountId, email.id, unread)}
+        />
+        <QuickAction
+          icon="flag"
+          label={flagged ? t('mail.unflag') : t('mail.flag')}
+          active={flagged}
+          onClick={() => void setFlagged(accountId, email.id, !flagged)}
+        />
+        <QuickAction icon="archive" label={t('mail.archive')} onClick={doArchive} />
+        <QuickAction icon="trash" label={t('mail.delete')} onClick={doDelete} />
+      </span>
       <div className="flex items-baseline justify-between gap-3">
         <span className={`min-w-0 truncate text-sm ${unread ? 'font-semibold' : 'text-ink'}`}>
           {senderLabel(email.from)}
         </span>
-        <span className="shrink-0 text-[11px] text-ink-muted tabular-nums">
+        <span className="shrink-0 text-[11px] text-ink-muted tabular-nums group-hover:lg:invisible">
           {formatListDate(email.receivedAt)}
         </span>
       </div>
@@ -105,7 +150,7 @@ function Row({
         )}
       </div>
       <div className="truncate text-xs text-ink-muted/80">{email.preview}</div>
-    </button>
+    </div>
   )
 }
 

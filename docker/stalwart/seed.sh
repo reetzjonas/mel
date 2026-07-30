@@ -128,6 +128,16 @@ if [ "${TOTAL:-0}" -lt 4 ]; then
   send_mail bob@localhost alice@localhost "HTML-Test" \
     '<html><body><h1>Hallo</h1><p>Dies ist <b>HTML</b>-Mail mit <a href="https://example.com">Link</a> und Umlauten: &auml;&ouml;&uuml;.</p></body></html>' \
     'MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n'
+
+  # Multipart mail with attachments (1x1 PNG + CSV)
+  PNG_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+  {
+    printf 'From: bob@localhost\r\nTo: alice@localhost\r\nSubject: Mit Anhang\r\nDate: %s\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="melbound"\r\n\r\n' "$(date -R)"
+    printf -- '--melbound\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nSiehe Anhang.\r\n'
+    printf -- '--melbound\r\nContent-Type: image/png; name="pixel.png"\r\nContent-Disposition: attachment; filename="pixel.png"\r\nContent-Transfer-Encoding: base64\r\n\r\n%s\r\n' "$PNG_B64"
+    printf -- '--melbound\r\nContent-Type: text/csv; name="daten.csv"\r\nContent-Disposition: attachment; filename="daten.csv"\r\n\r\na,b\r\n1,2\r\n'
+    printf -- '--melbound--\r\n'
+  } | curl -sS "smtp://localhost:1025/seed.mel.dev" --mail-from bob@localhost --mail-rcpt alice@localhost -T -
 else
   echo "Mailbox already seeded ($TOTAL mails)"
 fi

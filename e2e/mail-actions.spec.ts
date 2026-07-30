@@ -13,13 +13,13 @@ const BOB = ['bob@localhost', 'korrekt-pferd-batterie-bob'] as const
 
 test('archive a mail and undo it', async ({ page }) => {
   await login(page, ...ALICE)
-  const firstRow = page.locator('[data-testid="virtuoso-item-list"] button').first()
+  const firstRow = page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first()
   await expect(firstRow).toBeVisible({ timeout: 15_000 })
   // Whatever mail is on top — independent of previous runs' server state.
   const subject = (await firstRow.locator('div').nth(1).innerText()).split('\n')[0]!.trim()
 
   await firstRow.click()
-  await page.getByTitle('Archive').click()
+  await page.getByRole('article').getByTitle('Archive').click()
 
   await expect(page.getByText('Archived')).toBeVisible()
   await expect(page.getByText(subject).first()).toBeHidden()
@@ -56,6 +56,36 @@ test('compose, send, and receive on the other account', async ({ page, browser }
   const frame = bobPage.frameLocator('iframe[title="Message content"]')
   await expect(frame.getByText('Hello Bob from the e2e test.')).toBeVisible()
   await bobCtx.close()
+})
+
+test('quick actions on list rows: flag and mark unread without opening', async ({ page }) => {
+  await login(page, ...ALICE)
+  const row = page
+    .locator('[data-testid="virtuoso-item-list"] [role="button"]', { hasText: 'HTML-Test' })
+    .first()
+  await expect(row).toBeVisible({ timeout: 15_000 })
+
+  await row.hover()
+  await row.getByTitle('Flag', { exact: true }).click()
+  await row.hover()
+  await expect(row.getByTitle('Remove flag')).toBeVisible()
+  await row.getByTitle('Remove flag').click()
+  await row.hover()
+  await expect(row.getByTitle('Flag', { exact: true })).toBeVisible()
+
+  // Mark read/unread toggle from the list.
+  await row.hover()
+  const markUnread = row.getByTitle('Mark unread')
+  const markRead = row.getByTitle('Mark read')
+  if (await markUnread.isVisible()) {
+    await markUnread.click()
+    await row.hover()
+    await expect(markRead).toBeVisible()
+  } else {
+    await markRead.click()
+    await row.hover()
+    await expect(markUnread).toBeVisible()
+  }
 })
 
 test('search filters by subject server-side', async ({ page }) => {

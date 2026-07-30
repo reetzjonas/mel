@@ -48,7 +48,9 @@ export async function fetchSession(
   if (!res.ok) throw new JmapError(`HTTP ${res.status}`, 'protocol', undefined, res.status)
   const session = (await res.json()) as JmapSession
   const base = res.url || sessionUrl
-  const abs = (u: string) => new URL(u, base).toString()
+  // new URL() percent-encodes the {placeholders} of RFC 6570 URL templates
+  // in the path — restore them so template substitution keeps working.
+  const abs = (u: string) => new URL(u, base).toString().replace(/%7B/gi, '{').replace(/%7D/gi, '}')
   return {
     session,
     sessionUrl: base,

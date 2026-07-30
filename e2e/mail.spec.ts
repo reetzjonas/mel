@@ -20,6 +20,27 @@ test('login against Stalwart, browse inbox, read a mail', async ({ page }) => {
   await expect(frame.getByText('dies ist die erste Testmail')).toBeVisible()
 })
 
+test('attachments open in a new tab (preview) and download', async ({ page, context }) => {
+  await login(page)
+  await expect(page.getByText('Mit Anhang')).toBeVisible({ timeout: 15_000 })
+  await page.getByText('Mit Anhang').click()
+
+  // Previewable PNG opens as a popup with a blob URL.
+  const popup = context.waitForEvent('page', { timeout: 10_000 })
+  await page.getByRole('button', { name: /pixel\.png/ }).click()
+  const opened = await popup
+  expect(opened.url()).toMatch(/^blob:/)
+  await opened.close()
+
+  // Explicit download button saves the file.
+  const download = page.waitForEvent('download', { timeout: 10_000 })
+  await page
+    .locator('footer span', { hasText: 'daten.csv' })
+    .getByTitle('Download')
+    .click()
+  expect((await download).suggestedFilename()).toBe('daten.csv')
+})
+
 test('HTML mail renders sanitized in the reading pane', async ({ page }) => {
   await login(page)
 
