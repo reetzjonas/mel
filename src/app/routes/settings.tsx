@@ -11,6 +11,7 @@ import {
   isAccountEncrypted,
   lock,
 } from '../../services/encryption'
+import { disableWebPush, enableWebPush, isSubscribed, webPushSupported } from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
 import { connectionFor } from '../../sync/connections'
 import { stopScheduler } from '../../sync/scheduler'
@@ -116,6 +117,58 @@ function VacationSetting({ accountId }: { accountId: string }) {
       >
         {saved ? t('settings.vacation.saved') : t('settings.vacation.save')}
       </button>
+    </div>
+  )
+}
+
+function WebPushSetting({ accountId }: { accountId: string }) {
+  const [state, setState] = useState<'loading' | 'unsupported' | 'off' | 'on' | 'busy'>('loading')
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    void (async () => {
+      if (!(await webPushSupported(accountId))) return setState('unsupported')
+      setState((await isSubscribed()) ? 'on' : 'off')
+    })()
+  }, [accountId])
+
+  if (state === 'loading') return null
+  if (state === 'unsupported')
+    return <p className="text-sm text-ink-muted">{t('push.unsupported')}</p>
+
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-ink-muted">{state === 'on' ? t('push.enabled') : t('push.hint')}</p>
+      <button
+        type="button"
+        disabled={state === 'busy'}
+        className={
+          state === 'on'
+            ? 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2'
+            : 'rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50'
+        }
+        onClick={() => {
+          const wasOn = state === 'on'
+          setState('busy')
+          setError(null)
+          void (async () => {
+            if (wasOn) {
+              await disableWebPush(accountId)
+              setState('off')
+            } else {
+              if (!(await requestNotificationPermission())) throw new Error(t('settings.notifications.denied'))
+              await enableWebPush(accountId)
+              setState('on')
+            }
+          })().catch((e) => {
+            setError(e instanceof Error ? e.message : String(e))
+            setState(wasOn ? 'on' : 'off')
+          })
+        }}
+      >
+        {state === 'busy' ? t('push.working') : state === 'on' ? t('push.disable') : t('push.enable')}
+      </button>
+      {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   )
 }
@@ -247,6 +300,12 @@ function SettingsPage() {
         {account?.capabilities.vacation && (
           <Section title={t('settings.vacation')}>
             <VacationSetting accountId={account.id} />
+          </Section>
+        )}
+
+        {account && (
+          <Section title={t('push.section')}>
+            <WebPushSetting accountId={account.id} />
           </Section>
         )}
 

@@ -27,7 +27,24 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
+// Ask the browser not to evict our IndexedDB under storage pressure —
+// the outbox may hold unsent mail.
+if (navigator.storage?.persist) void navigator.storage.persist()
+
 if ('serviceWorker' in navigator && import.meta.env.PROD) {
   const { registerSW } = await import('virtual:pwa-register')
-  registerSW({ immediate: true })
+  const { useUi } = await import('./app/store')
+  const { t } = await import('./lib/i18n')
+  const updateSW = registerSW({
+    onNeedRefresh() {
+      useUi.getState().showSnackbar(
+        {
+          message: t('app.updateAvailable'),
+          actionLabel: t('app.reload'),
+          action: () => void updateSW(true),
+        },
+        60_000,
+      )
+    },
+  })
 }

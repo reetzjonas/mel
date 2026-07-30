@@ -62,6 +62,13 @@ if [ ! -f etc/config.json ]; then
   # configure as the permanent admin now, then restart once more to apply.
   ADMIN_AUTH="admin@localhost:$(cat $PASS_FILE)"
 
+  echo "Configuring VAPID key for Web Push (RFC 9749)..."
+  VAPID_PEM=$(openssl ecparam -name prime256v1 -genkey -noout | openssl pkcs8 -topk8 -nocrypt)
+  VAPID_JSON=$(printf '%s' "$VAPID_PEM" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>console.log(JSON.stringify(d)))")
+  jmap "$ADMIN_AUTH" "[[\"x:Jmap/set\",{\"update\":{\"singleton\":{
+    \"webPushKey\":{\"@type\":\"Text\",\"secret\":$VAPID_JSON},
+    \"webPushContact\":\"mailto:admin@localhost\"}}},\"c0\"]]" > /dev/null
+
   # usePermissiveCors only answers OPTIONS on some routes; actual responses
   # (and e.g. OPTIONS /jmap/session) need the static responseHeaders too.
   echo "Enabling CORS + disabling spam filter (dev)..."

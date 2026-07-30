@@ -19,6 +19,7 @@ export default defineConfig({
         '**/contacts.spec.ts',
         '**/calendar.spec.ts',
         '**/encryption.spec.ts',
+        '**/offline.spec.ts',
       ],
     },
   ],

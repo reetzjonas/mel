@@ -170,6 +170,17 @@ const en = {
   'crypto.currentPassphrase': 'Current passphrase',
   'crypto.newPassphrase': 'New passphrase',
   'crypto.changed': 'Passphrase changed',
+
+  'push.section': 'Push notifications (app closed)',
+  'push.hint':
+    'The mail server delivers notifications through your browser’s push service even while mel is closed.',
+  'push.enable': 'Enable push notifications',
+  'push.disable': 'Disable push notifications',
+  'push.enabled': 'Push notifications are active',
+  'push.unsupported': 'Not supported by this server or browser',
+  'push.working': 'Setting up…',
+  'app.updateAvailable': 'Update available',
+  'app.reload': 'Reload',
 } as const
 
 export type MsgKey = keyof typeof en
@@ -341,6 +352,17 @@ const de: Partial<Record<MsgKey, string>> = {
   'crypto.currentPassphrase': 'Aktuelle Passphrase',
   'crypto.newPassphrase': 'Neue Passphrase',
   'crypto.changed': 'Passphrase geändert',
+
+  'push.section': 'Push-Benachrichtigungen (App geschlossen)',
+  'push.hint':
+    'Der Mailserver stellt Benachrichtigungen über den Push-Dienst deines Browsers zu — auch wenn mel geschlossen ist.',
+  'push.enable': 'Push-Benachrichtigungen aktivieren',
+  'push.disable': 'Push-Benachrichtigungen deaktivieren',
+  'push.enabled': 'Push-Benachrichtigungen sind aktiv',
+  'push.unsupported': 'Von diesem Server oder Browser nicht unterstützt',
+  'push.working': 'Richte ein…',
+  'app.updateAvailable': 'Update verfügbar',
+  'app.reload': 'Neu laden',
 }
 
 const locales: Record<string, Partial<Record<MsgKey, string>>> = { de }
