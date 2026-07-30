@@ -73,11 +73,13 @@ function QuickAction({
 function Row({
   accountId,
   email,
+  snippet,
   selected,
   onOpen,
 }: {
   accountId: string
   email: EmailHeader
+  snippet?: { subject: string | null; preview: string | null }
   selected: boolean
   onOpen: () => void
 }) {
@@ -149,19 +151,37 @@ function Row({
           <Icon name="paperclip" size={12} className="shrink-0 text-ink-muted" />
         )}
       </div>
-      <div className="truncate text-xs text-ink-muted/80">{email.preview}</div>
+      {snippet?.preview ? (
+        <div
+          className="truncate text-xs text-ink-muted/80"
+          dangerouslySetInnerHTML={{ __html: snippetHtml(snippet.preview) }}
+        />
+      ) : (
+        <div className="truncate text-xs text-ink-muted/80">{email.preview}</div>
+      )}
     </div>
   )
+}
+
+export type Snippets = Record<string, { subject: string | null; preview: string | null }>
+
+/** SearchSnippet HTML may only contain <mark> highlights — strip the rest. */
+function snippetHtml(s: string): string {
+  return s
+    .replace(/<(?!\/?mark\b)[^>]*>/gi, '')
+    .replace(/<mark\b[^>]*>/gi, '<mark class="bg-accent/20 text-accent rounded-xs">')
 }
 
 export function ThreadList({
   accountId,
   emails,
+  snippets,
   mailboxId,
   selectedId,
 }: {
   accountId: string
   emails: EmailHeader[]
+  snippets?: Snippets
   mailboxId: string
   selectedId: string | undefined
 }) {
@@ -200,6 +220,7 @@ export function ThreadList({
         <Row
           accountId={accountId}
           email={email}
+          snippet={snippets?.[email.id]}
           selected={email.id === selectedId}
           onOpen={() => open(email.id)}
         />

@@ -1,10 +1,10 @@
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ThreadList } from '../../features/mail/ThreadList'
 import { useAccounts, useMailboxEmails } from '../../features/mail/hooks'
-import type { EmailHeader } from '../../domain/email'
 import { t } from '../../lib/i18n'
-import { searchEmails } from '../../services/search'
+import { searchEmails, type SearchResult } from '../../services/search'
+import { syncAccount } from '../../sync/engine'
 import { Icon } from '../../ui/Icon'
 
 export const Route = createFileRoute('/mail/$mailboxId')({
@@ -22,8 +22,9 @@ function MailboxView() {
   const accounts = useAccounts()
   const account = accounts?.[0]
   const emails = useMailboxEmails(account?.id, mailboxId)
-  const [results, setResults] = useState<EmailHeader[] | null>(null)
+  const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     setInput(q ?? '')
@@ -33,12 +34,33 @@ function MailboxView() {
     }
     let alive = true
     void searchEmails(account.id, q).then((r) => {
-      if (alive) setResults(r?.headers ?? [])
+      if (alive) setResults(r ?? { headers: [], snippets: {} })
     })
     return () => {
       alive = false
     }
   }, [q, account?.id])
+
+  // Pull-to-refresh (touch): drag down while the list is scrolled to the top.
+  const pull = useRef<{ y: number; scroller: HTMLElement | null } | null>(null)
+  const onTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0]
+    const scroller = (e.target as HTMLElement).closest('[data-testid="virtuoso-scroller"]')
+    pull.current = touch ? { y: touch.clientY, scroller: scroller as HTMLElement | null } : null
+  }
+  const onTouchEnd = (e: React.TouchEvent) => {
+    const start = pull.current
+    pull.current = null
+    if (!start || !account || refreshing) return
+    const dy = (e.changedTouches[0]?.clientY ?? start.y) - start.y
+    const atTop = !start.scroller || start.scroller.scrollTop === 0
+    if (dy > 90 && atTop) {
+      setRefreshing(true)
+      void syncAccount(account.id)
+        .catch(() => {})
+        .finally(() => setRefreshing(false))
+    }
+  }
 
   const submitSearch = (value: string) =>
     void navigate({
@@ -48,13 +70,20 @@ function MailboxView() {
     })
 
   const inDetail = Boolean(params.emailId)
-  const list = results ?? emails
+  const list = results?.headers ?? emails
 
   return (
     <div className="flex h-full">
       <section
+        onTouchStart={onTouchStart}
+        onTouchEnd={onTouchEnd}
         className={`flex h-full w-full min-w-0 flex-col border-r border-line lg:flex lg:w-96 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
+        {refreshing && (
+          <div className="border-b border-line py-1 text-center text-xs text-ink-muted">
+            {t('mail.syncing')}
+          </div>
+        )}
         <div className="flex items-center gap-2 border-b border-line px-3 py-2">
           <div className="relative flex-1">
             <Icon
@@ -99,6 +128,7 @@ function MailboxView() {
               <ThreadList
                 accountId={account.id}
                 emails={list}
+                snippets={results?.snippets}
                 mailboxId={mailboxId}
                 selectedId={params.emailId}
               />
