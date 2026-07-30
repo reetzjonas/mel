@@ -1,11 +1,15 @@
 import { Link, Outlet } from '@tanstack/react-router'
+import { useLiveQuery } from 'dexie-react-hooks'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAccounts } from '../features/mail/hooks'
 import { t } from '../lib/i18n'
+import { dekFor } from '../storage/crypto/keyring'
+import { db } from '../storage/db'
 import { Icon } from '../ui/Icon'
 import { Snackbar } from '../ui/Snackbar'
 import { useTheme } from './ThemeProvider'
+import { UnlockGate } from './UnlockGate'
 import { useUi } from './store'
 
 const allApps = [
@@ -45,6 +49,15 @@ export function AppShell() {
   const accounts = useAccounts()
   const account = accounts?.[0]
   const { compose } = useUi()
+  const unlockVersion = useUi((s) => s.unlockVersion)
+  const lockedIds = useLiveQuery(async () => {
+    const rows = await db.accounts.toArray()
+    return rows.filter((r) => r.encrypted && !dekFor(r.id)).map((r) => r.id)
+  }, [unlockVersion])
+
+  if (lockedIds === undefined) return null
+  if (lockedIds.length > 0) return <UnlockGate accountIds={lockedIds} />
+
   // Capability-gated app switcher; before login only Mail is shown.
   const apps = allApps.filter((a) => a.cap === 'mail' || account?.capabilities[a.cap])
   return (

@@ -4,6 +4,7 @@ import type { Calendar, CalendarEvent } from '../domain/calendar'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
+import { cryptoMiddleware } from './crypto/middleware'
 import type { Envelope } from './envelope'
 
 // Rows carry plaintext index columns (ids, timestamps, flags only) plus the
@@ -151,6 +152,7 @@ export class MelDb extends Dexie {
       calendars: '&[accountId+id], accountId',
       events: '&[accountId+id], accountId, *calendarIds',
     })
+    this.use(cryptoMiddleware)
   }
 }
 

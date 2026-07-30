@@ -151,6 +151,25 @@ const en = {
   'cal.deleted': 'Event deleted',
   'cal.min': 'min',
   'cal.hour': 'h',
+
+  'crypto.unlockTitle': 'Unlock mel',
+  'crypto.unlock': 'Unlock',
+  'crypto.passphrase': 'Passphrase',
+  'crypto.wrongPassphrase': 'Wrong passphrase',
+  'crypto.section': 'Encryption at rest',
+  'crypto.enabled': 'Local data is encrypted',
+  'crypto.enable': 'Encrypt local data',
+  'crypto.enableHint':
+    'Mail, contacts and calendar data in this browser are encrypted with a passphrase. Without it, the local data cannot be read.',
+  'crypto.confirm': 'Repeat passphrase',
+  'crypto.mismatch': 'Passphrases do not match',
+  'crypto.working': 'Encrypting…',
+  'crypto.disable': 'Disable encryption',
+  'crypto.lockNow': 'Lock now',
+  'crypto.changePassphrase': 'Change passphrase',
+  'crypto.currentPassphrase': 'Current passphrase',
+  'crypto.newPassphrase': 'New passphrase',
+  'crypto.changed': 'Passphrase changed',
 } as const
 
 export type MsgKey = keyof typeof en
@@ -303,6 +322,25 @@ const de: Partial<Record<MsgKey, string>> = {
   'cal.deleted': 'Termin gelöscht',
   'cal.min': 'Min.',
   'cal.hour': 'Std.',
+
+  'crypto.unlockTitle': 'mel entsperren',
+  'crypto.unlock': 'Entsperren',
+  'crypto.passphrase': 'Passphrase',
+  'crypto.wrongPassphrase': 'Falsche Passphrase',
+  'crypto.section': 'Verschlüsselung lokaler Daten',
+  'crypto.enabled': 'Lokale Daten sind verschlüsselt',
+  'crypto.enable': 'Lokale Daten verschlüsseln',
+  'crypto.enableHint':
+    'Mails, Kontakte und Termine in diesem Browser werden mit einer Passphrase verschlüsselt. Ohne sie sind die lokalen Daten nicht lesbar.',
+  'crypto.confirm': 'Passphrase wiederholen',
+  'crypto.mismatch': 'Passphrasen stimmen nicht überein',
+  'crypto.working': 'Verschlüssele…',
+  'crypto.disable': 'Verschlüsselung deaktivieren',
+  'crypto.lockNow': 'Jetzt sperren',
+  'crypto.changePassphrase': 'Passphrase ändern',
+  'crypto.currentPassphrase': 'Aktuelle Passphrase',
+  'crypto.newPassphrase': 'Neue Passphrase',
+  'crypto.changed': 'Passphrase geändert',
 }
 
 const locales: Record<string, Partial<Record<MsgKey, string>>> = { de }

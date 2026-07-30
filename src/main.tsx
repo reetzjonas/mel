@@ -15,6 +15,10 @@ declare module '@tanstack/react-router' {
 
 import('./sync/outbox').then(({ useOutboxAutoFlush }) => useOutboxAutoFlush())
 
+// Load the per-account encryption flags before anything reads the store.
+const { initEncryptionState } = await import('./services/encryption')
+await initEncryptionState()
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ThemeProvider>

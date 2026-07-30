@@ -1,9 +1,16 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { useTheme, type ThemePreference } from '../ThemeProvider'
+import { useUi } from '../store'
 import { useAccounts } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
 import { removeAccount } from '../../services/accounts'
+import {
+  disableEncryption,
+  enableEncryption,
+  isAccountEncrypted,
+  lock,
+} from '../../services/encryption'
 import { requestNotificationPermission } from '../../services/notifications'
 import { connectionFor } from '../../sync/connections'
 import { stopScheduler } from '../../sync/scheduler'
@@ -113,6 +120,99 @@ function VacationSetting({ accountId }: { accountId: string }) {
   )
 }
 
+function EncryptionSetting({ accountId }: { accountId: string }) {
+  const [enabled, setEnabled] = useState(() => isAccountEncrypted(accountId))
+  const [pass, setPass] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const bumpUnlock = useUi((s) => s.bumpUnlock)
+
+  if (enabled) {
+    return (
+      <div className="space-y-3">
+        <p className="text-sm text-ink-muted">{t('crypto.enabled')}</p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            className="rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2"
+            onClick={() => {
+              lock(accountId)
+              bumpUnlock()
+            }}
+          >
+            {t('crypto.lockNow')}
+          </button>
+          <button
+            type="button"
+            className="rounded-lg border border-danger px-3 py-2 text-sm text-danger hover:bg-danger/10"
+            onClick={() => {
+              const p = prompt(t('crypto.currentPassphrase'))
+              if (!p) return
+              setBusy(true)
+              void disableEncryption(accountId, p)
+                .then((ok) => {
+                  if (ok) setEnabled(false)
+                  else setError(t('crypto.wrongPassphrase'))
+                })
+                .finally(() => setBusy(false))
+            }}
+            disabled={busy}
+          >
+            {t('crypto.disable')}
+          </button>
+        </div>
+        {error && <p className="text-sm text-danger">{error}</p>}
+      </div>
+    )
+  }
+
+  return (
+    <form
+      className="space-y-3"
+      onSubmit={(e) => {
+        e.preventDefault()
+        setError(null)
+        if (pass.length < 8 || pass !== confirm) {
+          setError(pass !== confirm ? t('crypto.mismatch') : t('crypto.wrongPassphrase'))
+          return
+        }
+        setBusy(true)
+        void enableEncryption(accountId, pass)
+          .then(() => setEnabled(true))
+          .catch((err) => setError(err instanceof Error ? err.message : String(err)))
+          .finally(() => setBusy(false))
+      }}
+    >
+      <p className="text-sm text-ink-muted">{t('crypto.enableHint')}</p>
+      <input
+        className={input}
+        type="password"
+        placeholder={t('crypto.passphrase')}
+        value={pass}
+        onChange={(e) => setPass(e.target.value)}
+        autoComplete="new-password"
+      />
+      <input
+        className={input}
+        type="password"
+        placeholder={t('crypto.confirm')}
+        value={confirm}
+        onChange={(e) => setConfirm(e.target.value)}
+        autoComplete="new-password"
+      />
+      {error && <p className="text-sm text-danger">{error}</p>}
+      <button
+        type="submit"
+        disabled={busy || !pass}
+        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
+      >
+        {busy ? t('crypto.working') : t('crypto.enable')}
+      </button>
+    </form>
+  )
+}
+
 function SettingsPage() {
   const { preference, setPreference } = useTheme()
   const accounts = useAccounts()
@@ -147,6 +247,12 @@ function SettingsPage() {
         {account?.capabilities.vacation && (
           <Section title={t('settings.vacation')}>
             <VacationSetting accountId={account.id} />
+          </Section>
+        )}
+
+        {account && (
+          <Section title={t('crypto.section')}>
+            <EncryptionSetting accountId={account.id} />
           </Section>
         )}
 

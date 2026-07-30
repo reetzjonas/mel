@@ -14,7 +14,12 @@ export default defineConfig({
       use: { ...devices['Pixel 7'] },
       // State-mutating flows run on desktop only — both projects share one
       // Stalwart account and would race each other.
-      testIgnore: ['**/mail-actions.spec.ts', '**/contacts.spec.ts', '**/calendar.spec.ts'],
+      testIgnore: [
+        '**/mail-actions.spec.ts',
+        '**/contacts.spec.ts',
+        '**/calendar.spec.ts',
+        '**/encryption.spec.ts',
+      ],
     },
   ],
   webServer: {

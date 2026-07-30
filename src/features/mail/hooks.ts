@@ -1,14 +1,25 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useUi } from '../../app/store'
+import type { Account } from '../../domain/account'
 import type { EmailHeader } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { db } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
+  const unlockVersion = useUi((s) => s.unlockVersion)
   return useLiveQuery(async () => {
     const rows = await db.accounts.toArray()
-    return rows.map((r) => openEnvelope(r.payload).account)
-  }, [])
+    const out: Account[] = []
+    for (const r of rows) {
+      try {
+        out.push(openEnvelope(r.payload).account)
+      } catch {
+        // Sealed (locked) account — the UnlockGate handles it.
+      }
+    }
+    return out
+  }, [unlockVersion])
 }
 
 const ROLE_ORDER: Record<string, number> = {

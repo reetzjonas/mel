@@ -70,11 +70,12 @@ export async function flush(accountId: string): Promise<void> {
     await navigator.locks.request(`mel-outbox-${accountId}`, async () => {
       for (;;) {
         const now = Date.now()
-        const row = await db.outbox
-          .where('accountId')
-          .equals(accountId)
+        // toArray (query path) instead of .filter().first() — cursor reads
+        // would bypass the crypto middleware's decryption.
+        const rows = await db.outbox.where('accountId').equals(accountId).toArray()
+        const row = rows
           .filter((r) => r.status === 'pending' && r.notBefore <= now)
-          .first()
+          .sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0))[0]
         if (!row) break
         await db.outbox.update(row.seq!, { status: 'inflight' })
         try {
