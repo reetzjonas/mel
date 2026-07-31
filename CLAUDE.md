@@ -27,8 +27,22 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 23 Vitest + 24 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 23 Vitest + 25 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
+
+## Design-System (seit dem UI-Redesign)
+
+Tokens in `src/index.css`: **OKLCH**-Farben mit Elevation-Leiter (`canvas → surface →
+raised → overlay`), Akzent = tiefes Violett, `honey` als semantischer Zweitton
+(Flags/Ungelesen). Flächen und Abstand tragen das Layout — **Borders sind Akzent, nicht
+Haupttrenner**. Panels schweben (`panel`-Utility), Chrome ist `glass`. Schrift: Inter
+Variable, self-hosted (kein CDN-Request!), Tabellenziffern global. Geteilte
+Control-Klassen in `src/ui/styles.ts` (`inputClass`, `primaryButtonClass`,
+`secondaryButtonClass`, `overlayPanelClass`) — **nicht wieder pro Datei duplizieren**.
+Motion via `animate-rise`/`animate-fade` + `prefers-reduced-motion`-Fallback.
+Bausteine: `ui/Skeleton.tsx` (statt Lade-Text), `ui/EmptyState.tsx` (statt nacktem Text).
+HTML-Mail rendert bewusst auf Weiß (Absender kodieren dunkle Schrift hart);
+**Klartext-Mail** folgt dem App-Theme (`textFrameDoc` bekommt die Farben übergeben).
 
 ## Dev-Workflow
 
@@ -59,14 +73,28 @@ Admin-Passwort in `docker/stalwart/.admin-pass`. Kompletter Reset: siehe README.
 Offen außerdem: Push-Test auf echtem Gerät (User), Fastmail-Interop Kontakte (User),
 Event-Sync-Fensterung für große Kalender, Woche-1-Perf mit 50k Mails.
 
-### Bekannter seltener e2e-Flake
-`calendar.spec.ts` Test 1 (weekly-recurring cleanup) ist 1× von ~6 vollen Suite-Läufen
-mit "expected count 0, got 1" nach dem Delete-Klick geflackert — Löschung ist lokal-
-optimistisch (Dexie-Delete, kein Server-Roundtrip nötig), daher vermutlich reine
-CPU-Kontention durch parallel laufende Editor-Tools/mehrere Chromium-Instanzen auf
-diesem Rechner, nicht reproduzierbar isoliert (3× sauber). Nicht weiter verfolgt;
-falls es öfter auftritt, zuerst prüfen ob's an echtem System-Load liegt, bevor an der
-App gesucht wird.
+### e2e-Stabilität (die früheren „Flakes" waren echte Ursachen)
+Die Suite galt lange als sporadisch flaky (~40 % rote Voll-Läufe) und das war als
+CPU-Last abgetan. Das war **falsch** — es waren drei reale Ursachen, alle gefixt:
+
+1. **Angesammelte Testdaten.** Jeder Lauf ließ Entwürfe/Sent-Mails/Kontakte/Events
+   zurück (der Draft-Autosave-Test *muss* einen Entwurf hinterlassen; fehlgeschlagene
+   Tests überspringen ihr Cleanup). Nach ~50 Mails wurde der Erst-Sync so langsam,
+   dass 15-s-Waits rissen. → `e2e/global-setup.ts` setzt beide Konten vor jedem Lauf
+   auf den Seed-Zustand zurück. Per-Test-Cleanup allein reicht prinzipiell nicht.
+2. **Echter App-Bug** (siehe `mail.tsx`): der Inbox-Auto-Redirect prüfte nicht, ob man
+   noch auf `/mail` ist. Klick auf Kalender/Kontakte während des Erst-Syncs riss einen
+   zurück. Regression: `e2e/navigation.spec.ts`.
+3. **Stalwart-Ratenlimit**: 25 Mails/Stunde pro Absender-Empfänger-Paar. Der Send-Test
+   schickt alice→bob bei jedem Lauf; nach ~25 Läufen kam `452 4.4.5 Rate limit
+   exceeded` — sichtbar nur als „Mail kommt nie an". In `seed.sh` für Dev abgeschaltet
+   (`x:MtaInboundThrottle`, `enable:false`).
+
+Außerdem: `workers: 2` und `mobile` hängt via `dependencies` hinter `desktop` — alle
+Specs fahren dasselbe Konto, parallele Dateien haben sich gegenseitig Mails
+wegarchiviert. Seither 6/6 grüne Voll-Läufe. **Wenn wieder etwas flackert: erst diese
+drei Klassen prüfen (Kontostand, geteilter Zustand, Serverlimits), nicht Systemlast
+annehmen.**
 
 ## Stolpersteine (hart erarbeitet — nicht neu entdecken)
 
