@@ -10,6 +10,7 @@ import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
 import { createEvent, deleteEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
+import { primaryButtonClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/calendar')({
   component: CalendarApp,
@@ -213,15 +214,15 @@ function CalendarApp() {
         : `${weekRangeFmt.format(grid[0]!)} – ${weekRangeFmt.format(grid[6]!)}`
 
   return (
-    <div className="flex h-full">
-      <aside className="hidden w-52 shrink-0 flex-col gap-1 border-r border-line bg-surface p-3 lg:flex">
-        <span className="mb-1 text-xs font-semibold tracking-wide text-ink-muted uppercase">
+    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:px-3 sm:pb-3">
+      <aside className="hidden w-52 shrink-0 flex-col gap-0.5 py-3 lg:flex">
+        <span className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
           {t('cal.calendars')}
         </span>
         {(calendars ?? []).map((c, i) => (
           <label
             key={c.id}
-            className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-surface-2"
+            className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-[7px] text-[13px] transition-colors hover:bg-surface-2"
           >
             <input
               type="checkbox"
@@ -243,12 +244,12 @@ function CalendarApp() {
         ))}
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
+      <div className="panel flex min-w-0 flex-1 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none">
+        <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
           <button
             type="button"
             onClick={() => setAnchor(new Date())}
-            className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2"
+            className="rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2"
           >
             {t('cal.today')}
           </button>
@@ -270,13 +271,13 @@ function CalendarApp() {
           </button>
           <h1 className="text-base font-semibold capitalize">{heading}</h1>
 
-          <div className="ml-2 hidden items-center gap-0.5 rounded-lg bg-surface-2 p-0.5 sm:flex">
+          <div className="ml-2 hidden items-center gap-0.5 rounded-control bg-surface-2 p-0.5 sm:flex">
             {(['month', 'week', 'day'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium ${view === v ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted hover:text-ink'}`}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${view === v ? 'bg-raised text-ink shadow-raised' : 'text-ink-muted hover:text-ink'}`}
               >
                 {t(`cal.view.${v}`)}
               </button>
@@ -286,7 +287,7 @@ function CalendarApp() {
           <button
             type="button"
             onClick={() => openNew(view === 'month' ? new Date() : anchor)}
-            className="ml-auto flex items-center gap-2 rounded-lg bg-accent px-3.5 py-1.5 text-sm font-medium text-accent-ink"
+            className={`ml-auto flex items-center gap-2 !py-1.5 ${primaryButtonClass}`}
           >
             <Icon name="compose" size={14} />
             <span className="hidden sm:inline">{t('cal.newEvent')}</span>
@@ -296,7 +297,7 @@ function CalendarApp() {
         {/* Desktop: month grid */}
         {view === 'month' && (
           <div className="hidden min-h-0 flex-1 flex-col sm:flex">
-            <div className="grid grid-cols-7 border-b border-line bg-surface text-center text-xs font-medium text-ink-muted">
+            <div className="grid grid-cols-7 border-b border-line text-center text-[11px] font-semibold tracking-wide text-ink-subtle uppercase">
               {weekdays.map((w) => (
                 <div key={w} className="py-1">
                   {w}
@@ -312,10 +313,10 @@ function CalendarApp() {
                   <div
                     key={key}
                     onClick={() => openNew(day)}
-                    className={`min-h-0 cursor-pointer overflow-hidden border-r border-b border-line p-1 ${inMonth ? '' : 'bg-surface-2/40 text-ink-muted'}`}
+                    className={`min-h-0 cursor-pointer overflow-hidden border-r border-b border-line p-1 transition-colors hover:bg-surface-2/50 ${inMonth ? '' : 'bg-surface-2/30 text-ink-subtle'}`}
                   >
                     <span
-                      className={`mb-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${key === today ? 'bg-accent font-semibold text-accent-ink' : ''}`}
+                      className={`mb-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${key === today ? 'bg-accent font-semibold text-accent-ink shadow-raised' : ''}`}
                     >
                       {day.getDate()}
                     </span>
@@ -331,7 +332,7 @@ function CalendarApp() {
                             openEdit(o.eventId)
                           }}
                           style={color ? { backgroundColor: `${color}26`, color } : undefined}
-                          className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] leading-4 ${!color ? 'bg-accent/15 text-accent hover:bg-accent/25' : ''}`}
+                          className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity hover:opacity-80 ${!color ? 'bg-accent-wash text-accent' : ''}`}
                         >
                           {!o.allDay && (
                             <span className="tabular-nums">{timeFmt.format(o.start)} </span>
@@ -371,22 +372,30 @@ function CalendarApp() {
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([key, occs]) => (
               <div key={key}>
-                <div className="sticky top-0 border-b border-line bg-surface px-4 py-1 text-xs font-semibold text-ink-muted">
+                <div className="sticky top-0 z-10 bg-surface/90 px-4 py-1 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase backdrop-blur-sm">
                   {agendaFmt.format(new Date(`${key}T12:00:00`))}
                 </div>
-                {occs.map((o, i) => (
-                  <button
-                    key={`${o.eventId}-${i}`}
-                    type="button"
-                    onClick={() => openEdit(o.eventId)}
-                    className="flex w-full items-baseline gap-3 border-b border-line px-4 py-2.5 text-left hover:bg-surface-2"
-                  >
-                    <span className="w-14 shrink-0 text-xs text-ink-muted tabular-nums">
-                      {o.allDay ? '—' : timeFmt.format(o.start)}
-                    </span>
-                    <span className="truncate text-sm">{eventById.get(o.eventId)?.title}</span>
-                  </button>
-                ))}
+                {occs.map((o, i) => {
+                  const ev = eventById.get(o.eventId)
+                  const color = ev ? eventColor(ev) : null
+                  return (
+                    <button
+                      key={`${o.eventId}-${i}`}
+                      type="button"
+                      onClick={() => openEdit(o.eventId)}
+                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-2"
+                    >
+                      <span
+                        className="h-8 w-1 shrink-0 rounded-full"
+                        style={{ backgroundColor: color ?? 'var(--mel-accent)' }}
+                      />
+                      <span className="w-14 shrink-0 text-xs text-ink-subtle tabular-nums">
+                        {o.allDay ? '—' : timeFmt.format(o.start)}
+                      </span>
+                      <span className="truncate text-sm">{ev?.title}</span>
+                    </button>
+                  )
+                })}
               </div>
             ))}
         </div>

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Calendar, CalendarEvent, RecurrenceRule } from '../../domain/calendar'
 import { t } from '../../lib/i18n'
-import { inputClass } from '../../ui/styles'
+import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
 
 const DURATIONS = [
@@ -72,9 +72,12 @@ export function EventDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/30 sm:items-center sm:p-6" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      onClick={onClose}
+    >
       <div
-        className="w-full space-y-3 bg-surface p-5 sm:max-w-md sm:rounded-2xl sm:border sm:border-line sm:shadow-xl"
+        className="animate-rise w-full space-y-3 bg-raised p-5 sm:max-w-md sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-base font-semibold">
@@ -154,18 +157,10 @@ export function EventDialog({
           onChange={(e) => setDescription(e.target.value)}
         />
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={save}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink"
-          >
+          <button type="button" onClick={save} className={primaryButtonClass}>
             {t('cal.save')}
           </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg border border-line px-4 py-2 text-sm text-ink-muted hover:text-ink"
-          >
+          <button type="button" onClick={onClose} className={secondaryButtonClass}>
             {t('cal.cancel')}
           </button>
           {onDelete && (

@@ -9,6 +9,7 @@ import { t } from '../../lib/i18n'
 import { deleteContact, updateContact } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
 import { Icon } from '../../ui/Icon'
+import { primaryButtonClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/contacts/$contactId')({
   component: ContactDetail,
@@ -86,7 +87,7 @@ function ContactDetail() {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="rounded-lg border border-line px-3 py-1.5 text-sm hover:bg-surface-2"
+          className="rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2"
         >
           {t('contacts.edit')}
         </button>
@@ -95,7 +96,7 @@ function ContactDetail() {
       {contact.emails.length > 0 && (
         <button
           type="button"
-          className="flex items-center gap-2 rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-accent-ink"
+          className={`flex items-center gap-2 ${primaryButtonClass}`}
           onClick={() =>
             openCompose({
               to: contact.emails.slice(0, 1).map((e) => ({ name, email: e.value })),
@@ -107,7 +108,7 @@ function ContactDetail() {
         </button>
       )}
 
-      <div className="space-y-3 rounded-2xl border border-line bg-surface p-4">
+      <div className="space-y-3 rounded-panel bg-surface-2/50 p-4">
         <FieldList label={t('contacts.email')} values={contact.emails} />
         <FieldList label={t('contacts.phone')} values={contact.phones} />
         <FieldList label={t('contacts.url')} values={contact.urls} />

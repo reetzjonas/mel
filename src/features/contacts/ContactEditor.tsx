@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { Contact, LabeledValue } from '../../domain/contact'
 import { t } from '../../lib/i18n'
-import { inputClass } from '../../ui/styles'
+import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
 
 function ListField({
@@ -131,17 +131,10 @@ export function ContactEditor({
       </label>
 
       <div className="flex gap-2">
-        <button
-          type="submit"
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink"
-        >
+        <button type="submit" className={primaryButtonClass}>
           {t('contacts.save')}
         </button>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="rounded-lg border border-line px-4 py-2 text-sm text-ink-muted hover:text-ink"
-        >
+        <button type="button" onClick={onCancel} className={secondaryButtonClass}>
           {t('contacts.cancel')}
         </button>
       </div>

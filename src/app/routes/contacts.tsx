@@ -6,6 +6,7 @@ import { useAccounts } from '../../features/mail/hooks'
 import { useContacts } from '../../features/contacts/hooks'
 import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
+import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 
 export const Route = createFileRoute('/contacts')({
@@ -40,19 +41,19 @@ function ContactsLayout() {
   const inDetail = Boolean(params.contactId)
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:px-3 sm:pb-3">
       <section
-        className={`flex h-full w-full min-w-0 flex-col border-r border-line lg:flex lg:w-80 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
+        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-80 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
-        <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+        <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
           <div className="relative flex-1">
             <Icon
               name="search"
               size={14}
-              className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-muted"
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-subtle"
             />
             <input
-              className="w-full rounded-lg bg-surface-2 py-1.5 pr-3 pl-8 text-sm outline-none placeholder:text-ink-muted/70 focus:ring-1 focus:ring-accent"
+              className="w-full rounded-control bg-surface-2 py-2 pr-3 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent"
               placeholder={t('contacts.search')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
@@ -62,23 +63,26 @@ function ContactsLayout() {
             type="button"
             title={t('contacts.new')}
             onClick={() => void navigate({ to: '/contacts/new' })}
-            className="rounded-lg bg-accent p-2 text-accent-ink"
+            className="rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95"
           >
             <Icon name="compose" size={15} />
           </button>
         </div>
         <div className="min-h-0 flex-1">
           {filtered === undefined ? null : filtered.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-ink-muted">
-              {filter ? t('contacts.noResults') : t('contacts.empty')}
-            </div>
+            <EmptyState
+              icon="contact"
+              title={filter ? t('contacts.noResults') : t('contacts.empty')}
+            />
           ) : (
             <ContactRows contacts={filtered} selectedId={params.contactId} />
           )}
         </div>
       </section>
-      <div className={`h-full min-w-0 flex-1 overflow-y-auto lg:block ${inDetail ? '' : 'hidden'}`}>
-        <Outlet />
+      <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
+        <div className="panel h-full overflow-y-auto max-sm:rounded-none max-sm:shadow-none">
+          <Outlet />
+        </div>
       </div>
     </div>
   )
@@ -87,6 +91,7 @@ function ContactsLayout() {
 function ContactRows({ contacts, selectedId }: { contacts: Contact[]; selectedId?: string }) {
   return (
     <Virtuoso
+      className="px-1.5 pb-1.5"
       data={contacts}
       computeItemKey={(_, c) => c.id}
       itemContent={(i, c) => {
@@ -95,9 +100,9 @@ function ContactRows({ contacts, selectedId }: { contacts: Contact[]; selectedId
         const prev = contacts[i - 1]
         const showHeader = !prev || (displayName(prev)[0]?.toUpperCase() ?? '#') !== letter
         return (
-          <div className="bg-bg">
+          <div>
             {showHeader && (
-              <div className="sticky top-0 border-b border-line bg-surface px-4 py-1 text-xs font-semibold text-ink-muted">
+              <div className="sticky top-0 z-10 bg-surface/90 px-2.5 py-1 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase backdrop-blur-sm">
                 {letter}
               </div>
             )}
@@ -105,12 +110,12 @@ function ContactRows({ contacts, selectedId }: { contacts: Contact[]; selectedId
               to="/contacts/$contactId"
               params={{ contactId: c.id }}
               data-selected={c.id === selectedId || undefined}
-              className="flex items-center gap-3 border-b border-line px-4 py-2.5 hover:bg-surface-2 data-selected:bg-accent/10"
+              className="flex items-center gap-3 rounded-control px-2.5 py-2 transition-colors duration-100 hover:bg-surface-2 data-selected:bg-accent-wash"
             >
-              <Avatar name={name} email={c.emails[0]?.value ?? name} size={32} />
+              <Avatar name={name} email={c.emails[0]?.value ?? name} size={34} />
               <span className="min-w-0">
-                <span className="block truncate text-sm">{name}</span>
-                <span className="block truncate text-xs text-ink-muted">
+                <span className="block truncate text-[13px] font-medium text-ink">{name}</span>
+                <span className="block truncate text-xs text-ink-subtle">
                   {c.emails[0]?.value ?? c.organization}
                 </span>
               </span>

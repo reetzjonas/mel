@@ -16,7 +16,7 @@ import { requestNotificationPermission } from '../../services/notifications'
 import { connectionFor } from '../../sync/connections'
 import { stopScheduler } from '../../sync/scheduler'
 import type { VacationSettings } from '../../providers/types'
-import { inputClass } from '../../ui/styles'
+import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
@@ -25,7 +25,7 @@ export const Route = createFileRoute('/settings')({
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="space-y-3 rounded-2xl border border-line bg-surface p-5">
+    <section className="space-y-3 rounded-panel bg-surface p-5 shadow-panel">
       <h2 className="text-sm font-semibold">{title}</h2>
       {children}
     </section>
@@ -61,7 +61,7 @@ function NotificationSetting() {
   return (
     <button
       type="button"
-      className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink"
+      className={primaryButtonClass}
       onClick={() =>
         void requestNotificationPermission().then((ok) => setStatus(ok ? 'granted' : 'denied'))
       }
@@ -104,7 +104,7 @@ function VacationSetting({ accountId }: { accountId: string }) {
       />
       <button
         type="button"
-        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink"
+        className={primaryButtonClass}
         onClick={() =>
           void connectionFor(accountId).then((c) =>
             c.mail?.setVacation(v).then(() => {
@@ -143,8 +143,8 @@ function WebPushSetting({ accountId }: { accountId: string }) {
         disabled={state === 'busy'}
         className={
           state === 'on'
-            ? 'rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2'
-            : 'rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50'
+            ? secondaryButtonClass
+            : primaryButtonClass
         }
         onClick={() => {
           const wasOn = state === 'on'
@@ -187,7 +187,7 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            className="rounded-lg border border-line px-3 py-2 text-sm hover:bg-surface-2"
+            className={secondaryButtonClass}
             onClick={() => {
               lock(accountId)
               bumpUnlock()
@@ -197,7 +197,7 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
           </button>
           <button
             type="button"
-            className="rounded-lg border border-danger px-3 py-2 text-sm text-danger hover:bg-danger/10"
+            className="rounded-control border border-danger px-3 py-2 text-sm text-danger transition-colors hover:bg-danger-wash"
             onClick={() => {
               const p = prompt(t('crypto.currentPassphrase'))
               if (!p) return
@@ -272,7 +272,7 @@ function SettingsPage() {
   const navigate = useNavigate()
 
   return (
-    <div className="h-full overflow-y-auto bg-bg">
+    <div className="h-full overflow-y-auto bg-canvas">
       <div className="mx-auto max-w-lg space-y-4 p-4 sm:py-8">
         <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
 
@@ -319,7 +319,7 @@ function SettingsPage() {
             <p className="text-sm text-ink-muted">{account.label}</p>
             <button
               type="button"
-              className="rounded-lg border border-danger px-3 py-2 text-sm font-medium text-danger hover:bg-danger/10"
+              className="rounded-control border border-danger px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-wash"
               onClick={() => {
                 stopScheduler(account.id)
                 void removeAccount(account.id).then(() => navigate({ to: '/mail' }))

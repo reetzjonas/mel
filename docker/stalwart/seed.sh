@@ -81,6 +81,17 @@ if [ ! -f etc/config.json ]; then
       "Access-Control-Expose-Headers":"*"}}}},"c0"],
     ["x:SpamSettings/set",{"update":{"singleton":{"enable":false}}},"c1"]]' > /dev/null
 
+  # Stalwart ships an inbound throttle of 25 messages/hour per sender-recipient
+  # pair. The e2e suite sends alice->bob on every run, so a few runs exhaust it
+  # and submissions come back "452 4.4.5 Rate limit exceeded" — which surfaces
+  # as mail silently never arriving. Off for dev.
+  echo "Disabling SMTP throttles (dev)..."
+  THROTTLE_IDS=$(jmap "$ADMIN_AUTH" '[["x:MtaInboundThrottle/query",{},"c0"]]' |
+    grep -oE '"ids":\[[^]]*\]' | grep -oE '"[a-z0-9]+"' | tr -d '"')
+  for tid in $THROTTLE_IDS; do
+    jmap "$ADMIN_AUTH" "[[\"x:MtaInboundThrottle/set\",{\"update\":{\"$tid\":{\"enable\":false}}},\"c0\"]]" > /dev/null
+  done
+
   echo "Restarting to apply HTTP settings..."
   docker compose restart stalwart > /dev/null
   wait_http

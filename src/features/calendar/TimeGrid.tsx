@@ -77,13 +77,13 @@ export function TimeGrid({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex border-b border-line bg-surface">
+      <div className="flex border-b border-line">
         <div className="w-12 shrink-0" />
         {days.map((d) => (
           <div
             key={dayKey(d)}
-            className={`flex-1 border-l border-line py-1.5 text-center text-xs font-medium ${
-              dayKey(d) === today ? 'text-accent' : 'text-ink-muted'
+            className={`flex-1 border-l border-line py-1.5 text-center text-[11px] font-semibold tracking-wide uppercase ${
+              dayKey(d) === today ? 'text-accent' : 'text-ink-subtle'
             }`}
           >
             <span className="capitalize">{dayHeaderFmt.format(d)}</span>
@@ -106,7 +106,7 @@ export function TimeGrid({
                     type="button"
                     onClick={() => onEventClick(o.eventId)}
                     style={color ? { backgroundColor: `${color}26`, color } : undefined}
-                    className={`block w-full truncate rounded px-1 text-left text-[11px] leading-4 ${!color ? 'bg-accent/15 text-accent' : ''}`}
+                    className={`block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity hover:opacity-80 ${!color ? 'bg-accent-wash text-accent' : ''}`}
                   >
                     {ev?.title || '—'}
                   </button>
@@ -123,7 +123,7 @@ export function TimeGrid({
               <div
                 key={h}
                 style={{ height: HOUR_HEIGHT }}
-                className="border-b border-line pr-1.5 text-right text-[10px] text-ink-muted"
+                className="border-b border-line pr-1.5 text-right text-[10px] text-ink-subtle"
               >
                 {h === 0 ? '' : hourLabelFmt.format(new Date(2000, 0, 1, h))}
               </div>
@@ -183,7 +183,7 @@ export function TimeGrid({
                           ? { backgroundColor: `${color}26`, color, borderColor: color }
                           : {}),
                       }}
-                      className={`absolute z-[5] overflow-hidden rounded border px-1 py-0.5 text-left text-[11px] leading-tight ${!color ? 'border-accent/30 bg-accent/15 text-accent' : ''}`}
+                      className={`absolute z-[5] overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-raised transition-transform hover:scale-[1.01] ${!color ? 'border-accent/30 bg-accent-wash text-accent' : ''}`}
                     >
                       <span className="font-medium">{ev?.title || '—'}</span>
                       <span className="block opacity-80">{timeFmt.format(o.start)}</span>

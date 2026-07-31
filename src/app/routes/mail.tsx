@@ -1,4 +1,10 @@
-import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
+import {
+  Outlet,
+  createFileRoute,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { AddAccountForm } from '../../features/auth/AddAccountForm'
 import { MailboxSidebar } from '../../features/mail/MailboxSidebar'
@@ -20,17 +26,21 @@ function MailLayout() {
   const params = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
   const navigate = useNavigate()
   const { compose, openCompose } = useUi()
+  const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   useEffect(() => {
     if (account) startScheduler(account.id)
   }, [account?.id])
 
-  // /mail without mailbox → jump to inbox once it is synced.
+  // /mail without mailbox → jump to inbox once it is synced. The pathname
+  // guard matters: mailboxes arrive asynchronously, and without it a click on
+  // Calendar/Contacts during the first sync gets yanked back here the moment
+  // the sync lands.
   useEffect(() => {
-    if (params.mailboxId || !mailboxes?.length) return
+    if (params.mailboxId || !mailboxes?.length || pathname !== '/mail') return
     const inbox = mailboxes.find((m) => m.role === 'inbox') ?? mailboxes[0]!
     void navigate({ to: '/mail/$mailboxId', params: { mailboxId: inbox.id }, replace: true })
-  }, [params.mailboxId, mailboxes, navigate])
+  }, [params.mailboxId, mailboxes, navigate, pathname])
 
   useMailShortcuts({
     accountId: account?.id,
