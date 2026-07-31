@@ -1,13 +1,9 @@
-const COLORS = [
-  '#2d5bd1',
-  '#7c3aed',
-  '#0e9488',
-  '#c2560f',
-  '#b91c62',
-  '#4d7c0f',
-  '#0369a1',
-  '#a16207',
-]
+/*
+ * Hues spread evenly around the wheel at a fixed lightness/chroma, so every
+ * avatar reads as part of one family instead of a random swatch grab-bag.
+ * White text on L=0.55 C=0.14 clears WCAG AA at these sizes.
+ */
+const HUES = [292, 250, 205, 165, 130, 75, 35, 0, 330]
 
 function hash(s: string): number {
   let h = 0
@@ -22,11 +18,16 @@ export function Avatar({ name, email, size = 36 }: { name: string; email: string
     .slice(0, 2)
     .map((p) => p[0]!.toUpperCase())
     .join('')
-  const color = COLORS[hash(email.toLowerCase()) % COLORS.length]
+  const hue = HUES[hash(email.toLowerCase()) % HUES.length]
   return (
     <span
-      className="flex shrink-0 items-center justify-center rounded-full font-medium text-white select-none"
-      style={{ width: size, height: size, background: color, fontSize: size * 0.4 }}
+      className="flex shrink-0 items-center justify-center rounded-full font-semibold text-white select-none"
+      style={{
+        width: size,
+        height: size,
+        background: `linear-gradient(140deg, oklch(0.62 0.14 ${hue}), oklch(0.5 0.15 ${hue}))`,
+        fontSize: size * 0.36,
+      }}
       aria-hidden
     >
       {initials || '?'}

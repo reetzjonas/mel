@@ -15,6 +15,7 @@ import {
   stageAttachment,
 } from '../../services/send'
 import { Icon } from '../../ui/Icon'
+import { primaryButtonClass } from '../../ui/styles'
 import { RecipientInput } from './RecipientInput'
 
 function addressesToString(list: ComposeInit['to']): string {
@@ -142,8 +143,8 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     'w-full border-0 border-b border-line bg-transparent px-0 py-2 text-sm outline-none placeholder:text-ink-muted/60'
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/30 sm:items-center sm:p-6">
-      <div className="flex h-full w-full flex-col bg-surface sm:h-auto sm:max-h-[85vh] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-line sm:shadow-xl">
+    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6">
+      <div className="animate-rise flex h-full w-full flex-col bg-raised sm:h-auto sm:max-h-[85vh] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line">
         <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
           <span className="text-sm font-semibold">{t('compose.new')}</span>
           <button
@@ -239,7 +240,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             type="button"
             onClick={() => void send()}
             disabled={busy}
-            className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-ink hover:opacity-90 disabled:opacity-50"
+            className={`flex items-center gap-2 ${primaryButtonClass}`}
           >
             <Icon name="send" size={14} />
             {t('compose.send')}

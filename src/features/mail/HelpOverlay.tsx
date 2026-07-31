@@ -21,11 +21,11 @@ export function HelpOverlay() {
   if (!helpOpen) return null
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
       onClick={() => setHelpOpen(false)}
     >
       <div
-        className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-xl"
+        className="animate-rise w-full max-w-sm rounded-panel bg-raised p-5 shadow-overlay ring-1 ring-line"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 flex items-center justify-between">
@@ -42,7 +42,7 @@ export function HelpOverlay() {
           {rows.map(([key, label]) => (
             <div key={key} className="flex items-center justify-between text-sm">
               <dt>
-                <kbd className="rounded-md border border-line bg-surface-2 px-1.5 py-0.5 font-mono text-xs">
+                <kbd className="rounded-md bg-surface-2 px-1.5 py-0.5 font-mono text-xs ring-1 ring-line">
                   {key}
                 </kbd>
               </dt>

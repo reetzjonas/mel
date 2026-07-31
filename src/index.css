@@ -1,42 +1,95 @@
 @import 'tailwindcss';
 
+/*
+ * Design tokens. Colors are OKLCH: perceptually uniform, so a lightness step
+ * looks like the same step at every hue, which keeps the dark theme from
+ * going muddy the way hand-picked hex values do.
+ *
+ * Surfaces form an elevation ladder (canvas → surface → raised → overlay)
+ * and carry the layout; borders are an accent, not the primary separator.
+ */
+
 @theme {
-  --color-bg: var(--mel-bg);
+  --color-canvas: var(--mel-canvas);
   --color-surface: var(--mel-surface);
   --color-surface-2: var(--mel-surface-2);
+  --color-raised: var(--mel-raised);
   --color-line: var(--mel-line);
+  --color-line-strong: var(--mel-line-strong);
   --color-ink: var(--mel-ink);
   --color-ink-muted: var(--mel-ink-muted);
+  --color-ink-subtle: var(--mel-ink-subtle);
   --color-accent: var(--mel-accent);
+  --color-accent-hover: var(--mel-accent-hover);
   --color-accent-ink: var(--mel-accent-ink);
+  --color-accent-wash: var(--mel-accent-wash);
+  --color-honey: var(--mel-honey);
   --color-danger: var(--mel-danger);
+  --color-danger-wash: var(--mel-danger-wash);
+
+  /* Kept as an alias so `bg-bg` in older markup still resolves. */
+  --color-bg: var(--mel-canvas);
+
+  --radius-panel: 0.875rem;
+  --radius-control: 0.625rem;
+
+  --shadow-panel: var(--mel-shadow-panel);
+  --shadow-raised: var(--mel-shadow-raised);
+  --shadow-overlay: var(--mel-shadow-overlay);
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
 }
 
 :root,
 [data-theme='light'] {
   color-scheme: light;
-  --mel-bg: #f4f4f6;
-  --mel-surface: #ffffff;
-  --mel-surface-2: #ececef;
-  --mel-line: #dcdce1;
-  --mel-ink: #1c1c21;
-  --mel-ink-muted: #6b6b76;
-  --mel-accent: #2d5bd1;
-  --mel-accent-ink: #ffffff;
-  --mel-danger: #c62f2f;
+  --mel-canvas: oklch(0.968 0.004 300);
+  --mel-surface: oklch(1 0 0);
+  --mel-surface-2: oklch(0.955 0.005 300);
+  --mel-raised: oklch(1 0 0);
+  --mel-line: oklch(0.915 0.006 300);
+  --mel-line-strong: oklch(0.86 0.008 300);
+  --mel-ink: oklch(0.245 0.017 300);
+  --mel-ink-muted: oklch(0.53 0.017 300);
+  --mel-ink-subtle: oklch(0.65 0.014 300);
+  --mel-accent: oklch(0.48 0.2 292);
+  --mel-accent-hover: oklch(0.43 0.2 292);
+  --mel-accent-ink: oklch(0.99 0 0);
+  --mel-accent-wash: oklch(0.48 0.2 292 / 0.1);
+  --mel-honey: oklch(0.68 0.15 72);
+  --mel-danger: oklch(0.53 0.2 25);
+  --mel-danger-wash: oklch(0.53 0.2 25 / 0.1);
+
+  --mel-shadow-panel: 0 1px 2px oklch(0.25 0.02 300 / 0.05), 0 4px 16px oklch(0.25 0.02 300 / 0.06);
+  --mel-shadow-raised: 0 1px 2px oklch(0.25 0.02 300 / 0.07), 0 2px 6px oklch(0.25 0.02 300 / 0.05);
+  --mel-shadow-overlay: 0 8px 40px oklch(0.2 0.02 300 / 0.16), 0 2px 8px oklch(0.2 0.02 300 / 0.08);
 }
 
 [data-theme='dark'] {
   color-scheme: dark;
-  --mel-bg: #101014;
-  --mel-surface: #1a1a20;
-  --mel-surface-2: #23232b;
-  --mel-line: #32323c;
-  --mel-ink: #e8e8ec;
-  --mel-ink-muted: #9a9aa6;
-  --mel-accent: #6d8ee8;
-  --mel-accent-ink: #0d1220;
-  --mel-danger: #e06a6a;
+  --mel-canvas: oklch(0.165 0.011 300);
+  --mel-surface: oklch(0.213 0.013 300);
+  --mel-surface-2: oklch(0.262 0.015 300);
+  --mel-raised: oklch(0.238 0.014 300);
+  --mel-line: oklch(0.315 0.015 300);
+  --mel-line-strong: oklch(0.38 0.016 300);
+  --mel-ink: oklch(0.945 0.006 300);
+  --mel-ink-muted: oklch(0.7 0.014 300);
+  --mel-ink-subtle: oklch(0.58 0.014 300);
+  --mel-accent: oklch(0.72 0.17 292);
+  --mel-accent-hover: oklch(0.78 0.16 292);
+  --mel-accent-ink: oklch(0.17 0.04 292);
+  --mel-accent-wash: oklch(0.72 0.17 292 / 0.16);
+  --mel-honey: oklch(0.79 0.14 72);
+  --mel-danger: oklch(0.7 0.17 25);
+  --mel-danger-wash: oklch(0.7 0.17 25 / 0.16);
+
+  --mel-shadow-panel: 0 1px 2px oklch(0 0 0 / 0.3), 0 4px 16px oklch(0 0 0 / 0.25);
+  --mel-shadow-raised: 0 1px 3px oklch(0 0 0 / 0.35), 0 2px 6px oklch(0 0 0 / 0.2);
+  --mel-shadow-overlay: 0 8px 40px oklch(0 0 0 / 0.5), 0 2px 8px oklch(0 0 0 / 0.3);
 }
 
 html,
@@ -46,7 +99,79 @@ body,
 }
 
 body {
-  @apply bg-bg text-ink antialiased;
+  @apply bg-canvas text-ink antialiased;
+  font-family: var(--font-sans);
+  font-synthesis-weight: none;
+  /* Tabular figures everywhere: dates and counters must not jitter. */
+  font-variant-numeric: tabular-nums;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
+}
+
+/* Headings read better slightly tightened at these sizes. */
+h1,
+h2 {
+  letter-spacing: -0.014em;
+}
+
+/* A focus ring you can actually see, only for keyboard users. */
+:focus-visible {
+  outline: 2px solid var(--mel-accent);
+  outline-offset: 2px;
+  border-radius: 0.4rem;
+}
+
+/* Panels float on the canvas instead of being divided by hairlines. */
+@utility panel {
+  background-color: var(--mel-surface);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--mel-shadow-panel);
+}
+
+@utility glass {
+  background-color: color-mix(in oklch, var(--mel-surface) 72%, transparent);
+  backdrop-filter: blur(20px) saturate(1.6);
+}
+
+@keyframes mel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+@keyframes mel-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes mel-shimmer {
+  to {
+    background-position-x: -200%;
+  }
+}
+
+@utility animate-rise {
+  animation: mel-rise 0.22s var(--ease-out-soft) both;
+}
+
+@utility animate-fade {
+  animation: mel-fade 0.18s var(--ease-out-soft) both;
+}
+
+/* Cross-fade panes on navigation where the browser supports it. */
+@view-transition {
+  navigation: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

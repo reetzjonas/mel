@@ -49,11 +49,9 @@ function MailLayout() {
   const inList = Boolean(params.mailboxId)
 
   return (
-    <div className="flex h-full">
-      {/* Sidebar: always on desktop; on mobile only at /mail root */}
-      <aside
-        className={`w-full shrink-0 border-r border-line bg-surface lg:block lg:w-56 ${inList ? 'hidden' : ''}`}
-      >
+    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:px-3 sm:pb-3">
+      {/* The sidebar rides directly on the canvas; only content panes float. */}
+      <aside className={`w-full shrink-0 lg:block lg:w-56 ${inList ? 'hidden' : ''}`}>
         <MailboxSidebar
           accountId={account.id}
           accountLabel={account.label}
@@ -70,7 +68,7 @@ function MailLayout() {
           type="button"
           aria-label={t('compose.new')}
           onClick={() => openCompose({})}
-          className="fixed right-4 bottom-20 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-accent-ink shadow-lg lg:hidden"
+          className="animate-rise fixed right-4 bottom-20 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-accent-ink shadow-overlay transition-transform duration-150 active:scale-95 lg:hidden"
         >
           <Icon name="compose" size={22} />
         </button>

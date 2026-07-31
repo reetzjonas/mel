@@ -11,6 +11,7 @@ import { buildReply } from '../../services/send'
 import { connectionFor } from '../../sync/connections'
 import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Skeleton } from '../../ui/Skeleton'
 
 function AddressLine({ label, list }: { label: string; list: EmailHeader['to'] }) {
   if (!list.length) return null
@@ -43,11 +44,36 @@ function ActionButton({
       type="button"
       title={label}
       onClick={onClick}
-      className={`rounded-md p-2 hover:bg-surface-2 ${active ? 'text-accent' : 'text-ink-muted hover:text-ink'}`}
+      className={`rounded-md p-2 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
     >
       <Icon name={icon} size={16} />
     </button>
   )
+}
+
+/**
+ * Resolved surface/ink colors for the message iframe. The iframe can't see the
+ * parent's custom properties, so the values are read out and inlined — and
+ * re-read when the theme attribute flips.
+ */
+function useFrameTheme() {
+  const read = () => {
+    const s = getComputedStyle(document.documentElement)
+    return {
+      fg: s.getPropertyValue('--mel-ink').trim() || '#000',
+      bg: s.getPropertyValue('--mel-surface').trim() || '#fff',
+    }
+  }
+  const [colors, setColors] = useState(read)
+  useEffect(() => {
+    const observer = new MutationObserver(() => setColors(read()))
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme'],
+    })
+    return () => observer.disconnect()
+  }, [])
+  return colors
 }
 
 /** Types the browser can render directly — opened in a new tab instead of saved. */
@@ -99,6 +125,7 @@ export function ReadingPane({
   const [body, setBody] = useState<EmailBody | null | 'loading'>('loading')
   const navigate = useNavigate()
   const { openCompose, showSnackbar } = useUi()
+  const frameTheme = useFrameTheme()
 
   useEffect(() => {
     let alive = true
@@ -138,58 +165,66 @@ export function ReadingPane({
   }
 
   const flagged = Boolean(email.keywords['$flagged'])
+  const isHtmlMail = body !== 'loading' && body !== null && Boolean(body.html)
   const doc =
     body !== 'loading' && body
       ? body.html
         ? mailFrameDoc(body.html)
-        : textFrameDoc(body.text ?? '')
+        : textFrameDoc(body.text ?? '', frameTheme)
       : null
   const sender = email.from[0]
 
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
-      <div className="flex items-center gap-0.5 border-b border-line px-2 py-1">
+      <div className="flex items-center gap-1 px-2 py-1.5">
         <Link
           to="/mail/$mailboxId"
           params={{ mailboxId }}
-          className="rounded-md p-2 text-ink-muted hover:bg-surface-2 lg:hidden"
+          className="rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 lg:hidden"
           title={t('mail.back')}
         >
           <Icon name="back" size={16} />
         </Link>
-        <ActionButton icon="archive" label={t('mail.archive')} onClick={() => void onArchive()} />
-        <ActionButton icon="trash" label={t('mail.delete')} onClick={() => void onDelete()} />
-        <ActionButton
-          icon="flag"
-          label={flagged ? t('mail.unflag') : t('mail.flag')}
-          active={flagged}
-          onClick={() => void setFlagged(accountId, email.id, !flagged)}
-        />
-        <ActionButton
-          icon="mailUnread"
-          label={t('mail.markUnread')}
-          onClick={() => {
-            void markRead(accountId, email.id, false)
-            backToList()
-          }}
-        />
-        <span className="mx-1 h-5 w-px bg-line" />
-        <ActionButton icon="reply" label={t('mail.reply')} onClick={() => reply('reply')} />
-        <ActionButton icon="replyAll" label={t('mail.replyAll')} onClick={() => reply('replyAll')} />
-        <ActionButton icon="forward" label={t('mail.forward')} onClick={() => reply('forward')} />
+        <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+          <ActionButton icon="archive" label={t('mail.archive')} onClick={() => void onArchive()} />
+          <ActionButton icon="trash" label={t('mail.delete')} onClick={() => void onDelete()} />
+          <ActionButton
+            icon="flag"
+            label={flagged ? t('mail.unflag') : t('mail.flag')}
+            active={flagged}
+            onClick={() => void setFlagged(accountId, email.id, !flagged)}
+          />
+          <ActionButton
+            icon="mailUnread"
+            label={t('mail.markUnread')}
+            onClick={() => {
+              void markRead(accountId, email.id, false)
+              backToList()
+            }}
+          />
+        </span>
+        <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+          <ActionButton icon="reply" label={t('mail.reply')} onClick={() => reply('reply')} />
+          <ActionButton
+            icon="replyAll"
+            label={t('mail.replyAll')}
+            onClick={() => reply('replyAll')}
+          />
+          <ActionButton icon="forward" label={t('mail.forward')} onClick={() => reply('forward')} />
+        </span>
       </div>
-      <header className="border-b border-line px-4 py-3 lg:px-6">
-        <h2 className="mb-2.5 text-[17px] leading-snug font-semibold">
+      <header className="px-4 pt-1 pb-4 lg:px-6">
+        <h2 className="mb-3 text-xl leading-snug font-semibold">
           {email.subject || t('mail.noSubject')}
         </h2>
         <div className="flex items-center gap-3">
-          {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} />}
+          {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-sm font-medium" title={sender?.email}>
+              <span className="truncate text-sm font-semibold" title={sender?.email}>
                 {sender?.name || sender?.email || t('mail.unknownSender')}
               </span>
-              <span className="shrink-0 text-xs text-ink-muted">
+              <span className="shrink-0 text-xs text-ink-subtle">
                 {formatFullDate(email.receivedAt)}
               </span>
             </div>
@@ -198,10 +233,12 @@ export function ReadingPane({
           </div>
         </div>
       </header>
-      <div className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1 border-t border-line">
         {body === 'loading' && (
-          <div className="flex h-full items-center justify-center text-sm text-ink-muted">
-            {t('mail.loading')}
+          <div className="animate-fade space-y-3 p-5">
+            <Skeleton className="h-3 w-4/5" />
+            <Skeleton className="h-3 w-full" />
+            <Skeleton className="h-3 w-3/5" />
           </div>
         )}
         {body === null && (
@@ -214,17 +251,17 @@ export function ReadingPane({
             title={t('mail.messageFrame')}
             sandbox="allow-popups allow-popups-to-escape-sandbox"
             srcDoc={doc}
-            className="h-full w-full border-0 bg-white"
+            className={`h-full w-full border-0 ${isHtmlMail ? 'bg-white' : 'bg-surface'}`}
           />
         )}
       </div>
       {body !== 'loading' && body && body.attachments.length > 0 && (
-        <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2">
+        <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
           {body.attachments.map((a, i) =>
             a.blobId ? (
               <span
                 key={i}
-                className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs"
+                className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs transition-shadow hover:shadow-raised"
               >
                 <button
                   type="button"
@@ -232,7 +269,7 @@ export function ReadingPane({
                   onClick={() =>
                     void openAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
                   }
-                  className="flex items-center gap-1.5 py-1 pr-1.5 pl-3 hover:text-accent"
+                  className="flex items-center gap-1.5 py-1.5 pr-1.5 pl-3 transition-colors hover:text-accent"
                 >
                   <Icon name="paperclip" size={11} />
                   {a.name ?? 'attachment'}

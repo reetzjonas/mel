@@ -5,7 +5,9 @@ import { useAccounts, useMailboxEmails } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
 import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
+import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { ThreadListSkeleton } from '../../ui/Skeleton'
 
 export const Route = createFileRoute('/mail/$mailboxId')({
   component: MailboxView,
@@ -73,27 +75,22 @@ function MailboxView() {
   const list = results?.headers ?? emails
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full gap-0 sm:gap-3">
       <section
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        className={`flex h-full w-full min-w-0 flex-col border-r border-line lg:flex lg:w-96 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
+        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-96 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
-        {refreshing && (
-          <div className="border-b border-line py-1 text-center text-xs text-ink-muted">
-            {t('mail.syncing')}
-          </div>
-        )}
-        <div className="flex items-center gap-2 border-b border-line px-3 py-2">
+        <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
           <div className="relative flex-1">
             <Icon
               name="search"
               size={14}
-              className="absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-muted"
+              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-subtle"
             />
             <input
               id="mail-search"
-              className="w-full rounded-lg bg-surface-2 py-1.5 pr-7 pl-8 text-sm outline-none placeholder:text-ink-muted/70 focus:ring-1 focus:ring-accent"
+              className="w-full rounded-control bg-surface-2 py-2 pr-7 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent"
               placeholder={t('mail.searchPlaceholder')}
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -107,22 +104,23 @@ function MailboxView() {
                 type="button"
                 title={t('mail.searchClear')}
                 onClick={() => submitSearch('')}
-                className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-muted hover:text-ink"
+                className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
               >
                 ✕
               </button>
             )}
           </div>
         </div>
+        {refreshing && (
+          <div className="animate-fade py-1 text-center text-[11px] text-ink-subtle">
+            {t('mail.syncing')}
+          </div>
+        )}
         <div className="min-h-0 flex-1">
           {list === undefined || (q && results === null) ? (
-            <div className="flex h-full items-center justify-center text-sm text-ink-muted">
-              {t('mail.syncing')}
-            </div>
+            <ThreadListSkeleton />
           ) : list.length === 0 && q ? (
-            <div className="flex h-full items-center justify-center text-sm text-ink-muted">
-              {t('mail.searchNoResults')}
-            </div>
+            <EmptyState icon="search" title={t('mail.searchNoResults')} />
           ) : (
             account && (
               <ThreadList
@@ -137,7 +135,9 @@ function MailboxView() {
         </div>
       </section>
       <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
-        <Outlet />
+        <div className="panel h-full overflow-hidden max-sm:rounded-none max-sm:shadow-none">
+          <Outlet />
+        </div>
       </div>
     </div>
   )

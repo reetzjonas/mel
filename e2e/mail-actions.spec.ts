@@ -16,7 +16,8 @@ test('archive a mail and undo it', async ({ page }) => {
   const firstRow = page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first()
   await expect(firstRow).toBeVisible({ timeout: 15_000 })
   // Whatever mail is on top — independent of previous runs' server state.
-  const subject = (await firstRow.locator('div').nth(1).innerText()).split('\n')[0]!.trim()
+  // Reads a stable testid rather than indexing into the row's DOM structure.
+  const subject = (await firstRow.getByTestId('thread-subject').innerText()).trim()
 
   await firstRow.click()
   await page.getByRole('article').getByTitle('Archive').click()

@@ -11,6 +11,7 @@ const en = {
   'theme.title': 'Theme',
 
   'login.title': 'Add account',
+  'login.subtitle': 'Your mail stays on this device',
   'login.preset.custom': 'Other server',
   'login.server': 'Server or email address',
   'login.serverPlaceholder': 'mail.example.com or you@example.com',
@@ -28,7 +29,9 @@ const en = {
   'mail.refresh': 'Refresh',
   'mail.syncing': 'Syncing…',
   'mail.noMessages': 'No messages',
+  'mail.noMessagesHint': 'Nothing here yet — new mail shows up automatically.',
   'mail.selectMessage': 'Select a message to read',
+  'mail.selectMessageHint': 'Pick a conversation from the list, or press c to write a new one.',
   'mail.noSubject': '(no subject)',
   'mail.unknownSender': '(unknown)',
   'mail.back': 'Back',
@@ -57,7 +60,7 @@ const en = {
   'mail.deleted': 'Deleted',
   'mail.sending': 'Sending in 10 s',
   'mail.sendCancelled': 'Sending cancelled',
-  'mail.searchPlaceholder': 'Search (from:, to:, subject:, is:unread, has:attachment …)',
+  'mail.searchPlaceholder': 'Search — try from: or is:unread',
   'mail.searchNoResults': 'No results',
   'mail.searchClear': 'Clear search',
 
@@ -211,6 +214,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'theme.title': 'Design',
 
   'login.title': 'Konto hinzufügen',
+  'login.subtitle': 'Deine Mail bleibt auf diesem Gerät',
   'login.preset.custom': 'Anderer Server',
   'login.server': 'Server oder E-Mail-Adresse',
   'login.serverPlaceholder': 'mail.example.com oder du@example.com',
@@ -228,7 +232,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.refresh': 'Aktualisieren',
   'mail.syncing': 'Synchronisiere…',
   'mail.noMessages': 'Keine Nachrichten',
+  'mail.noMessagesHint': 'Hier ist noch nichts — neue Mail erscheint automatisch.',
   'mail.selectMessage': 'Wähle eine Nachricht',
+  'mail.selectMessageHint': 'Nimm eine Unterhaltung aus der Liste, oder drücke c für eine neue.',
   'mail.noSubject': '(kein Betreff)',
   'mail.unknownSender': '(unbekannt)',
   'mail.back': 'Zurück',
@@ -257,7 +263,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.deleted': 'Gelöscht',
   'mail.sending': 'Senden in 10 s',
   'mail.sendCancelled': 'Senden abgebrochen',
-  'mail.searchPlaceholder': 'Suchen (from:, to:, subject:, is:unread, has:attachment …)',
+  'mail.searchPlaceholder': 'Suchen — z. B. from: oder is:unread',
   'mail.searchNoResults': 'Keine Treffer',
   'mail.searchClear': 'Suche löschen',
 

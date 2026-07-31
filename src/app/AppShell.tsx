@@ -22,7 +22,7 @@ function AppSwitcherLink({ to, label }: { to: string; label: string }) {
   return (
     <Link
       to={to}
-      className="rounded-full px-3.5 py-1 text-[13px] font-medium text-ink-muted transition-colors hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink"
+      className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink [&.active]:shadow-raised"
     >
       {label}
     </Link>
@@ -38,7 +38,7 @@ function ThemeToggle() {
       type="button"
       onClick={() => setPreference(next)}
       title={`${t('theme.title')}: ${preference}`}
-      className="rounded-md p-2 text-ink-muted hover:bg-surface-2 hover:text-ink"
+      className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
     >
       <Icon name={icon} />
     </button>
@@ -61,10 +61,10 @@ export function AppShell() {
   // Capability-gated app switcher; before login only Mail is shown.
   const apps = allApps.filter((a) => a.cap === 'mail' || account?.capabilities[a.cap])
   return (
-    <div className="flex h-full flex-col">
-      <header className="hidden h-12 shrink-0 items-center gap-5 border-b border-line bg-surface px-4 sm:flex">
-        <span className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-accent text-accent-ink">
+    <div className="flex h-full flex-col bg-canvas">
+      <header className="glass sticky top-0 z-30 hidden h-13 shrink-0 items-center gap-5 px-4 sm:flex">
+        <span className="flex items-center gap-2 text-[15px] font-semibold">
+          <span className="flex h-6.5 w-6.5 items-center justify-center rounded-lg bg-accent text-accent-ink shadow-raised">
             <Icon name="mail" size={14} />
           </span>
           mel
@@ -79,7 +79,7 @@ export function AppShell() {
           <Link
             to="/settings"
             title={t('settings.title')}
-            className="rounded-md p-2 text-ink-muted hover:bg-surface-2 hover:text-ink [&.active]:text-accent"
+            className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink [&.active]:text-accent"
           >
             <Icon name="settings" />
           </Link>
@@ -89,7 +89,7 @@ export function AppShell() {
         <Outlet />
       </main>
       {/* Mobile: bottom navigation as app switcher */}
-      <nav className="flex shrink-0 justify-around border-t border-line bg-surface py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] sm:hidden">
+      <nav className="glass flex shrink-0 justify-around py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] sm:hidden">
         {apps.map((a) => (
           <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
         ))}

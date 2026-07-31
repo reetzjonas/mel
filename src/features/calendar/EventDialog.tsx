@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import type { Calendar, CalendarEvent, RecurrenceRule } from '../../domain/calendar'
 import { t } from '../../lib/i18n'
+import { inputClass } from '../../ui/styles'
 
-const input =
-  'w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent'
 
 const DURATIONS = [
   ['PT30M', `30 ${t('cal.min')}`],
@@ -82,7 +81,7 @@ export function EventDialog({
           {initial.id ? t('cal.editEvent') : t('cal.newEvent')}
         </h2>
         <input
-          className={input}
+          className={inputClass}
           placeholder={t('cal.title')}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -90,7 +89,7 @@ export function EventDialog({
         />
         {calendars && calendars.length > 1 && (
           <select
-            className={input}
+            className={inputClass}
             aria-label={t('cal.calendar')}
             value={calendarId}
             onChange={(e) => setCalendarId(e.target.value)}
@@ -105,17 +104,17 @@ export function EventDialog({
         <div className="flex gap-2">
           <label className="flex-1 space-y-1">
             <span className="text-xs text-ink-muted">{t('cal.startDate')}</span>
-            <input className={input} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className={inputClass} type="date" value={date} onChange={(e) => setDate(e.target.value)} />
           </label>
           {!allDay && (
             <>
               <label className="space-y-1">
                 <span className="text-xs text-ink-muted">{t('cal.startTime')}</span>
-                <input className={input} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+                <input className={inputClass} type="time" value={time} onChange={(e) => setTime(e.target.value)} />
               </label>
               <label className="space-y-1">
                 <span className="text-xs text-ink-muted">{t('cal.duration')}</span>
-                <select className={input} value={duration} onChange={(e) => setDuration(e.target.value)}>
+                <select className={inputClass} value={duration} onChange={(e) => setDuration(e.target.value)}>
                   {DURATIONS.map(([v, l]) => (
                     <option key={v} value={v}>
                       {l}
@@ -131,7 +130,7 @@ export function EventDialog({
           {t('cal.allDay')}
         </label>
         <select
-          className={input}
+          className={inputClass}
           aria-label={t('cal.repeat')}
           value={repeat}
           onChange={(e) => setRepeat(e.target.value as RepeatPreset)}
@@ -143,13 +142,13 @@ export function EventDialog({
           <option value="yearly">{t('cal.repeat.yearly')}</option>
         </select>
         <input
-          className={input}
+          className={inputClass}
           placeholder={t('cal.location')}
           value={location}
           onChange={(e) => setLocation(e.target.value)}
         />
         <textarea
-          className={`${input} min-h-16`}
+          className={`${inputClass} min-h-16`}
           placeholder={t('cal.descriptionField')}
           value={description}
           onChange={(e) => setDescription(e.target.value)}

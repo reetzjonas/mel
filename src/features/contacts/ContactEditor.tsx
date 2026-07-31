@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import type { Contact, LabeledValue } from '../../domain/contact'
 import { t } from '../../lib/i18n'
+import { inputClass } from '../../ui/styles'
 
-const input =
-  'w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent'
 
 function ListField({
   label,
@@ -31,7 +30,7 @@ function ListField({
       {values.map((v, i) => (
         <div key={i} className="flex gap-1.5">
           <input
-            className={input}
+            className={inputClass}
             type={type}
             value={v.value}
             onChange={(e) =>
@@ -74,12 +73,12 @@ export function ContactEditor({
       <div className="grid grid-cols-2 gap-3">
         <label className="space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.given')}</span>
-          <input className={input} value={c.given} onChange={(e) => set({ given: e.target.value })} />
+          <input className={inputClass} value={c.given} onChange={(e) => set({ given: e.target.value })} />
         </label>
         <label className="space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.surname')}</span>
           <input
-            className={input}
+            className={inputClass}
             value={c.surname}
             onChange={(e) => set({ surname: e.target.value })}
           />
@@ -87,7 +86,7 @@ export function ContactEditor({
         <label className="space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.organization')}</span>
           <input
-            className={input}
+            className={inputClass}
             value={c.organization}
             onChange={(e) => set({ organization: e.target.value })}
           />
@@ -95,7 +94,7 @@ export function ContactEditor({
         <label className="space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.jobTitle')}</span>
           <input
-            className={input}
+            className={inputClass}
             value={c.jobTitle}
             onChange={(e) => set({ jobTitle: e.target.value })}
           />
@@ -114,7 +113,7 @@ export function ContactEditor({
       <label className="block space-y-1">
         <span className="text-xs font-medium text-ink-muted">{t('contacts.address')}</span>
         <input
-          className={input}
+          className={inputClass}
           value={c.addresses[0]?.full ?? ''}
           onChange={(e) =>
             set({ addresses: e.target.value ? [{ full: e.target.value, label: null }] : [] })
@@ -125,7 +124,7 @@ export function ContactEditor({
       <label className="block space-y-1">
         <span className="text-xs font-medium text-ink-muted">{t('contacts.note')}</span>
         <textarea
-          className={`${input} min-h-20`}
+          className={`${inputClass} min-h-20`}
           value={c.note}
           onChange={(e) => set({ note: e.target.value })}
         />

@@ -16,13 +16,12 @@ import { requestNotificationPermission } from '../../services/notifications'
 import { connectionFor } from '../../sync/connections'
 import { stopScheduler } from '../../sync/scheduler'
 import type { VacationSettings } from '../../providers/types'
+import { inputClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 })
 
-const input =
-  'w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -37,7 +36,7 @@ function LanguageSetting() {
   const stored = localStorage.getItem('mel:lang') ?? 'system'
   return (
     <select
-      className={input}
+      className={inputClass}
       defaultValue={stored}
       onChange={(e) => {
         if (e.target.value === 'system') localStorage.removeItem('mel:lang')
@@ -92,13 +91,13 @@ function VacationSetting({ accountId }: { accountId: string }) {
         {t('settings.vacation.enabled')}
       </label>
       <input
-        className={input}
+        className={inputClass}
         placeholder={t('settings.vacation.subject')}
         value={v.subject}
         onChange={(e) => setV({ ...v, subject: e.target.value })}
       />
       <textarea
-        className={`${input} min-h-24`}
+        className={`${inputClass} min-h-24`}
         placeholder={t('settings.vacation.body')}
         value={v.text}
         onChange={(e) => setV({ ...v, text: e.target.value })}
@@ -239,7 +238,7 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
     >
       <p className="text-sm text-ink-muted">{t('crypto.enableHint')}</p>
       <input
-        className={input}
+        className={inputClass}
         type="password"
         placeholder={t('crypto.passphrase')}
         value={pass}
@@ -247,7 +246,7 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
         autoComplete="new-password"
       />
       <input
-        className={input}
+        className={inputClass}
         type="password"
         placeholder={t('crypto.confirm')}
         value={confirm}
@@ -283,7 +282,7 @@ function SettingsPage() {
 
         <Section title={t('settings.theme')}>
           <select
-            className={input}
+            className={inputClass}
             value={preference}
             onChange={(e) => setPreference(e.target.value as ThemePreference)}
           >

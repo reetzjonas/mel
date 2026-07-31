@@ -1,5 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { t } from '../../lib/i18n'
+import { EmptyState } from '../../ui/EmptyState'
 
 export const Route = createFileRoute('/mail/$mailboxId/')({
   component: EmptyPane,
@@ -7,8 +8,12 @@ export const Route = createFileRoute('/mail/$mailboxId/')({
 
 function EmptyPane() {
   return (
-    <div className="hidden h-full items-center justify-center text-sm text-ink-muted lg:flex">
-      {t('mail.selectMessage')}
+    <div className="hidden h-full lg:block">
+      <EmptyState
+        icon="mail"
+        title={t('mail.selectMessage')}
+        hint={t('mail.selectMessageHint')}
+      />
     </div>
   )
 }

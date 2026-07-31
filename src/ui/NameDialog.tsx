@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { inputClass, overlayPanelClass, primaryButtonClass } from './styles'
 
 export function NameDialog({
   title,
@@ -18,11 +19,11 @@ export function NameDialog({
   const [value, setValue] = useState(initial)
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
       onClick={onClose}
     >
       <form
-        className="w-full max-w-xs space-y-3 rounded-2xl border border-line bg-surface p-5 shadow-xl"
+        className={`animate-rise w-full max-w-xs space-y-3 p-5 ${overlayPanelClass}`}
         onClick={(e) => e.stopPropagation()}
         onSubmit={(e) => {
           e.preventDefault()
@@ -34,20 +35,17 @@ export function NameDialog({
           autoFocus
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent"
+          className={inputClass}
         />
         <div className="flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg px-3 py-1.5 text-sm text-ink-muted hover:text-ink"
+            className="rounded-control px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             {cancelLabel}
           </button>
-          <button
-            type="submit"
-            className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-ink"
-          >
+          <button type="submit" className={primaryButtonClass}>
             {confirmLabel}
           </button>
         </div>

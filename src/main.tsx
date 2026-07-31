@@ -1,6 +1,8 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
+// Self-hosted: a backend-less, privacy-minded client shouldn't phone a font CDN.
+import '@fontsource-variable/inter'
 import './index.css'
 import { ThemeProvider } from './app/ThemeProvider'
 import { routeTree } from './app/routeTree.gen'
