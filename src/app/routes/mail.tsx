@@ -59,7 +59,7 @@ function MailLayout() {
   const inList = Boolean(params.mailboxId)
 
   return (
-    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:px-3 sm:pb-3">
+    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       {/* The sidebar rides directly on the canvas; only content panes float. */}
       <aside className={`w-full shrink-0 lg:block lg:w-56 ${inList ? 'hidden' : ''}`}>
         <MailboxSidebar

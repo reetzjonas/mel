@@ -214,7 +214,7 @@ function CalendarApp() {
         : `${weekRangeFmt.format(grid[0]!)} – ${weekRangeFmt.format(grid[6]!)}`
 
   return (
-    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:px-3 sm:pb-3">
+    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <aside className="hidden w-52 shrink-0 flex-col gap-0.5 py-3 lg:flex">
         <span className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
           {t('cal.calendars')}

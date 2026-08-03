@@ -41,7 +41,7 @@ function ContactsLayout() {
   const inDetail = Boolean(params.contactId)
 
   return (
-    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:px-3 sm:pb-3">
+    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <section
         className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-80 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
