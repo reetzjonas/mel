@@ -8,7 +8,10 @@
  * that the suite's waits start expiring — which looks like random flakiness.
  *
  * Purges drafts, sent mail, custom folders, calendar events and contacts, and
- * leaves the seeded inbox mail alone (specs assert on those subjects).
+ * trims the inbox back to the seeded messages the specs assert on. That last
+ * part matters since the RSVP test: scheduling replies ("Accepted: …") are
+ * delivered as real mail, and once a handful pile up at the top of the inbox
+ * the virtualized list stops rendering the seeded subjects at all.
  */
 
 const BASE = 'http://localhost:8080'
@@ -21,6 +24,15 @@ const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
 const CALENDARS = 'urn:ietf:params:jmap:calendars'
 const CONTACTS = 'urn:ietf:params:jmap:contacts'
+
+/** Everything else in the inbox is debris from an earlier run. */
+const SEEDED_INBOX = new Set([
+  'Willkommen bei mel',
+  'Projektstand',
+  'Re: Projektstand',
+  'HTML-Test',
+  'Mit Anhang',
+])
 
 type Invocation = [string, Record<string, unknown>, string]
 
@@ -73,6 +85,33 @@ async function resetAccount(user: string, pass: string) {
         removed.push(`${q.ids.length} mail`)
       }
     }
+    const inbox = boxes.list.find((b) => b.role === 'inbox')
+    if (inbox) {
+      const found = (
+        await jmap(auth, [CORE, MAIL], [
+          ['Email/query', { accountId: mailAcc, filter: { inMailbox: inbox.id } }, 'c0'],
+          [
+            'Email/get',
+            {
+              accountId: mailAcc,
+              '#ids': { resultOf: 'c0', name: 'Email/query', path: '/ids' },
+              properties: ['subject'],
+            },
+            'c1',
+          ],
+        ])
+      ).methodResponses[1]![1] as { list: Array<{ id: string; subject: string | null }> }
+      const strays = found.list
+        .filter((m) => !SEEDED_INBOX.has((m.subject ?? '').trim()))
+        .map((m) => m.id)
+      if (strays.length) {
+        await jmap(auth, [CORE, MAIL], [
+          ['Email/set', { accountId: mailAcc, destroy: strays }, 'c0'],
+        ])
+        removed.push(`${strays.length} stray inbox mail`)
+      }
+    }
+
     if (custom.length) {
       await jmap(auth, [CORE, MAIL], [
         ['Mailbox/set', { accountId: mailAcc, destroy: custom.map((b) => b.id) }, 'c0'],

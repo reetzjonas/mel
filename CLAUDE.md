@@ -33,8 +33,38 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 32 Vitest + 26 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 44 Vitest + 27 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
+
+## Login/Setup und Abmelden
+
+Eine einzige Maske für alle Server: **E-Mail + Passwort**, keine Provider-Presets
+mehr (Fastmail und der explizite Stalwart-Eintrag sind raus). Aus der Adresse
+rät `discoveryCandidates()` die Session-URL — `mail.<domain>` zuerst, dann Apex,
+`jmap.`, `imap.`; für `@localhost` das Dev-Stalwart auf `http://localhost:8080`.
+Erst **wenn alle Kandidaten scheitern**, klappt in der Maske ein Bereich auf mit
+(a) Button „Per DNS suchen" (`srvCandidates()`, DoH gegen Cloudflare, löst
+`_jmap._tcp.<domain>` SRV auf) und (b) manueller Serveradresse + Auth-Methode.
+**Der DoH-Weg läuft nie automatisch** — er verrät die Mail-Domain an einen
+Dritten, also nur auf ausdrücklichen Klick (Vorgabe des Users).
+
+Warum überhaupt raten statt SRV: RFC 8620 sieht den SRV-Record vor, aber
+**Browser haben keine DNS-API** und die App hat kein Backend. Realfall
+`reetz.me`: SRV (`0 1 443 mail.reetz.me`) und CORS sind korrekt, aber die Apex
+hat **gar keinen A-Record** — der naive Well-Known-Versuch auf `reetz.me` läuft
+also ins Leere, `mail.reetz.me` trifft sofort.
+
+`signOut()` in `services/accounts.ts` ist der einzige Abmelde-Weg (Button in der
+Desktop-Kopfzeile + Settings). Zwei Fallen, beide gefixt:
+- `removeAccount` hatte `addressBooks`/`contacts`/`calendars`/`events`/`keyring`
+  **nicht** in seiner Tabellenliste — nach dem „Abmelden" lagen Kontakte und
+  Termine des Vorgängers weiter in IndexedDB. Unit-Test in `accounts.test.ts`
+  hält die Liste jetzt vollständig; **neue Per-Account-Tabelle ⇒ dort eintragen**.
+- `connectionFor` **cacht** die Verbindung, ein laufender Sync schreibt also
+  munter weiter. Deshalb die Reihenfolge in `signOut`: Konto-Row löschen (dann
+  kann niemand mehr neu verbinden) → `dropConnection` → `syncSettled` abwarten →
+  erst dann alles purgen. Lokal ist der Sync zu schnell, um das im e2e-Test
+  zuverlässig zu provozieren — nicht als „ungenutzt" wegoptimieren.
 
 ## Design-System (seit dem UI-Redesign)
 
@@ -85,6 +115,14 @@ Event-Sync-Fensterung für große Kalender, Woche-1-Perf mit 50k Mails.
 ### e2e-Stabilität (die früheren „Flakes" waren echte Ursachen)
 Die Suite galt lange als sporadisch flaky (~40 % rote Voll-Läufe) und das war als
 CPU-Last abgetan. Das war **falsch** — es waren drei reale Ursachen, alle gefixt:
+
+0. **Angesammelter Posteingang.** `global-setup` räumte Drafts/Sent/Ordner auf,
+   ließ den **Inbox** aber unangetastet. Mit dem RSVP-Test kommen pro Lauf echte
+   iMIP-Mails an („Accepted: …" bei alice, „Invitation: …" bei bob) — nach ein
+   paar Läufen standen die vor den Seed-Mails, und die virtualisierte Liste
+   rendert `Willkommen bei mel`/`HTML-Test` dann gar nicht mehr. Symptom: mehrere
+   Mail-Specs finden „ihre" Mail nicht. Bob hatte so **70** Altmails angesammelt.
+   `global-setup` trimmt den Inbox jetzt auf die Seed-Betreffs (`SEEDED_INBOX`).
 
 1. **Angesammelte Testdaten.** Jeder Lauf ließ Entwürfe/Sent-Mails/Kontakte/Events
    zurück (der Draft-Autosave-Test *muss* einen Entwurf hinterlassen; fehlgeschlagene

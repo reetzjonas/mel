@@ -13,7 +13,7 @@ test('switching apps during the first sync is not undone by the inbox redirect',
   // Without a guard that we're still on /mail, that redirect fires after the
   // user has already navigated away and drags them back to Mail.
   await page.goto('/mail')
-  await page.getByPlaceholder('alice@localhost').fill('alice@localhost')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
 
@@ -23,4 +23,45 @@ test('switching apps during the first sync is not undone by the inbox redirect',
   // And stay there once the sync lands.
   await page.waitForTimeout(3000)
   await expect(page).toHaveURL(/\/calendar$/)
+})
+
+test('signing out clears the account and its cached data from the device', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+
+  // Sign out as soon as the button exists, rather than waiting for a settled
+  // inbox. Against the local Stalwart the first sync usually beats the click,
+  // so this does not reliably exercise the sign-out-mid-sync race that
+  // services/accounts.ts sequences around — it checks the wipe is complete.
+  page.once('dialog', (d) => void d.accept())
+  await page.getByRole('button', { name: 'Sign out' }).click({ timeout: 15_000 })
+
+  // Back to the setup screen, and no account row left behind.
+  await expect(page.getByPlaceholder('you@example.com')).toBeVisible({ timeout: 10_000 })
+  const rows = await page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const open = indexedDB.open('mel')
+        open.onerror = () => reject(open.error)
+        open.onsuccess = () => {
+          const dbh = open.result
+          // Contacts and events used to survive logout — they are not on the
+          // list of tables the account teardown walked.
+          const tx = dbh.transaction(['accounts', 'contacts', 'events'], 'readonly')
+          Promise.all(
+            ['accounts', 'contacts', 'events'].map(
+              (name) =>
+                new Promise<number>((res, rej) => {
+                  const req = tx.objectStore(name).count()
+                  req.onsuccess = () => res(req.result)
+                  req.onerror = () => rej(req.error)
+                }),
+            ),
+          ).then((counts) => resolve(counts.reduce((a, b) => a + b, 0)), reject)
+        }
+      }),
+  )
+  expect(rows).toBe(0)
 })

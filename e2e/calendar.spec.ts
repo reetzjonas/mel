@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Desktop-only (state-mutating, see playwright.config.ts).
 async function login(page: Page) {
   await page.goto('/mail')
-  await page.getByPlaceholder('alice@localhost').fill('alice@localhost')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
   await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
@@ -183,7 +183,7 @@ test('invite the other account, accept there, and see the reply on the organizer
   const bobCtx = await browser.newContext()
   const bobPage = await bobCtx.newPage()
   await bobPage.goto('/mail')
-  await bobPage.getByPlaceholder('alice@localhost').fill('bob@localhost')
+  await bobPage.getByPlaceholder('you@example.com').fill('bob@localhost')
   await bobPage.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-bob')
   await bobPage.getByRole('button', { name: 'Connect' }).click()
   await expect(bobPage.getByText('Inbox')).toBeVisible({ timeout: 15_000 })

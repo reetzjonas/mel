@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Desktop-only (state-mutating, see playwright.config.ts).
 async function login(page: Page) {
   await page.goto('/mail')
-  await page.getByPlaceholder('alice@localhost').fill('alice@localhost')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })

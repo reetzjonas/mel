@@ -11,7 +11,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   // Without an account only Mail is offered (apps are capability-gated).
   await expect(page.getByRole('link', { name: 'Contacts' })).toHaveCount(0)
 
-  await page.getByPlaceholder('alice@localhost').fill('alice@localhost')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
 

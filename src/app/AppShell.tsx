@@ -1,4 +1,4 @@
-import { Link, Outlet } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
@@ -7,6 +7,7 @@ import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
 import { db } from '../storage/db'
 import { Icon } from '../ui/Icon'
+import { signOut } from '../services/accounts'
 import { Snackbar } from '../ui/Snackbar'
 import { useTheme } from './ThemeProvider'
 import { UnlockGate } from './UnlockGate'
@@ -45,6 +46,24 @@ function ThemeToggle() {
   )
 }
 
+function SignOutButton({ accountId }: { accountId: string }) {
+  const navigate = useNavigate()
+  return (
+    <button
+      type="button"
+      title={t('settings.signOut')}
+      aria-label={t('settings.signOut')}
+      onClick={() => {
+        if (!confirm(t('settings.signOut.confirm'))) return
+        void signOut(accountId).then(() => navigate({ to: '/mail' }))
+      }}
+      className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+    >
+      <Icon name="signOut" />
+    </button>
+  )
+}
+
 export function AppShell() {
   const accounts = useAccounts()
   const account = accounts?.[0]
@@ -76,6 +95,7 @@ export function AppShell() {
         </nav>
         <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
+          {account && <SignOutButton accountId={account.id} />}
           <Link
             to="/settings"
             title={t('settings.title')}

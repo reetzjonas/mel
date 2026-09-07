@@ -12,9 +12,16 @@ const en = {
 
   'login.title': 'Add account',
   'login.subtitle': 'Your mail stays on this device',
-  'login.preset.custom': 'Other server',
-  'login.server': 'Server or email address',
-  'login.serverPlaceholder': 'mail.example.com or you@example.com',
+  'login.email': 'Email address',
+  'login.server': 'Server address',
+  'login.serverPlaceholder': 'mail.example.com',
+  'login.noServer': 'No mail server found for that address.',
+  'login.notFoundHelp':
+    'We looked for a server on the usual hostnames and found none. You can let us look up the DNS record for your domain, or enter the server address yourself.',
+  'login.tryDns': 'Look up via DNS',
+  'login.tryDns.privacy':
+    'Sends your email domain (not your address or password) to Cloudflare’s public DNS resolver.',
+  'login.noSrvRecord': 'That domain publishes no JMAP DNS record either.',
   'login.auth': 'Sign-in method',
   'login.auth.basic': 'Username + password',
   'login.auth.bearer': 'API token',
@@ -120,6 +127,10 @@ const en = {
   'settings.vacation.saved': 'Saved',
   'settings.account': 'Account',
   'settings.account.remove': 'Remove account from this device',
+  'settings.signOut': 'Sign out',
+  'settings.signOut.hint': 'Removes the account and all of its data from this device.',
+  'settings.signOut.confirm':
+    'Sign out? The account and all of its mail, contacts and events are removed from this device.',
 
   'contacts.new': 'New contact',
   'contacts.empty': 'No contacts yet',
@@ -232,9 +243,16 @@ const de: Partial<Record<MsgKey, string>> = {
 
   'login.title': 'Konto hinzufügen',
   'login.subtitle': 'Deine Mail bleibt auf diesem Gerät',
-  'login.preset.custom': 'Anderer Server',
-  'login.server': 'Server oder E-Mail-Adresse',
-  'login.serverPlaceholder': 'mail.example.com oder du@example.com',
+  'login.email': 'E-Mail-Adresse',
+  'login.server': 'Serveradresse',
+  'login.serverPlaceholder': 'mail.example.com',
+  'login.noServer': 'Zu dieser Adresse wurde kein Mailserver gefunden.',
+  'login.notFoundHelp':
+    'Auf den üblichen Hostnamen war kein Server zu finden. Du kannst den DNS-Eintrag deiner Domain abfragen lassen oder die Serveradresse selbst eintragen.',
+  'login.tryDns': 'Per DNS suchen',
+  'login.tryDns.privacy':
+    'Sendet deine E-Mail-Domain (nicht Adresse oder Passwort) an den öffentlichen DNS-Resolver von Cloudflare.',
+  'login.noSrvRecord': 'Diese Domain veröffentlicht auch keinen JMAP-DNS-Eintrag.',
   'login.auth': 'Anmeldung',
   'login.auth.basic': 'Benutzername + Passwort',
   'login.auth.bearer': 'API-Token',
@@ -340,6 +358,10 @@ const de: Partial<Record<MsgKey, string>> = {
   'settings.vacation.saved': 'Gespeichert',
   'settings.account': 'Konto',
   'settings.account.remove': 'Konto von diesem Gerät entfernen',
+  'settings.signOut': 'Abmelden',
+  'settings.signOut.hint': 'Entfernt das Konto und alle seine Daten von diesem Gerät.',
+  'settings.signOut.confirm':
+    'Abmelden? Das Konto und alle Mails, Kontakte und Termine werden von diesem Gerät entfernt.',
 
   'contacts.new': 'Neuer Kontakt',
   'contacts.empty': 'Noch keine Kontakte',

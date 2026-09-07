@@ -4,7 +4,7 @@ import { useTheme, type ThemePreference } from '../ThemeProvider'
 import { useUi } from '../store'
 import { useAccounts } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
-import { removeAccount } from '../../services/accounts'
+import { signOut } from '../../services/accounts'
 import {
   disableEncryption,
   enableEncryption,
@@ -14,7 +14,6 @@ import {
 import { disableWebPush, enableWebPush, isSubscribed, webPushSupported } from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
 import { connectionFor } from '../../sync/connections'
-import { stopScheduler } from '../../sync/scheduler'
 import type { VacationSettings } from '../../providers/types'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
@@ -321,11 +320,10 @@ function SettingsPage() {
               type="button"
               className="rounded-control border border-danger px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-wash"
               onClick={() => {
-                stopScheduler(account.id)
-                void removeAccount(account.id).then(() => navigate({ to: '/mail' }))
+                void signOut(account.id).then(() => navigate({ to: '/mail' }))
               }}
             >
-              {t('settings.account.remove')}
+              {t('settings.signOut')}
             </button>
           </Section>
         )}

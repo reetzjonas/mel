@@ -231,6 +231,11 @@ const running = new Map<string, Promise<void>>()
  * Sync one account (mailboxes + email headers). Coalesces concurrent calls;
  * multi-tab safety via Web Locks (only one tab syncs an account at a time).
  */
+/** Resolves once any in-flight sync for this account has stopped writing. */
+export function syncSettled(accountId: string): Promise<void> {
+  return running.get(accountId)?.catch(() => {}) ?? Promise.resolve()
+}
+
 export function syncAccount(accountId: string): Promise<void> {
   const active = running.get(accountId)
   if (active) return active

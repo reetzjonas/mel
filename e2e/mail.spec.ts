@@ -3,7 +3,7 @@ import { expect, test, type Page } from '@playwright/test'
 // Requires the seeded local Stalwart (npm run stalwart:seed).
 async function login(page: Page) {
   await page.goto('/mail')
-  await page.getByPlaceholder('alice@localhost').fill('alice@localhost')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
 }

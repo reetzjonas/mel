@@ -4,16 +4,11 @@ import { JmapError, authHeader } from './transport'
 import { Cap, type CoreCapability, type JmapSession } from './types/core'
 
 /**
- * Resolve a user-entered server value to a session URL.
- * Accepts a full session URL, a bare host, or an email address
- * (→ https://{domain}/.well-known/jmap autodiscovery).
+ * Resolve an explicit server value (a full session URL, or a bare host) to a
+ * session URL. Email addresses go through discoveryCandidates instead.
  */
 export function sessionUrlFor(input: string): string {
   const trimmed = input.trim()
-  if (trimmed.includes('@')) {
-    const domain = trimmed.split('@')[1]
-    return `https://${domain}/.well-known/jmap`
-  }
   if (/^https?:\/\//.test(trimmed)) {
     return trimmed.includes('/jmap') || trimmed.includes('/.well-known')
       ? trimmed
@@ -21,6 +16,83 @@ export function sessionUrlFor(input: string): string {
   }
   return `https://${trimmed}/.well-known/jmap`
 }
+
+/** Local dev servers speak plain HTTP and live on a port. */
+function isLocal(domain: string): boolean {
+  return domain === 'localhost' || domain.endsWith('.localhost') || domain === '127.0.0.1'
+}
+
+/**
+ * Ordered guesses for the session URL of an email address.
+ *
+ * RFC 8620 says to resolve the `_jmap._tcp` SRV record, but a browser has no
+ * DNS API and this app has no backend, so we probe the conventional hosts
+ * instead. `mail.` comes first because it is by far the most common, and
+ * because the apex often has no A record at all on mail-only domains.
+ * srvCandidates() covers what this misses, but only when the user asks for it.
+ */
+export function discoveryCandidates(email: string): string[] {
+  const domain = email.trim().split('@')[1]?.trim().toLowerCase()
+  if (!domain) return []
+  if (isLocal(domain)) {
+    // The dev Stalwart; https and the bare host are hopeless here.
+    return [
+      'http://localhost:8080/.well-known/jmap',
+      `http://${domain}/.well-known/jmap`,
+    ]
+  }
+  return [
+    `https://mail.${domain}/.well-known/jmap`,
+    `https://${domain}/.well-known/jmap`,
+    `https://jmap.${domain}/.well-known/jmap`,
+    `https://imap.${domain}/.well-known/jmap`,
+  ]
+}
+
+interface DohAnswer {
+  type: number
+  data: string
+}
+
+/**
+ * Resolve the `_jmap._tcp` SRV record over DNS-over-HTTPS.
+ *
+ * This is the spec's discovery mechanism and the only way to reach servers
+ * whose hostname isn't guessable — but it hands the mail domain to a third
+ * party, so it is never called on its own: the UI offers it only after every
+ * guess in discoveryCandidates() has failed, and only on an explicit click.
+ */
+export async function srvCandidates(email: string, resolver = DOH_RESOLVER): Promise<string[]> {
+  const domain = email.trim().split('@')[1]?.trim().toLowerCase()
+  if (!domain || isLocal(domain)) return []
+  const url = `${resolver}?name=${encodeURIComponent(`_jmap._tcp.${domain}`)}&type=SRV`
+  let body: { Answer?: DohAnswer[] }
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/dns-json' } })
+    if (!res.ok) throw new JmapError(`HTTP ${res.status}`, 'network')
+    body = (await res.json()) as { Answer?: DohAnswer[] }
+  } catch (e) {
+    throw new JmapError(e instanceof Error ? e.message : 'DNS lookup failed', 'network')
+  }
+  const out: string[] = []
+  for (const answer of body.Answer ?? []) {
+    if (answer.type !== SRV_TYPE) continue
+    // "priority weight port target." — target carries a trailing dot.
+    const [, , port, target] = answer.data.trim().split(/\s+/)
+    if (!target || !port) continue
+    const host = target.replace(/\.$/, '')
+    if (!host || host === '.') continue
+    out.push(
+      port === '443'
+        ? `https://${host}/.well-known/jmap`
+        : `https://${host}:${port}/.well-known/jmap`,
+    )
+  }
+  return out
+}
+
+const DOH_RESOLVER = 'https://cloudflare-dns.com/dns-query'
+const SRV_TYPE = 33
 
 export interface ResolvedSession {
   session: JmapSession

@@ -1,46 +1,67 @@
 import { useState } from 'react'
 import type { AuthMethod } from '../../domain/account'
+import { discoveryCandidates, srvCandidates } from '../../providers/jmap/client/session'
 import { t } from '../../lib/i18n'
-import { addAccount } from '../../services/accounts'
+import { addAccount, NoServerFound } from '../../services/accounts'
 import { Icon } from '../../ui/Icon'
-import { inputClass, primaryButtonClass } from '../../ui/styles'
+import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
-const presets = [
-  {
-    id: 'stalwart',
-    label: 'Stalwart (local)',
-    server: 'http://localhost:8080/.well-known/jmap',
-    method: 'basic' as AuthMethod,
-  },
-  {
-    id: 'fastmail',
-    label: 'Fastmail',
-    server: 'https://api.fastmail.com/jmap/session',
-    method: 'bearer' as AuthMethod,
-  },
-  { id: 'custom', label: t('login.preset.custom'), server: '', method: 'basic' as AuthMethod },
-]
-
+/**
+ * One mask for every server. The email address is enough for the common case:
+ * discoveryCandidates() probes the conventional hosts, and only if all of them
+ * miss do the wider options (DNS lookup, manual URL) appear — see below.
+ */
 export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void }) {
-  const [preset, setPreset] = useState(presets[0]!)
-  const [server, setServer] = useState(presets[0]!.server)
-  const [method, setMethod] = useState<AuthMethod>('basic')
-  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
   const [secret, setSecret] = useState('')
+  const [method, setMethod] = useState<AuthMethod>('basic')
+  const [manualServer, setManualServer] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Set once the guesses have come up empty; unlocks the fallbacks.
+  const [notFound, setNotFound] = useState(false)
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault()
+  const credentials = () => ({
+    method,
+    username: method === 'basic' ? email.trim() : undefined,
+    secret,
+  })
+
+  async function connect(candidates: string[]) {
     setBusy(true)
     setError(null)
     try {
-      const id = await addAccount(server, {
-        method,
-        username: method === 'basic' ? username : undefined,
-        secret,
-      })
-      onDone(id)
+      onDone(await addAccount(candidates, credentials()))
+    } catch (err) {
+      if (err instanceof NoServerFound) {
+        setNotFound(true)
+        setError(t('login.noServer'))
+      } else {
+        setError(err instanceof Error ? err.message : String(err))
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault()
+    void connect(
+      manualServer.trim() ? [manualServer.trim()] : discoveryCandidates(email),
+    )
+  }
+
+  /** Opt-in only: this is the one step that tells a third party our domain. */
+  async function lookupViaDns() {
+    setBusy(true)
+    setError(null)
+    try {
+      const found = await srvCandidates(email)
+      if (!found.length) {
+        setError(t('login.noSrvRecord'))
+        return
+      }
+      await connect(found)
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err))
     } finally {
@@ -48,7 +69,6 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
     }
   }
 
-  
   return (
     <div className="flex h-full items-center justify-center bg-canvas p-4">
       <form
@@ -65,59 +85,21 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
           </div>
         </div>
 
-        <div className="flex gap-1.5">
-          {presets.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => {
-                setPreset(p)
-                setServer(p.server)
-                setMethod(p.method)
-              }}
-              className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition-colors ${preset.id === p.id ? 'bg-accent text-accent-ink shadow-raised' : 'bg-surface-2 text-ink-muted hover:text-ink'}`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
         <label className="block space-y-1.5">
-          <span className="text-xs font-medium text-ink-muted">{t('login.server')}</span>
+          <span className="text-xs font-medium text-ink-muted">{t('login.email')}</span>
           <input
             className={inputClass}
-            value={server}
-            onChange={(e) => setServer(e.target.value)}
-            placeholder={t('login.serverPlaceholder')}
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setNotFound(false)
+            }}
+            placeholder="you@example.com"
+            autoComplete="username"
             required
           />
         </label>
-
-        <label className="block space-y-1.5">
-          <span className="text-xs font-medium text-ink-muted">{t('login.auth')}</span>
-          <select
-            className={inputClass}
-            value={method}
-            onChange={(e) => setMethod(e.target.value as AuthMethod)}
-          >
-            <option value="basic">{t('login.auth.basic')}</option>
-            <option value="bearer">{t('login.auth.bearer')}</option>
-          </select>
-        </label>
-
-        {method === 'basic' && (
-          <label className="block space-y-1.5">
-            <span className="text-xs font-medium text-ink-muted">{t('login.username')}</span>
-            <input
-              className={inputClass}
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="alice@localhost"
-              autoComplete="username"
-              required
-            />
-          </label>
-        )}
 
         <label className="block space-y-1.5">
           <span className="text-xs font-medium text-ink-muted">
@@ -135,6 +117,44 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
 
         {error && (
           <p className="rounded-control bg-danger-wash px-3 py-2 text-sm text-danger">{error}</p>
+        )}
+
+        {notFound && (
+          <div className="space-y-3 rounded-control bg-surface-2 p-3">
+            <p className="text-xs text-ink-muted">{t('login.notFoundHelp')}</p>
+
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void lookupViaDns()}
+              className={`w-full ${secondaryButtonClass}`}
+            >
+              {t('login.tryDns')}
+            </button>
+            <p className="text-xs text-ink-subtle">{t('login.tryDns.privacy')}</p>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-ink-muted">{t('login.server')}</span>
+              <input
+                className={inputClass}
+                value={manualServer}
+                onChange={(e) => setManualServer(e.target.value)}
+                placeholder={t('login.serverPlaceholder')}
+              />
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-ink-muted">{t('login.auth')}</span>
+              <select
+                className={inputClass}
+                value={method}
+                onChange={(e) => setMethod(e.target.value as AuthMethod)}
+              >
+                <option value="basic">{t('login.auth.basic')}</option>
+                <option value="bearer">{t('login.auth.bearer')}</option>
+              </select>
+            </label>
+          </div>
         )}
 
         <button type="submit" disabled={busy} className={`w-full ${primaryButtonClass}`}>
