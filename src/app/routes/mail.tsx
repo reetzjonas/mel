@@ -62,11 +62,7 @@ function MailLayout() {
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       {/* The sidebar rides directly on the canvas; only content panes float. */}
       <aside className={`w-full shrink-0 lg:block lg:w-56 ${inList ? 'hidden' : ''}`}>
-        <MailboxSidebar
-          accountId={account.id}
-          accountLabel={account.label}
-          mailboxes={mailboxes ?? []}
-        />
+        <MailboxSidebar account={account} mailboxes={mailboxes ?? []} />
       </aside>
       <div className={`min-w-0 flex-1 lg:block ${inList ? '' : 'hidden'}`}>
         <Outlet />

@@ -19,3 +19,15 @@ export function formatListDate(value: number | string): string {
 export function formatFullDate(iso: string): string {
   return fullDate.format(new Date(iso))
 }
+
+const relative = new Intl.RelativeTimeFormat(currentLocale, { numeric: 'auto' })
+
+/** "just now" / "2 minutes ago" for a past timestamp. */
+export function formatRelativePast(epochMs: number): string {
+  const seconds = Math.round((epochMs - Date.now()) / 1000)
+  const abs = Math.abs(seconds)
+  if (abs < 45) return relative.format(0, 'second')
+  if (abs < 3600) return relative.format(Math.round(seconds / 60), 'minute')
+  if (abs < 86400) return relative.format(Math.round(seconds / 3600), 'hour')
+  return relative.format(Math.round(seconds / 86400), 'day')
+}

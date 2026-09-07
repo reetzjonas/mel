@@ -84,3 +84,21 @@ test('folder rows keep their height on hover', async ({ page }) => {
     expect((await row.boundingBox())?.height).toBe(before)
   }
 })
+
+test('the sidebar reports how updates are arriving', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+
+  // Stalwart offers an event source, so the scheduler should settle on push
+  // rather than the polling fallback.
+  const status = page.getByTestId('sync-status')
+  await expect(status).toContainText('Live updates', { timeout: 15_000 })
+
+  // Pinned: it must not scroll away with the folder list.
+  await page.setViewportSize({ width: 1280, height: 340 })
+  const before = (await status.boundingBox())?.y
+  await page.locator('nav div.overflow-y-auto').evaluate((e) => e.scrollTo(0, 9999))
+  expect((await status.boundingBox())?.y).toBe(before)
+})

@@ -21,13 +21,61 @@ interface Controller {
 
 const controllers = new Map<string, Controller>()
 
+/** How updates are reaching us right now, as opposed to what the server offers. */
+export type SyncMode = 'connecting' | 'push' | 'poll' | 'stopped'
+
+export interface SyncStatus {
+  mode: SyncMode
+  /** Poll interval in ms; 0 while pushing. */
+  intervalMs: number
+  /** Epoch ms of the last tick that completed without throwing; 0 if none yet. */
+  lastSyncAt: number
+  syncing: boolean
+}
+
+const IDLE: SyncStatus = { mode: 'stopped', intervalMs: 0, lastSyncAt: 0, syncing: false }
+
+const statuses = new Map<string, SyncStatus>()
+const listeners = new Set<() => void>()
+
+/**
+ * Snapshots are replaced, never mutated: useSyncExternalStore compares by
+ * identity and would miss an in-place edit.
+ */
+function setStatus(accountId: string, patch: Partial<SyncStatus>) {
+  const prev = statuses.get(accountId) ?? IDLE
+  const next = { ...prev, ...patch }
+  if (
+    next.mode === prev.mode &&
+    next.intervalMs === prev.intervalMs &&
+    next.lastSyncAt === prev.lastSyncAt &&
+    next.syncing === prev.syncing
+  )
+    return
+  statuses.set(accountId, next)
+  for (const fn of listeners) fn()
+}
+
+export function getSyncStatus(accountId: string): SyncStatus {
+  return statuses.get(accountId) ?? IDLE
+}
+
+export function subscribeSyncStatus(fn: () => void): () => void {
+  listeners.add(fn)
+  return () => listeners.delete(fn)
+}
+
 async function tick(accountId: string) {
+  setStatus(accountId, { syncing: true })
   try {
     await flush(accountId)
     await syncAccount(accountId)
     await notifyNewMail(accountId)
+    setStatus(accountId, { lastSyncAt: Date.now() })
   } catch {
     /* transient; next tick retries */
+  } finally {
+    setStatus(accountId, { syncing: false })
   }
 }
 
@@ -35,6 +83,7 @@ function schedulePoll(accountId: string, ctl: Controller) {
   if (ctl.stopped) return
   if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
   const interval = document.hidden ? POLL_HIDDEN_MS : POLL_FOREGROUND_MS
+  setStatus(accountId, { mode: 'poll', intervalMs: interval })
   ctl.pollTimer = setTimeout(() => {
     void tick(accountId).finally(() => schedulePoll(accountId, ctl))
   }, interval)
@@ -59,6 +108,7 @@ async function startSse(accountId: string, ctl: Controller) {
       onopen: async (res) => {
         if (!res.ok) throw new Error(`SSE ${res.status}`)
         ctl.sseFailures = 0
+        setStatus(accountId, { mode: 'push', intervalMs: 0 })
       },
       onmessage: (ev) => {
         if (ev.event !== 'state' || !ev.data) return
@@ -92,6 +142,7 @@ export function startScheduler(accountId: string) {
     stopped: false,
   }
   controllers.set(accountId, ctl)
+  setStatus(accountId, { mode: 'connecting', intervalMs: 0 })
   void tick(accountId)
   void startSse(accountId, ctl)
 
@@ -110,6 +161,8 @@ export function stopScheduler(accountId: string) {
   ctl.abort.abort()
   if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
   controllers.delete(accountId)
+  statuses.delete(accountId)
+  for (const fn of listeners) fn()
 }
 
 /** Newest inbox arrivals, used by notifications to diff. */

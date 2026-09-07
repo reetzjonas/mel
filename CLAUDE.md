@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 50 Vitest + 28 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 50 Vitest + 29 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -136,15 +136,18 @@ also schmales/niedriges Fenster. Headless Chromium zeigt Overlay-Scrollbars
 (Breite 0) — der Bug ist dort **nicht** sichtbar, ein e2e-Test darauf wäre
 wertlos; am echten Browser messen.
 
-**B. Sync-Status, unten in der Ordner-Sidebar angepinnt.** Soll zeigen, ob
-periodisch gepollt oder gepusht wird, dazu sinnvollerweise letzter Sync und ein
-Hinweis auf hängende Outbox-Einträge. Quellen liegen alle schon vor:
-`account.capabilities.push` (`'sse' | 'poll'`) und `capabilities.webPush` aus
-`domain/account.ts`, der Ticker in `sync/scheduler.ts`, `db.syncState`
-(`updatedAt`) und `db.outbox` (Status `pending`/`inflight`). Die Sidebar ist das
-`nav` in `features/mail/MailboxSidebar.tsx` und schon `flex-col` — Footer per
-`mt-auto`. Achtung: das `nav` ist der Scroll-Container, der Footer soll *nicht*
-mitscrollen, also Scrollbereich und Footer trennen (hängt mit A zusammen).
+**B. ~~Sync-Status unten in der Ordner-Sidebar~~ erledigt.**
+`features/mail/SyncStatus.tsx` zeigt den *tatsächlichen* Live-Modus (Push via
+SSE / „Abruf alle 30 s" / Verbinde / Offline), wann zuletzt erfolgreich
+synchronisiert wurde, und wie viele Outbox-Einträge noch warten. Der Scheduler
+führt dafür einen kleinen beobachtbaren Store (`getSyncStatus` /
+`subscribeSyncStatus`, angezapft per `useSyncExternalStore`) — Snapshots werden
+**ersetzt, nie mutiert**, sonst merkt React die Änderung nicht.
+Zwei Details, die beim Nachbauen leicht schiefgehen: das `nav` war selbst der
+Scroll-Container, der Footer wäre also mitgescrollt — jetzt `nav` = Spalte,
+innerer `div` = Scrollbereich; und der Web-Push-Hinweis hängt an
+`isSubscribed()`, nicht an `capabilities.webPush`, sonst behauptet die Leiste
+„Push-Benachrichtigungen an", obwohl gar kein Abo existiert.
 
 **C. Feature-Caps und ihre Gates sichtbar machen.** Vermutlich eine
 Settings-Sektion. Die Flags entstehen in `providers/jmap/client/session.ts`

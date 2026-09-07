@@ -1,12 +1,14 @@
 import { Link } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
+import type { Account } from '../../domain/account'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
 import { createMailbox, deleteMailbox, renameMailbox } from '../../services/mailboxes'
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { SyncStatus } from './SyncStatus'
 
 const ROLE_ICONS: Record<string, IconName> = {
   inbox: 'inbox',
@@ -18,9 +20,7 @@ const ROLE_ICONS: Record<string, IconName> = {
 }
 
 type Dialog =
-  | { kind: 'create'; parentId: string | null }
-  | { kind: 'rename'; mailbox: Mailbox }
-  | null
+  { kind: 'create'; parentId: string | null } | { kind: 'rename'; mailbox: Mailbox } | null
 
 function FolderMenu({
   mailbox,
@@ -88,15 +88,8 @@ function FolderMenu({
   )
 }
 
-export function MailboxSidebar({
-  accountId,
-  accountLabel,
-  mailboxes,
-}: {
-  accountId: string
-  accountLabel: string
-  mailboxes: Mailbox[]
-}) {
+export function MailboxSidebar({ account, mailboxes }: { account: Account; mailboxes: Mailbox[] }) {
+  const accountId = account.id
   const [refreshing, setRefreshing] = useState(false)
   const [dialog, setDialog] = useState<Dialog>(null)
   const { openCompose, showSnackbar } = useUi()
@@ -120,61 +113,65 @@ export function MailboxSidebar({
   }
 
   return (
-    <nav className="flex h-full flex-col overflow-y-auto px-2 py-3 sm:px-0">
-      <button
-        type="button"
-        onClick={() => openCompose({})}
-        className="mb-4 hidden items-center justify-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] lg:flex"
-      >
-        <Icon name="compose" size={15} />
-        {t('compose.new')}
-      </button>
-      <div className="mb-1.5 flex items-center justify-between pr-1 pl-2.5">
-        <span
-          className="truncate text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase"
-          title={accountLabel}
+    <nav className="flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:px-0">
+        <button
+          type="button"
+          onClick={() => openCompose({})}
+          className="mb-4 hidden items-center justify-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] lg:flex"
         >
-          {accountLabel}
-        </span>
-        <span className="flex items-center">
-          <button
-            type="button"
-            title={t('folder.new')}
-            onClick={() => setDialog({ kind: 'create', parentId: null })}
-            className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+          <Icon name="compose" size={15} />
+          {t('compose.new')}
+        </button>
+        <div className="mb-1.5 flex items-center justify-between pr-1 pl-2.5">
+          <span
+            className="truncate text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase"
+            title={account.label}
           >
-            <Icon name="folderPlus" size={14} />
-          </button>
-          <button
-            type="button"
-            title={t('mail.refresh')}
-            onClick={refresh}
-            className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Icon name="refresh" size={14} className={refreshing ? 'animate-spin' : undefined} />
-          </button>
-        </span>
+            {account.label}
+          </span>
+          <span className="flex items-center">
+            <button
+              type="button"
+              title={t('folder.new')}
+              onClick={() => setDialog({ kind: 'create', parentId: null })}
+              className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Icon name="folderPlus" size={14} />
+            </button>
+            <button
+              type="button"
+              title={t('mail.refresh')}
+              onClick={refresh}
+              className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Icon name="refresh" size={14} className={refreshing ? 'animate-spin' : undefined} />
+            </button>
+          </span>
+        </div>
+        <div className="space-y-px">
+          {mailboxes.map((m) => (
+            <Link
+              key={m.id}
+              to="/mail/$mailboxId"
+              params={{ mailboxId: m.id }}
+              className="group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
+              style={{ paddingLeft: m.parentId ? '2rem' : undefined }}
+            >
+              <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
+              <span className="min-w-0 flex-1 truncate">{m.name}</span>
+              {m.unreadEmails > 0 && (
+                <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted group-hover:hidden">
+                  {m.unreadEmails}
+                </span>
+              )}
+              <FolderMenu mailbox={m} onAction={(a) => onMenuAction(m, a)} />
+            </Link>
+          ))}
+        </div>
       </div>
-      <div className="space-y-px">
-        {mailboxes.map((m) => (
-          <Link
-            key={m.id}
-            to="/mail/$mailboxId"
-            params={{ mailboxId: m.id }}
-            className="group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
-            style={{ paddingLeft: m.parentId ? '2rem' : undefined }}
-          >
-            <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{m.name}</span>
-            {m.unreadEmails > 0 && (
-              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted group-hover:hidden">
-                {m.unreadEmails}
-              </span>
-            )}
-            <FolderMenu mailbox={m} onAction={(a) => onMenuAction(m, a)} />
-          </Link>
-        ))}
-      </div>
+
+      <SyncStatus account={account} />
 
       {dialog?.kind === 'create' && (
         <NameDialog

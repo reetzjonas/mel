@@ -108,6 +108,16 @@ const en = {
   'shortcuts.gi': 'Go to inbox',
   'shortcuts.help': 'This help',
 
+  'sync.push': 'Live updates',
+  'sync.poll': 'Checking every',
+  'sync.connecting': 'Connecting…',
+  'sync.syncing': 'Syncing…',
+  'sync.offline': 'Offline',
+  'sync.paused': 'Not syncing',
+  'sync.webPush': 'push notifications on',
+  'sync.queued.one': '1 change waiting to be sent',
+  'sync.queued.many': 'changes waiting to be sent',
+
   'settings.title': 'Settings',
   'settings.language': 'Language',
   'settings.language.system': 'System',
@@ -338,6 +348,16 @@ const de: Partial<Record<MsgKey, string>> = {
   'shortcuts.slash': 'Suche',
   'shortcuts.gi': 'Zum Posteingang',
   'shortcuts.help': 'Diese Hilfe',
+
+  'sync.push': 'Live-Updates',
+  'sync.poll': 'Abruf alle',
+  'sync.connecting': 'Verbinde…',
+  'sync.syncing': 'Synchronisiere…',
+  'sync.offline': 'Offline',
+  'sync.paused': 'Kein Abgleich',
+  'sync.webPush': 'Push-Benachrichtigungen an',
+  'sync.queued.one': '1 Änderung wartet auf Übertragung',
+  'sync.queued.many': 'Änderungen warten auf Übertragung',
 
   'settings.title': 'Einstellungen',
   'settings.language': 'Sprache',
