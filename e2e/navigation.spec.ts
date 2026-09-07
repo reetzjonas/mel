@@ -65,3 +65,22 @@ test('signing out clears the account and its cached data from the device', async
   )
   expect(rows).toBe(0)
 })
+
+test('folder rows keep their height on hover', async ({ page }) => {
+  // The unread badge is swapped for the "…" menu button on hover. The button
+  // used to be taller than the badge, so every row below the pointer shifted.
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+
+  const rows = page.locator('nav a[href^="/mail/"]')
+  await expect(rows.first()).toBeVisible()
+  for (let i = 0; i < (await rows.count()); i++) {
+    const row = rows.nth(i)
+    const before = (await row.boundingBox())?.height
+    await row.hover()
+    expect((await row.boundingBox())?.height).toBe(before)
+  }
+})

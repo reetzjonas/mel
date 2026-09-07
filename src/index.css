@@ -25,6 +25,7 @@
   --color-accent-wash: var(--mel-accent-wash);
   --color-honey: var(--mel-honey);
   --color-success: var(--mel-success);
+  --color-scrollbar: var(--mel-scrollbar);
   --color-danger: var(--mel-danger);
   --color-danger-wash: var(--mel-danger-wash);
 
@@ -62,6 +63,7 @@
   --mel-accent-wash: oklch(0.48 0.2 292 / 0.1);
   --mel-honey: oklch(0.68 0.15 72);
   --mel-success: oklch(0.55 0.14 150);
+  --mel-scrollbar: oklch(0.245 0.017 300 / 0.28);
   --mel-danger: oklch(0.53 0.2 25);
   --mel-danger-wash: oklch(0.53 0.2 25 / 0.1);
 
@@ -87,6 +89,7 @@
   --mel-accent-wash: oklch(0.72 0.17 292 / 0.16);
   --mel-honey: oklch(0.79 0.14 72);
   --mel-success: oklch(0.72 0.14 150);
+  --mel-scrollbar: oklch(0.98 0.005 300 / 0.28);
   --mel-danger: oklch(0.7 0.17 25);
   --mel-danger-wash: oklch(0.7 0.17 25 / 0.16);
 
@@ -109,6 +112,36 @@ body {
   font-variant-numeric: tabular-nums;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
+}
+
+/*
+ * Scrollbars. Left to the browser, a nested scroller (the folder list) gets a
+ * chunky opaque bar while the page itself gets the slim overlay one, so the
+ * same list looks different depending on which element ended up scrolling.
+ * Pin every scroller to the same slim, dimmed bar.
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--mel-scrollbar) transparent;
+}
+
+/* Engines without the standard properties (Safari) need the -webkit- pseudos,
+   which take over completely wherever they are understood. */
+@supports not (scrollbar-width: thin) {
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--mel-scrollbar);
+    background-clip: content-box;
+    border: 3px solid transparent;
+    border-radius: 999px;
+  }
 }
 
 /* Headings read better slightly tightened at these sizes. */

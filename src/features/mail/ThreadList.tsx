@@ -5,6 +5,7 @@ import { useUi } from '../../app/store'
 import type { EmailAddress, EmailHeader } from '../../domain/email'
 import { formatListDate } from '../../lib/dates'
 import { t } from '../../lib/i18n'
+import { cleanPreview } from '../../lib/preview'
 import { archiveEmail, deleteEmail, markRead, setFlagged } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
@@ -163,10 +164,12 @@ function Row({
         {snippet?.preview ? (
           <span
             className="block truncate text-xs text-ink-subtle"
-            dangerouslySetInnerHTML={{ __html: snippetHtml(snippet.preview) }}
+            dangerouslySetInnerHTML={{ __html: snippetHtml(cleanPreview(snippet.preview)) }}
           />
         ) : (
-          <span className="block truncate text-xs text-ink-subtle">{email.preview}</span>
+          <span className="block truncate text-xs text-ink-subtle">
+            {cleanPreview(email.preview)}
+          </span>
         )}
       </span>
     </div>

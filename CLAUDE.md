@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 44 Vitest + 27 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 50 Vitest + 28 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -77,6 +77,11 @@ Control-Klassen in `src/ui/styles.ts` (`inputClass`, `primaryButtonClass`,
 `secondaryButtonClass`, `overlayPanelClass`) — **nicht wieder pro Datei duplizieren**.
 Motion via `animate-rise`/`animate-fade` + `prefers-reduced-motion`-Fallback.
 Bausteine: `ui/Skeleton.tsx` (statt Lade-Text), `ui/EmptyState.tsx` (statt nacktem Text).
+**Scrollbalken sind global gesetzt** (`scrollbar-width: thin` + `--mel-scrollbar`,
+`::-webkit-scrollbar` nur per `@supports not` für Safari): ohne das bekommt ein
+verschachtelter Scroller (Ordnerliste) den dicken Browser-Default, während die
+Seite selbst den schmalen Overlay-Balken hat — dieselbe Liste sah je nachdem,
+welches Element gerade scrollte, unterschiedlich aus.
 HTML-Mail rendert bewusst auf Weiß (Absender kodieren dunkle Schrift hart);
 **Klartext-Mail** folgt dem App-Theme (`textFrameDoc` bekommt die Farben übergeben).
 
@@ -204,6 +209,17 @@ annehmen.**
   irgendwann verdrängt und der Test flackert. Gefixt (löscht sich jetzt selbst) —
   falls wieder Kontakt-Autocomplete-Flakes auftreten, zuerst `ContactCard/get` auf
   dem Account prüfen, ob sich wieder Test-Leichen angesammelt haben.
+- **Hover-Swaps müssen höhenneutral sein.** In der Ordnerliste wird der
+  Ungelesen-Zähler bei Hover gegen den „…"-Menü-Button getauscht; der war höher
+  als das Badge, wodurch jede Zeile darunter um 3 px sprang. Beide sitzen jetzt
+  in einer festen 20-px-Box, die Zeile hat `min-h-[34px]` + `leading-5`.
+  Regression: `e2e/navigation.spec.ts` misst jede Zeile mit und ohne Hover.
+- **JMAP-`preview` enthält oft CSS.** Baut der Server die Vorschau aus dem
+  HTML-Teil, rutscht der Inhalt eines inline-`<style>` mit hinein und die Liste
+  zeigt „html, body, * { -webkit-text-size-adjust: none; …". Da die Vorschau
+  abgeschnitten wird, ist der Block meist **unbalanciert** — `lib/preview.ts`
+  entfernt darum auch die angefangene letzte Regel. Nur Blöcke mit
+  `prop: value` fliegen raus, damit „Hi {name}" heil bleibt.
 - Playwright `getByRole({name: 'X'})` matcht **case-insensitive als Substring**
   (nicht exact) — "Week" matchte z. B. Reste mit "…weekly" im Titel. Bei kurzen/
   generischen Labels (View-Switcher, Aktions-Buttons) `exact: true` setzen.

@@ -59,7 +59,7 @@ function FolderMenu({
           e.stopPropagation()
           setOpen((o) => !o)
         }}
-        className="hidden rounded-md p-1 text-ink-muted group-hover:inline-flex hover:bg-surface-2 hover:text-ink"
+        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-muted group-hover:inline-flex hover:bg-surface-2 hover:text-ink"
       >
         <Icon name="more" size={13} />
       </button>
@@ -161,13 +161,13 @@ export function MailboxSidebar({
             key={m.id}
             to="/mail/$mailboxId"
             params={{ mailboxId: m.id }}
-            className="group flex items-center gap-2.5 rounded-control px-2.5 py-[7px] text-[13px] text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
+            className="group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
             style={{ paddingLeft: m.parentId ? '2rem' : undefined }}
           >
             <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
             <span className="min-w-0 flex-1 truncate">{m.name}</span>
             {m.unreadEmails > 0 && (
-              <span className="rounded-full bg-surface-2 px-1.5 py-px text-[11px] font-semibold text-ink-muted group-hover:hidden">
+              <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted group-hover:hidden">
                 {m.unreadEmails}
               </span>
             )}
