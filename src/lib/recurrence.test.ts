@@ -15,6 +15,8 @@ const base: CalendarEvent = {
   showWithoutTime: false,
   status: 'confirmed',
   recurrenceRule: { frequency: 'weekly', byDay: ['mo'] },
+  participants: [],
+  isOrganizerCopy: true,
 }
 
 const win = (fromIso: string, toIso: string) =>

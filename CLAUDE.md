@@ -20,6 +20,12 @@ Swipe + Pull-to-Refresh, Kontakte (RFC 9610, Autocomplete im Compose), Kalender
 UnlockGate), Web Push ohne Backend (RFC 9749, kompletter PushVerification-Handshake),
 PWA (Update-Toast, storage.persist).
 
+Einladungen/RSVP sind fertig: Teilnehmer-Editor im EventDialog (mit Kontakt-
+Autocomplete), Stalwart verschickt iMIP-Einladungen, die Gegenseite bekommt den
+Termin plus Einladungsansicht mit Zusagen/Vielleicht/Absagen, und die Antwort
+landet als Status beim Organisator. Voller Round-Trip e2e getestet
+(`e2e/calendar.spec.ts`, alice lädt bob ein und bob sagt zu).
+
 Kalender kann außerdem: Week-/Day-Zeitraster (Klick-to-create, Überlappungs-Spalten,
 Now-Linie), Multi-Kalender-Farben + Sichtbarkeits-Toggles (Sidebar, localStorage),
 Kalenderauswahl im EventDialog. Mail-Nacharbeiten erledigt: Anhänge öffnen (war ein
@@ -27,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 23 Vitest + 25 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 32 Vitest + 26 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Design-System (seit dem UI-Redesign)
@@ -62,8 +68,11 @@ Admin-Passwort in `docker/stalwart/.admin-pass`. Kompletter Reset: siehe README.
 1. ~~Kalender Week-/Day-Grid, Multi-Kalender-Farben/Toggles~~ **erledigt.**
    Drag-Move/Resize von Events fehlt noch (aktuell: Klick-to-create + Dialog-Edit,
    kein Drag) — bei Bedarf nachreichen.
-2. **Einladungen/RSVP** (Teilnehmer im EventDialog; Stalwart macht iTIP/iMIP
-   serverseitig; `CalendarEventNotification`-Anzeige; Kalender-Alerts lokal)
+2. ~~Einladungen/RSVP~~ **erledigt** (s. o.). Offen als Nachtrag:
+   `CalendarEventNotification/get` wird noch nicht gelesen — der Server führt die
+   Liste (Typ `updated`/`created`, mit `changedBy` und `eventPatch`), damit ließe
+   sich „Bob hat zugesagt" als Benachrichtigung zeigen statt nur als Status im
+   Dialog. Ebenso fehlen lokale Kalender-Alerts.
 3. **recurrenceOverrides** (einzelne Instanzen bearbeiten — Stalwart-Format siehe
    tests/src/jmap/calendar/event.rs im Stalwart-Repo)
 4. **vCard-Import/Export**, Kontaktgruppen-UI
@@ -118,6 +127,30 @@ annehmen.**
   umgeht man die Entschlüsselung (openEnvelope wirft dann).
 - Stalwart-Kalender: `recurrenceRule` **Singular** (nicht `recurrenceRules`);
   ContactCards sind **flache** JSContact-Objekte (kein `card`-Wrapper).
+- **Scheduling/iTIP hat drei Fallen, alle stumm** (mühsam erprobt, s.
+  `providers/jmap/calendars.ts`):
+  1. `CalendarEvent/set` braucht das Argument **`sendSchedulingMessages: true`**.
+     Ohne das wird der Termin samt Teilnehmern gespeichert, aber **keine
+     Einladung verschickt** — kein Fehler, keine Warnung.
+  2. Teilnehmer heißen bei Stalwart **`calendarAddress: "mailto:…"`** (neuer
+     JSCalendar-Entwurf), *nicht* `sendTo`/`email`/`replyTo` wie in RFC 8984.
+     Schickt man die RFC-8984-Form, landet sie als opaker `JSPROP`-Fallback im
+     iCalendar, es entstehen **keine ATTENDEE-Zeilen**, `/get` liefert
+     `participants` gar nicht zurück — und wieder: kein Fehler.
+  3. `roles: {owner: true}` allein reicht nicht: **ohne
+     `organizerCalendarAddress` schreibt Stalwart keinen ORGANIZER** und
+     verschickt nichts. Preis dafür: der Server spiegelt den Organisator als
+     zweiten, rollenlosen Teilnehmer-Eintrag zurück — `toParticipants` faltet
+     das über die Adresse wieder zusammen und behält den Eintrag *mit* Rollen
+     (nur dessen Key funktioniert für RSVP-Patches).
+  Rollen sind `owner`/`chair`/`required`/`optional`. RSVP = Patch auf
+  `participants/<id>/participationStatus` (ein Patch, der einen *ganzen* neuen
+  Teilnehmer anlegen will, scheitert mit `invalidPatch`).
+  Debug-Trick: den rohen iCalendar über CalDAV lesen
+  (`PROPFIND`/`GET` auf `/dav/cal/<user>/default/…`) — dort sieht man sofort, ob
+  ATTENDEE/ORGANIZER wirklich geschrieben wurden oder nur `JSPROP`-Zeilen.
+- Server-Settings dafür: `x:CalendarScheduling` (`enable`, `autoAddInvitations`,
+  HTTP-RSVP) — im Dev-Stalwart ist `enable` schon an, nichts zu tun.
 - Kalender geht nur gegen Stalwart (Fastmail hat keinen Standard-JMAP-Kalender);
   Capability-gating in AppShell vorhanden.
 - e2e: Desktop+Mobile teilen einen Server-Account → zustandsändernde Specs nur

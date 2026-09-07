@@ -1,7 +1,10 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect, useState } from 'react'
+import type { Account } from '../../domain/account'
 import type { Calendar, CalendarEvent } from '../../domain/calendar'
 import { db } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
+import { getIdentities } from '../../services/send'
 
 export function useCalendars(accountId: string | undefined): Calendar[] | undefined {
   return useLiveQuery(async () => {
@@ -17,4 +20,26 @@ export function useEvents(accountId: string | undefined): CalendarEvent[] | unde
     const rows = await db.events.where('accountId').equals(accountId).toArray()
     return rows.map((r) => openEnvelope(r.payload))
   }, [accountId])
+}
+
+/**
+ * The address invitations are sent as. Prefers the server identity (Stalwart
+ * matches iTIP replies on it); falls back to the account label offline.
+ */
+export function useSelfIdentity(account: Account | undefined): { name: string; email: string } {
+  const [identity, setIdentity] = useState<{ name: string; email: string } | null>(null)
+  useEffect(() => {
+    if (!account) return
+    let cancelled = false
+    void getIdentities(account.id)
+      .then((list) => {
+        const primary = list.find((i) => i.email) ?? list[0]
+        if (!cancelled && primary) setIdentity({ name: primary.name, email: primary.email })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [account?.id])
+  return identity ?? { name: '', email: account?.label ?? '' }
 }

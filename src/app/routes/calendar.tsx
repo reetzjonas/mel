@@ -1,14 +1,19 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useUi } from '../store'
-import type { Calendar, CalendarEvent, Occurrence } from '../../domain/calendar'
+import type {
+  Calendar,
+  CalendarEvent,
+  Occurrence,
+  ParticipationStatus,
+} from '../../domain/calendar'
 import { EventDialog } from '../../features/calendar/EventDialog'
 import { dayKey, TimeGrid } from '../../features/calendar/TimeGrid'
-import { useCalendars, useEvents } from '../../features/calendar/hooks'
+import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
 import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
-import { createEvent, deleteEvent, updateEvent } from '../../services/calendar'
+import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
 import { primaryButtonClass } from '../../ui/styles'
 
@@ -113,6 +118,7 @@ function CalendarApp() {
   const [view, setView] = useState<ViewMode>('month')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const { hidden, toggle: toggleCalendar } = useHiddenCalendars(account?.id)
+  const self = useSelfIdentity(account)
 
   const visibleEvents = useMemo(
     () => (events ?? []).filter((e) => !Object.keys(e.calendarIds).every((id) => hidden.has(id))),
@@ -176,6 +182,8 @@ function CalendarApp() {
         showWithoutTime: false,
         status: 'confirmed',
         recurrenceRule: null,
+        participants: [],
+        isOrganizerCopy: true,
       },
     })
   }
@@ -193,6 +201,14 @@ function CalendarApp() {
     } else {
       void updateEvent(account!.id, e)
     }
+  }
+
+  function onDialogRsvp(status: ParticipationStatus) {
+    if (!dialog) return
+    setDialog(null)
+    void rsvpEvent(account!.id, dialog.event, self.email, status).then(() =>
+      showSnackbar({ message: t('cal.rsvpSent') }),
+    )
   }
 
   function step(dir: 1 | -1) {
@@ -405,8 +421,11 @@ function CalendarApp() {
         <EventDialog
           initial={dialog.event}
           calendars={calendars ?? []}
+          accountId={account.id}
+          self={self}
           onClose={() => setDialog(null)}
           onSave={onDialogSave}
+          onRsvp={onDialogRsvp}
           onDelete={
             dialog.isNew
               ? null

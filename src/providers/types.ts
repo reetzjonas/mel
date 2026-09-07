@@ -97,6 +97,12 @@ export interface CalendarProvider {
     event: import('../domain/calendar').CalendarEvent,
   ): Promise<{ id: string | null; failure: SetFailure | null }>
   updateEvent(event: import('../domain/calendar').CalendarEvent): Promise<SetFailure | null>
+  /** Answer an invitation and let the server notify the organizer. */
+  rsvp(
+    eventId: string,
+    participantId: string,
+    status: import('../domain/calendar').ParticipationStatus,
+  ): Promise<SetFailure | null>
   destroyEvents(ids: string[]): Promise<SetFailure | null>
 }
 

@@ -19,6 +19,26 @@ export interface RecurrenceRule {
   byMonthDay?: number[]
 }
 
+export type ParticipationStatus = 'needs-action' | 'accepted' | 'declined' | 'tentative'
+
+/**
+ * An attendee of a scheduled event (RFC 8984 Participant). Addresses are stored
+ * bare; the "mailto:" prefix JMAP uses is a transport detail of the mapper.
+ */
+export interface Participant {
+  /** Key in the server's participant map; generated locally for new invitees. */
+  id: string
+  email: string
+  name: string
+  /** The organizer. Exactly one participant carries this on a scheduled event. */
+  isOrganizer: boolean
+  /** false → optional attendee. */
+  required: boolean
+  status: ParticipationStatus
+  /** The organizer wants an RSVP from this participant. */
+  expectReply: boolean
+}
+
 export interface CalendarEvent {
   id: string
   calendarIds: Record<string, true>
@@ -36,6 +56,13 @@ export interface CalendarEvent {
   showWithoutTime: boolean
   status: 'confirmed' | 'cancelled' | 'tentative'
   recurrenceRule: RecurrenceRule | null
+  /** Empty for a plain, unscheduled event. */
+  participants: Participant[]
+  /**
+   * false when this is an invitation copy the server created for us and someone
+   * else organizes it — we may RSVP, but not edit or invite.
+   */
+  isOrganizerCopy: boolean
 }
 
 export interface Occurrence {

@@ -1,4 +1,4 @@
-import type { CalendarEvent } from '../domain/calendar'
+import type { CalendarEvent, ParticipationStatus } from '../domain/calendar'
 import type { Contact } from '../domain/contact'
 import type { OutgoingEmail } from '../domain/identity'
 import { JmapError } from '../providers/jmap/client/transport'
@@ -17,6 +17,12 @@ export type OutboxAction =
   | { kind: 'event.create'; event: CalendarEvent; tempId: string }
   | { kind: 'event.update'; event: CalendarEvent }
   | { kind: 'event.destroy'; ids: string[] }
+  | {
+      kind: 'event.rsvp'
+      eventId: string
+      participantId: string
+      status: ParticipationStatus
+    }
 
 const BASE_BACKOFF_MS = 5_000
 const MAX_BACKOFF_MS = 5 * 60_000
@@ -176,6 +182,17 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
       const cal = conn.calendars
       if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
       const failure = await cal.updateEvent(action.event)
+      if (failure) {
+        const err = new Error(failure.description ?? failure.type)
+        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
+        throw err
+      }
+      return
+    }
+    case 'event.rsvp': {
+      const cal = conn.calendars
+      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      const failure = await cal.rsvp(action.eventId, action.participantId, action.status)
       if (failure) {
         const err = new Error(failure.description ?? failure.type)
         ;(err as Error & { permanent?: boolean }).permanent = failure.permanent

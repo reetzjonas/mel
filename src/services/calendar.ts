@@ -1,4 +1,4 @@
-import type { CalendarEvent } from '../domain/calendar'
+import type { CalendarEvent, ParticipationStatus } from '../domain/calendar'
 import { db, type EventRow } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
 import { connectionFor } from '../sync/connections'
@@ -49,4 +49,37 @@ export async function deleteEvent(accountId: string, eventId: string): Promise<v
   await db.events.delete([accountId, eventId])
   if (eventId.startsWith('local-')) return
   await enqueue(accountId, { kind: 'event.destroy', ids: [eventId] })
+}
+
+/**
+ * Answer an invitation. Optimistic locally, then the outbox tells the server,
+ * which emails the iTIP reply to the organizer.
+ */
+export async function rsvpEvent(
+  accountId: string,
+  event: CalendarEvent,
+  selfEmail: string,
+  status: ParticipationStatus,
+): Promise<void> {
+  const me = findSelf(event, selfEmail)
+  if (!me) return
+  const updated: CalendarEvent = {
+    ...event,
+    participants: event.participants.map((p) => (p.id === me.id ? { ...p, status } : p)),
+  }
+  await db.events.put(toRow(accountId, updated))
+  if (event.id.startsWith('local-')) return
+  await enqueue(accountId, {
+    kind: 'event.rsvp',
+    eventId: event.id,
+    participantId: me.id,
+    status,
+  })
+}
+
+/** The participant entry for the logged-in user, if they were invited. */
+export function findSelf(event: CalendarEvent, selfEmail: string) {
+  const me = selfEmail.trim().toLowerCase()
+  if (!me) return undefined
+  return event.participants.find((p) => p.email.toLowerCase() === me && !p.isOrganizer)
 }

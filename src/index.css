@@ -24,6 +24,7 @@
   --color-accent-ink: var(--mel-accent-ink);
   --color-accent-wash: var(--mel-accent-wash);
   --color-honey: var(--mel-honey);
+  --color-success: var(--mel-success);
   --color-danger: var(--mel-danger);
   --color-danger-wash: var(--mel-danger-wash);
 
@@ -60,6 +61,7 @@
   --mel-accent-ink: oklch(0.99 0 0);
   --mel-accent-wash: oklch(0.48 0.2 292 / 0.1);
   --mel-honey: oklch(0.68 0.15 72);
+  --mel-success: oklch(0.55 0.14 150);
   --mel-danger: oklch(0.53 0.2 25);
   --mel-danger-wash: oklch(0.53 0.2 25 / 0.1);
 
@@ -84,6 +86,7 @@
   --mel-accent-ink: oklch(0.17 0.04 292);
   --mel-accent-wash: oklch(0.72 0.17 292 / 0.16);
   --mel-honey: oklch(0.79 0.14 72);
+  --mel-success: oklch(0.72 0.14 150);
   --mel-danger: oklch(0.7 0.17 25);
   --mel-danger-wash: oklch(0.7 0.17 25 / 0.16);
 

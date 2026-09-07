@@ -148,3 +148,73 @@ test('edit and delete an event', async ({ page }) => {
   await expect(page.getByText('Event deleted')).toBeVisible()
   await expect(page.getByRole('button', { name: new RegExp(`${title}-2`) })).toHaveCount(0)
 })
+
+test('invite the other account, accept there, and see the reply on the organizer side', async ({
+  page,
+  browser,
+}) => {
+  test.setTimeout(120_000)
+  const title = `Invite-${Date.now() % 100000}`
+  // A random day next month keeps both accounts' month cells under the
+  // 3-chip display cap when runs pile up.
+  const day = randomNextMonthDate(20)
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(day)
+  // Typing the full address avoids depending on contact autocomplete here.
+  await page.getByLabel('Add attendee…').fill('bob@localhost')
+  await page.getByLabel('Add attendee…').press('Enter')
+  // The organizer is pinned in alongside the first attendee — without a
+  // participant carrying the owner role Stalwart sends no invitation at all.
+  // exact: the sidebar's "Stalwart Calendar (alice@localhost)" matches too.
+  await expect(page.getByText('alice@localhost', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Save and invite' }).click()
+
+  await page.getByRole('button', { name: 'next' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible({
+    timeout: 10_000,
+  })
+
+  // Bob receives the invitation as a real event, not just an iMIP mail.
+  const bobCtx = await browser.newContext()
+  const bobPage = await bobCtx.newPage()
+  await bobPage.goto('/mail')
+  await bobPage.getByPlaceholder('alice@localhost').fill('bob@localhost')
+  await bobPage.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-bob')
+  await bobPage.getByRole('button', { name: 'Connect' }).click()
+  await expect(bobPage.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await bobPage.getByRole('link', { name: 'Calendar' }).first().click()
+  await bobPage.getByRole('button', { name: 'next' }).click()
+
+  const bobChip = bobPage.getByRole('button', { name: new RegExp(title) }).first()
+  await expect(bobChip).toBeVisible({ timeout: 30_000 })
+  await bobChip.click()
+  // Bob is an attendee, so he gets the RSVP view rather than the editor.
+  await expect(bobPage.getByRole('heading', { name: 'Invitation' })).toBeVisible()
+  await bobPage.getByRole('button', { name: 'Accept', exact: true }).click()
+  await expect(bobPage.getByText('Reply sent')).toBeVisible()
+
+  // The iTIP reply travels by mail, so give it a moment to land.
+  await page.getByRole('button', { name: new RegExp(title) }).first().click()
+  await expect
+    .poll(
+      async () => {
+        await page.getByRole('button', { name: 'Cancel' }).click()
+        await page.getByRole('button', { name: new RegExp(title) }).first().click()
+        return page.getByText('Accepted').count()
+      },
+      { timeout: 45_000, intervals: [3_000] },
+    )
+    .toBeGreaterThan(0)
+
+  // Clean up on both sides (deleting sends bob a cancellation).
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
+    timeout: 10_000,
+  })
+  await bobCtx.close()
+})

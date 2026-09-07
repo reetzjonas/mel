@@ -1,4 +1,10 @@
-import type { Calendar, CalendarEvent, RecurrenceRule } from '../../domain/calendar'
+import type {
+  Calendar,
+  CalendarEvent,
+  Participant,
+  ParticipationStatus,
+  RecurrenceRule,
+} from '../../domain/calendar'
 import {
   CannotCalculateChanges,
   type CalendarProvider,
@@ -30,7 +36,7 @@ interface JmapCalendar {
   myRights?: { mayWriteAll?: boolean; mayWriteOwn?: boolean; mayDelete?: boolean }
 }
 
-interface JmapCalendarEvent {
+export interface JmapCalendarEvent {
   id: string
   calendarIds: Record<string, boolean>
   uid?: string
@@ -50,6 +56,20 @@ interface JmapCalendarEvent {
     byDay?: Array<{ day: string }>
     byMonthDay?: number[]
   } | null
+  participants?: Record<string, JmapParticipant> | null
+  organizerCalendarAddress?: string | null
+  /** false on the invitation copy the server keeps for an attendee. */
+  isOrigin?: boolean
+}
+
+interface JmapParticipant {
+  '@type'?: string
+  name?: string | null
+  /** "mailto:someone@example.com" */
+  calendarAddress?: string | null
+  roles?: Record<string, boolean> | null
+  participationStatus?: string | null
+  expectReply?: boolean | null
 }
 
 function toCalendar(c: JmapCalendar): Calendar {
@@ -64,6 +84,64 @@ function toCalendar(c: JmapCalendar): Calendar {
 }
 
 const FREQUENCIES = new Set(['daily', 'weekly', 'monthly', 'yearly'])
+
+const STATUSES = new Set(['needs-action', 'accepted', 'declined', 'tentative'])
+
+const addressOf = (a: string | null | undefined) => (a ?? '').replace(/^mailto:/i, '')
+
+function toParticipants(e: JmapCalendarEvent): Participant[] {
+  const organizer = addressOf(e.organizerCalendarAddress).toLowerCase()
+  // Stalwart mirrors the ORGANIZER into a second, roleless participant entry
+  // alongside the one we sent, so the same address can appear twice. Keep the
+  // entry that actually carries roles — it is the one RSVP patches must target.
+  const byAddress = new Map<string, Participant>()
+  for (const [id, p] of Object.entries(e.participants ?? {})) {
+    const email = addressOf(p.calendarAddress)
+    if (!email) continue
+    const key = email.toLowerCase()
+    const roles = p.roles ?? {}
+    const hasRoles = Object.keys(roles).length > 0
+    if (byAddress.has(key) && !hasRoles) continue
+    const status = p.participationStatus ?? ''
+    byAddress.set(key, {
+      id,
+      email,
+      name: p.name ?? '',
+      isOrganizer: roles['owner'] === true || key === organizer,
+      // Stalwart writes `required`/`optional`; plain `attendee` means required.
+      required: roles['optional'] !== true,
+      status: (STATUSES.has(status) ? status : 'needs-action') as ParticipationStatus,
+      expectReply: p.expectReply ?? false,
+    })
+  }
+  return [...byAddress.values()]
+}
+
+/**
+ * `roles.owner` alone is not enough: without `organizerCalendarAddress`
+ * Stalwart stores the participants but writes no ORGANIZER, and then sends no
+ * invitations at all. Sending it costs a duplicate organizer entry on read,
+ * which toParticipants folds back together.
+ */
+function fromParticipants(ps: Participant[]): Record<string, unknown> | undefined {
+  if (!ps.length) return undefined
+  const out: Record<string, unknown> = {}
+  for (const p of ps) {
+    out[p.id] = {
+      '@type': 'Participant',
+      name: p.name || undefined,
+      calendarAddress: `mailto:${p.email}`,
+      roles: p.isOrganizer
+        ? { owner: true, chair: true, required: true }
+        : p.required
+          ? { required: true }
+          : { optional: true },
+      participationStatus: p.status,
+      expectReply: p.expectReply,
+    }
+  }
+  return out
+}
 
 export function toEvent(e: JmapCalendarEvent): CalendarEvent {
   const calendarIds: Record<string, true> = {}
@@ -93,7 +171,14 @@ export function toEvent(e: JmapCalendarEvent): CalendarEvent {
     status:
       e.status === 'cancelled' || e.status === 'tentative' ? e.status : 'confirmed',
     recurrenceRule: rule,
+    participants: toParticipants(e),
+    isOrganizerCopy: e.isOrigin ?? true,
   }
+}
+
+function organizerAddress(ps: Participant[]): string | undefined {
+  const organizer = ps.find((p) => p.isOrganizer)
+  return organizer ? `mailto:${organizer.email}` : undefined
 }
 
 export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
@@ -119,6 +204,8 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
           byMonthDay: ev.recurrenceRule.byMonthDay,
         }
       : undefined,
+    participants: fromParticipants(ev.participants),
+    organizerCalendarAddress: organizerAddress(ev.participants),
   }
 }
 
@@ -165,6 +252,8 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
       const b = batch()
       const s = b.call<SetResponse<{ id: string }>>('CalendarEvent/set', {
         accountId,
+        // Without this the event is stored but no invitations ever go out.
+        sendSchedulingMessages: event.participants.length > 0,
         create: { e0: fromEvent(event) },
       })
       await b.send()
@@ -177,6 +266,7 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
       const b = batch()
       const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {
         accountId,
+        sendSchedulingMessages: event.participants.length > 0,
         update: { [event.id]: fromEvent(event) },
       })
       await b.send()
@@ -184,9 +274,28 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
       return err ? toFailure(err) : null
     },
 
+    async rsvp(eventId, participantId, status) {
+      // A patch, so we touch only our own reply and never clobber concurrent
+      // organizer edits to the rest of the event.
+      const b = batch()
+      const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {
+        accountId,
+        sendSchedulingMessages: true,
+        update: { [eventId]: { [`participants/${participantId}/participationStatus`]: status } },
+      })
+      await b.send()
+      const err = s.result.notUpdated?.[eventId]
+      return err ? toFailure(err) : null
+    },
+
     async destroyEvents(ids) {
       const b = batch()
-      const s = b.call<SetResponse<unknown>>('CalendarEvent/set', { accountId, destroy: ids })
+      const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {
+        accountId,
+        // Tells attendees the meeting is off instead of silently vanishing.
+        sendSchedulingMessages: true,
+        destroy: ids,
+      })
       await b.send()
       const errs = Object.values(s.result.notDestroyed ?? {})
       return errs.length ? toFailure(errs[0]) : null
