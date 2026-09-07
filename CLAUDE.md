@@ -9,7 +9,7 @@ hardcoden (User-Vorgabe). Genehmigter Gesamtplan:
 
 ## Stand (alle 6 Phasen fertig, committet, main)
 
-Voll funktionsfähig und e2e-getestet: Login (Stalwart lokal + Fastmail-Token),
+Voll funktionsfähig und e2e-getestet: Login (eine Maske, Autodiscovery — s. u.),
 Delta-Sync (`Foo/changes` + Fallback), Outbox mit optimistischen Writes/Undo/Backoff,
 SSE-Push + Polling, Compose (Tiptap, Reply/Forward mit Threading, Anhänge
 offline-staged, Undo-Send 10 s, Draft-Autosave), Suche (Fastmail-Syntax → JMAP-Filter,
@@ -81,7 +81,9 @@ Bausteine: `ui/Skeleton.tsx` (statt Lade-Text), `ui/EmptyState.tsx` (statt nackt
 `::-webkit-scrollbar` nur per `@supports not` für Safari): ohne das bekommt ein
 verschachtelter Scroller (Ordnerliste) den dicken Browser-Default, während die
 Seite selbst den schmalen Overlay-Balken hat — dieselbe Liste sah je nachdem,
-welches Element gerade scrollte, unterschiedlich aus.
+welches Element gerade scrollte, unterschiedlich aus. **Das reicht noch nicht:**
+nach dem Öffnen einer Mail wird der Balken der Ordnerliste weiterhin breiter
+(siehe Backlog A) — nicht als erledigt abhaken.
 HTML-Mail rendert bewusst auf Weiß (Absender kodieren dunkle Schrift hart);
 **Klartext-Mail** folgt dem App-Theme (`textFrameDoc` bekommt die Farben übergeben).
 
@@ -116,6 +118,64 @@ Admin-Passwort in `docker/stalwart/.admin-pass`. Kompletter Reset: siehe README.
 
 Offen außerdem: Push-Test auf echtem Gerät (User), Fastmail-Interop Kontakte (User),
 Event-Sync-Fensterung für große Kalender, Woche-1-Perf mit 50k Mails.
+
+### Neu angemeldet (Reihenfolge noch NICHT mit dem User abgestimmt)
+
+Alles vom User in einem Rutsch gewünscht; Priorisierung steht aus, also vor dem
+Loslegen kurz nachfragen, was zuerst soll.
+
+**A. Bug: Scrollbalken der Ordnerliste wird breiter, sobald eine Mail geöffnet
+wird.** Der globale `scrollbar-width: thin`-Fix (s. o.) hat nur die
+Ausgangs-Inkonsistenz beseitigt, nicht diesen Wechsel. Noch nicht untersucht.
+Verdächtige, in dieser Reihenfolge: (1) beim Wechsel auf
+`/mail/$mailboxId/$emailId` scrollt womöglich ein anderes Element als vorher —
+erst per DevTools feststellen, *welcher* Container den Balken hat, bevor an CSS
+gedreht wird; (2) `@view-transition { navigation: auto }` in `index.css`;
+(3) das ReadingPane-iframe. Reproduzieren nur mit überlaufender Ordnerliste,
+also schmales/niedriges Fenster. Headless Chromium zeigt Overlay-Scrollbars
+(Breite 0) — der Bug ist dort **nicht** sichtbar, ein e2e-Test darauf wäre
+wertlos; am echten Browser messen.
+
+**B. Sync-Status, unten in der Ordner-Sidebar angepinnt.** Soll zeigen, ob
+periodisch gepollt oder gepusht wird, dazu sinnvollerweise letzter Sync und ein
+Hinweis auf hängende Outbox-Einträge. Quellen liegen alle schon vor:
+`account.capabilities.push` (`'sse' | 'poll'`) und `capabilities.webPush` aus
+`domain/account.ts`, der Ticker in `sync/scheduler.ts`, `db.syncState`
+(`updatedAt`) und `db.outbox` (Status `pending`/`inflight`). Die Sidebar ist das
+`nav` in `features/mail/MailboxSidebar.tsx` und schon `flex-col` — Footer per
+`mt-auto`. Achtung: das `nav` ist der Scroll-Container, der Footer soll *nicht*
+mitscrollen, also Scrollbereich und Footer trennen (hängt mit A zusammen).
+
+**C. Feature-Caps und ihre Gates sichtbar machen.** Vermutlich eine
+Settings-Sektion. Die Flags entstehen in `providers/jmap/client/session.ts`
+(`capabilitiesFor`) aus den JMAP-Capabilities, Typ `AccountCapabilities` in
+`domain/account.ts`. Gates, die es zu zeigen gilt: App-Switcher-Filter in
+`app/AppShell.tsx`, die Kalender-Sperre in `app/routes/calendar.tsx`, sowie
+Vacation/WebPush/Encryption in `app/routes/settings.tsx`.
+
+**D. Kalender anlegen** (und vermutlich umbenennen/löschen). Serverseitig
+vorhanden: `Calendar/set`, und die Account-Capability meldet
+`"mayCreateCalendar": true` (beim RSVP-Probing gesehen). Es fehlt der
+Provider-Teil (`CalendarProvider` in `providers/types.ts` kennt nur
+`syncCalendars`) plus UI in der Kalender-Sidebar — analog zur schon
+existierenden Ordner-Verwaltung in `MailboxSidebar.tsx`.
+
+**E. Massenbearbeitung** (verschieben, löschen, markieren) per Mehrfachauswahl
+und zusätzlich „alle in diesem Ordner". Die Outbox kann das Batch-seitig schon:
+`email.update` nimmt eine Map von Patches, `email.destroy` eine Id-Liste. Zwei
+Fallstricke: die Liste ist virtualisiert (Virtuoso), Auswahl-State gehört also
+in den Store und nicht in Row-Komponenten; und „alle im Ordner" darf nicht die
+lokal geladenen Ids nehmen, sondern braucht eine serverseitige Query.
+
+**F. Spam gesondert behandeln:** keine externen Inhalte automatisch laden, dazu
+ein „Kein Spam"-Button (Move in den Posteingang; ob Stalwart zusätzlich
+Lernen/Sieve anstößt, ist zu prüfen — der Spamfilter ist im Dev-Seed
+abgeschaltet, s. `seed.sh`). Die Junk-Rolle kennt die Mailbox-Liste bereits.
+
+**G. Option „Bilder nicht automatisch laden"** (global, mit Freigabe pro Mail).
+Das ist der Mechanismus, auf dem F aufsetzt — F ist im Grunde G plus „in Junk
+immer an". Betrifft `lib/htmlSanitize.ts` und das Mail-iframe im ReadingPane;
+Remote-Referenzen müssen dort blockiert und nach Freigabe nachgeladen werden.
 
 ### e2e-Stabilität (die früheren „Flakes" waren echte Ursachen)
 Die Suite galt lange als sporadisch flaky (~40 % rote Voll-Läufe) und das war als
