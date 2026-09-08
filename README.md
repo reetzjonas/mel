@@ -138,4 +138,4 @@ development convenience only; a deployed instance needs the real thing.
 
 ## License
 
-Not yet chosen.
+MIT — see [LICENSE](LICENSE).
