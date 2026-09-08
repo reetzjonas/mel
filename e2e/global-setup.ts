@@ -34,6 +34,18 @@ const SEEDED_INBOX = new Set([
   'Mit Anhang',
 ])
 
+/*
+ * What each account must still have. Specs assert on these subjects by name, so
+ * a missing one surfaces as an unrelated test failing for no visible reason —
+ * which has happened repeatedly after a mailbox was destroyed with
+ * onDestroyRemoveEmails, taking mail that lived only there with it. Failing
+ * here instead names the missing message straight away.
+ */
+const EXPECTED_INBOX: Record<string, string[]> = {
+  'alice@localhost': ['Willkommen bei mel', 'Projektstand', 'HTML-Test', 'Mit Anhang'],
+  'bob@localhost': ['Re: Projektstand'],
+}
+
 type Invocation = [string, Record<string, unknown>, string]
 
 async function jmap(auth: string, using: string[], methodCalls: Invocation[]) {
@@ -101,6 +113,17 @@ async function resetAccount(user: string, pass: string) {
           ],
         ])
       ).methodResponses[1]![1] as { list: Array<{ id: string; subject: string | null }> }
+      const subjects = found.list.map((m) => (m.subject ?? '').trim())
+      const missing = (EXPECTED_INBOX[user] ?? []).filter((s) => !subjects.includes(s))
+      if (missing.length) {
+        throw new Error(
+          `${user} is missing seeded mail: ${missing.join(', ')}. ` +
+            'Specs assert on these by subject. Restore them (see the reset steps in ' +
+            'the README) before running the suite — seed.sh will not top up a ' +
+            'partially populated mailbox.',
+        )
+      }
+
       const strays = found.list
         .filter((m) => !SEEDED_INBOX.has((m.subject ?? '').trim()))
         .map((m) => m.id)

@@ -401,6 +401,18 @@ full runs ever since. **If something flickers again, check these classes first
   the cursor skips them forever. That is what `resyncAccount()` is for (Settings →
   Account → "fetch everything again"): it drops the sync cursors, forces a full sync,
   fills the gaps and prunes.
+- **A folder row's accessible name grows an unread counter.** So
+  `getByRole('link', {name, exact: true})` stops matching the moment the folder
+  holds unread mail — which on a freshly seeded server it does, and locally it
+  usually does not, so this only shows up in CI. Use an anchored regex
+  (`^Name( \\d+)?$`) rather than dropping exactness, or a subfolder called
+  `Name-sub` matches too.
+- **`global-setup` now fails if seeded mail is missing** (`EXPECTED_INBOX`),
+  naming the subject. Without that, a destroyed seed mail surfaces as some
+  unrelated spec failing much later — it cost three separate debugging sessions
+  before the check existed. `seed.sh` will not top up a partially populated
+  mailbox: its guard is `TOTAL < 4`, so restoring means re-sending the specific
+  message over SMTP or doing the full reset from the README.
 - **Careful with `onDestroyRemoveEmails: true` while debugging.** Deleting the
   Archive mailbox to reproduce a fresh-server state destroyed seeded mail twice,
   because messages archived by an earlier test lived *only* there — and the seed

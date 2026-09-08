@@ -101,7 +101,12 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
   await page.getByTitle('New folder').click()
   await page.locator('form input').fill(parent)
   await page.getByRole('button', { name: 'Create' }).click()
-  const parentRow = page.getByRole('link', { name: parent, exact: true })
+  // Not `exact`: a folder row's accessible name gains the unread counter as
+  // soon as it holds unread mail, which it does on a freshly seeded server.
+  // Anchored regex instead, so the name still cannot match the subfolder.
+  const folderRow = (name: string) =>
+    page.getByRole('link', { name: new RegExp(`^${name}( \\d+)?$`) })
+  const parentRow = folderRow(parent)
   await expect(parentRow).toBeVisible({ timeout: 10_000 })
 
   // A subfolder alone already makes the server refuse the delete
@@ -111,9 +116,7 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
   await page.getByRole('button', { name: 'New subfolder' }).click()
   await page.locator('form input').fill(child)
   await page.getByRole('button', { name: 'Create' }).click()
-  await expect(page.getByRole('link', { name: child, exact: true })).toBeVisible({
-    timeout: 10_000,
-  })
+  await expect(folderRow(child)).toBeVisible({ timeout: 10_000 })
 
   await alsoFileInto(parent)
   await page.reload()
@@ -129,10 +132,8 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
   await parentRow.getByTitle('Folder actions').click()
   await page.getByRole('button', { name: 'Delete folder' }).click()
 
-  await expect(page.getByRole('link', { name: parent, exact: true })).toHaveCount(0, {
-    timeout: 15_000,
-  })
-  await expect(page.getByRole('link', { name: child, exact: true })).toHaveCount(0)
+  await expect(folderRow(parent)).toHaveCount(0, { timeout: 15_000 })
+  await expect(folderRow(child)).toHaveCount(0)
   expect(prompt).toContain('subfolders')
   expect(prompt).toContain('mail')
 
