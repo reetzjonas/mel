@@ -32,8 +32,11 @@ function ContactsLayout() {
 
   if (!account?.capabilities.contacts) {
     return (
-      <div className="flex h-full items-center justify-center text-ink-muted">
-        {t('app.comingSoon.contacts')}
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-muted">
+        <p className="text-sm">{t('caps.unsupported.contacts')}</p>
+        <Link to="/settings" className="text-sm text-accent hover:underline">
+          {t('caps.showDetails')}
+        </Link>
       </div>
     )
   }

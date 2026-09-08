@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTheme, type ThemePreference } from '../ThemeProvider'
 import { useUi } from '../store'
 import { useAccounts } from '../../features/mail/hooks'
+import { ServerCapabilities } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
 import { signOut } from '../../services/accounts'
 import {
@@ -310,6 +311,12 @@ function SettingsPage() {
         {account && (
           <Section title={t('crypto.section')}>
             <EncryptionSetting accountId={account.id} />
+          </Section>
+        )}
+
+        {account && (
+          <Section title={t('settings.server')}>
+            <ServerCapabilities account={account} />
           </Section>
         )}
 

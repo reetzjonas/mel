@@ -138,3 +138,25 @@ test('a sync that cannot reach the server does not sit on "connecting"', async (
     timeout: 20_000,
   })
 })
+
+test('the sync bar leads to the server feature list', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByTestId('sync-status')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByTestId('sync-status').click()
+  await expect(page).toHaveURL(/\/settings$/)
+
+  const caps = page.locator('#server-capabilities')
+  await expect(caps).toBeVisible()
+  // Stalwart offers all of these, so they must read as supported.
+  for (const feature of ['Mail', 'Contacts', 'Calendar', 'Sending mail']) {
+    await expect(caps.getByRole('listitem').filter({ hasText: feature }).first()).toContainText(
+      'supported',
+    )
+  }
+  // Sieve is offered by the server but mel has no editor yet — say so.
+  await expect(caps).toContainText('filter editor is not built yet')
+})

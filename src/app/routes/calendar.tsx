@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useUi } from '../store'
 import type {
@@ -152,8 +152,11 @@ function CalendarApp() {
 
   if (!account?.capabilities.calendars) {
     return (
-      <div className="flex h-full items-center justify-center text-ink-muted">
-        {t('app.comingSoon.calendar')}
+      <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-muted">
+        <p className="text-sm">{t('caps.unsupported.calendar')}</p>
+        <Link to="/settings" className="text-sm text-accent hover:underline">
+          {t('caps.showDetails')}
+        </Link>
       </div>
     )
   }

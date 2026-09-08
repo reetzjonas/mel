@@ -1,3 +1,4 @@
+import { Link } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Account } from '../../domain/account'
@@ -135,9 +136,12 @@ export function SyncStatus({ account }: { account: Account }) {
     .filter(Boolean)
     .join('\n')
 
+  // Links into the capability list: this bar is where people look first when
+  // something seems off, and "why is the calendar missing" is answered there.
   return (
-    <div
-      className="shrink-0 border-t border-line px-3 py-2 text-[11px] text-ink-subtle"
+    <Link
+      to="/settings"
+      className="block shrink-0 border-t border-line px-3 py-2 text-[11px] text-ink-subtle transition-colors hover:bg-surface-2"
       data-testid="sync-status"
       title={tooltip || undefined}
     >
@@ -152,6 +156,6 @@ export function SyncStatus({ account }: { account: Account }) {
       <span className={`mt-0.5 block h-[14px] truncate ${queued > 0 ? 'text-honey' : ''}`}>
         {detail}
       </span>
-    </div>
+    </Link>
   )
 }

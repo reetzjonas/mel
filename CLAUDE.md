@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 54 Vitest + 31 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 59 Vitest + 32 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -153,12 +153,17 @@ ist unten angepinnt, eine erscheinende Zeile würde die Ordnerliste schieben.
 Der letzte Sync steht im `title`, nicht im Text: bei Push stünde dort dauerhaft
 „gerade eben" (User-Vorgabe).
 
-**C. Feature-Caps und ihre Gates sichtbar machen.** Vermutlich eine
-Settings-Sektion. Die Flags entstehen in `providers/jmap/client/session.ts`
-(`capabilitiesFor`) aus den JMAP-Capabilities, Typ `AccountCapabilities` in
-`domain/account.ts`. Gates, die es zu zeigen gilt: App-Switcher-Filter in
-`app/AppShell.tsx`, die Kalender-Sperre in `app/routes/calendar.tsx`, sowie
-Vacation/WebPush/Encryption in `app/routes/settings.tsx`.
+**C. ~~Feature-Caps und ihre Gates sichtbar machen~~ erledigt.**
+Settings-Sektion „Server-Funktionen" (`features/settings/`): jede Capability mit
+Zustand **und der Auswirkung im UI** — die Flag-Liste allein erklärt nichts, ein
+ausgeblendetes Feature ist ja per Definition unsichtbar. Erreichbar über die
+Sync-Leiste unten in der Sidebar (dorthin schaut man, wenn etwas komisch ist)
+und über die Sperrbildschirme von Kalender/Kontakte. Die sagten vorher
+„coming in a later phase" — falsch, die Features sind fertig, der *Server* kann
+sie nicht; jetzt „Dieser Server bietet keinen Kalender an" + Link.
+`capabilityRows()` ist rein und getestet; ein Test hält Zeilen und
+`AccountCapabilities` deckungsgleich, **neue Capability ⇒ dort eintragen**,
+sonst schlägt er fehl.
 
 **D. Kalender anlegen** (und vermutlich umbenennen/löschen). Serverseitig
 vorhanden: `Calendar/set`, und die Account-Capability meldet
@@ -178,6 +183,16 @@ lokal geladenen Ids nehmen, sondern braucht eine serverseitige Query.
 ein „Kein Spam"-Button (Move in den Posteingang; ob Stalwart zusätzlich
 Lernen/Sieve anstößt, ist zu prüfen — der Spamfilter ist im Dev-Seed
 abgeschaltet, s. `seed.sh`). Die Junk-Rolle kennt die Mailbox-Liste bereits.
+
+**H. Bug: `capabilities.submission` gated nichts.** Beim Bauen von C
+aufgefallen: Das Flag wird in `capabilitiesFor()` berechnet, aber nirgends
+abgefragt. Auf einem Server ohne `urn:ietf:params:jmap:submission` bietet die
+App also „Neue Nachricht" an, und der Versand scheitert erst still in der
+Outbox. Verwandt: der App-Switcher zeigt Mail **immer**
+(`a.cap === 'mail' || …`), auch wenn `capabilities.mail` false ist — dann ist
+`conn.mail` null und die Ansicht bleibt leer. Beides steht so (ehrlich) schon in
+der neuen Settings-Sektion; die Gates fehlen aber noch. Vom User als eigener
+Punkt gewünscht.
 
 **G. Option „Bilder nicht automatisch laden"** (global, mit Freigabe pro Mail).
 Das ist der Mechanismus, auf dem F aufsetzt — F ist im Grunde G plus „in Junk
