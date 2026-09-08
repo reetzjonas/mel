@@ -1,458 +1,476 @@
-# mel — Kontext für die nächste Session
+# mel — context for the next session
 
-Backend-loser JMAP-Webmailer als PWA (Mail + Kontakte + Kalender), alle Daten in
-IndexedDB, optional per Passphrase verschlüsselt. React 19 + TS strict + Vite 8,
-Tailwind 4, TanStack Router, Dexie 4 (liveQuery = Read-Model), Zustand für UI-State.
-UI-Sprache: **Englisch default + Deutsch** via `src/lib/i18n.ts` — nie Strings
-hardcoden (User-Vorgabe). Genehmigter Gesamtplan:
+Backend-less JMAP webmail as a PWA (mail + contacts + calendar), all data in
+IndexedDB, optionally encrypted behind a passphrase. React 19 + TS strict + Vite 8,
+Tailwind 4, TanStack Router, Dexie 4 (liveQuery = read model), Zustand for UI state.
+UI language: **English by default plus German** via `src/lib/i18n.ts` — never
+hardcode strings (user's rule). Approved overall plan:
 `/home/joreetz/.claude/plans/ich-will-eine-pwa-hidden-ripple.md`.
 
-## Stand (alle 6 Phasen fertig, committet, main)
+Documentation and code comments are English; the German translation lives only in
+`src/lib/i18n.ts`.
 
-Voll funktionsfähig und e2e-getestet: Login (eine Maske, Autodiscovery — s. u.),
-Delta-Sync (`Foo/changes` + Fallback), Outbox mit optimistischen Writes/Undo/Backoff,
-SSE-Push + Polling, Compose (Tiptap, Reply/Forward mit Threading, Anhänge
-offline-staged, Undo-Send 10 s, Draft-Autosave), Suche (Fastmail-Syntax → JMAP-Filter,
-Snippets mit <mark>), Shortcuts (?-Overlay), Ordner-Verwaltung, Quick Actions +
-Swipe + Pull-to-Refresh, Kontakte (RFC 9610, Autocomplete im Compose), Kalender
-(Monat/Agenda, DST-sichere Recurrence via rrule+Temporal), Verschlüsselung
-(Argon2id→KEK→DEK, sync AES-GCM via @noble/ciphers als Dexie-Middleware, AAD-Bindung,
-UnlockGate), Web Push ohne Backend (RFC 9749, kompletter PushVerification-Handshake),
-PWA (Update-Toast, storage.persist).
+## Status (all 6 phases done, committed, main)
 
-Einladungen/RSVP sind fertig: Teilnehmer-Editor im EventDialog (mit Kontakt-
-Autocomplete), Stalwart verschickt iMIP-Einladungen, die Gegenseite bekommt den
-Termin plus Einladungsansicht mit Zusagen/Vielleicht/Absagen, und die Antwort
-landet als Status beim Organisator. Voller Round-Trip e2e getestet
-(`e2e/calendar.spec.ts`, alice lädt bob ein und bob sagt zu).
+Working and covered end to end: login (one form, autodiscovery — see below),
+delta sync (`Foo/changes` plus fallback), outbox with optimistic writes/undo/backoff,
+SSE push plus polling, compose (Tiptap, reply/forward with threading, attachments
+staged offline, 10s undo-send, draft autosave), search (Fastmail syntax → JMAP filter,
+snippets with `<mark>`), shortcuts (`?` overlay), folder management, quick actions plus
+swipe and pull-to-refresh, contacts (RFC 9610, autocomplete while composing), calendar
+(month/agenda, DST-safe recurrence via rrule + Temporal), encryption
+(Argon2id→KEK→DEK, synchronous AES-GCM via @noble/ciphers as Dexie middleware, AAD
+binding, UnlockGate), Web Push without a backend (RFC 9749, full PushVerification
+handshake), PWA (update toast, storage.persist).
 
-Kalender kann außerdem: Week-/Day-Zeitraster (Klick-to-create, Überlappungs-Spalten,
-Now-Linie), Multi-Kalender-Farben + Sichtbarkeits-Toggles (Sidebar, localStorage),
-Kalenderauswahl im EventDialog. Mail-Nacharbeiten erledigt: Anhänge öffnen (war ein
-echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
-umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
-Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
+Invitations and RSVP are done: participant editor in the EventDialog (with contact
+autocomplete), Stalwart sends the iMIP invitations, the other side receives the event
+plus an invitation view with accept/maybe/decline, and the reply lands as a status on
+the organiser's copy. Full round trip covered end to end (`e2e/calendar.spec.ts`,
+alice invites bob and bob accepts).
 
-Tests: 74 Vitest + 36 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
-siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
+The calendar also has week/day time grids (click-to-create, overlap columns, now line),
+multi-calendar colours plus visibility toggles (sidebar, localStorage) and calendar
+selection in the EventDialog. Mail follow-ups done: opening attachments (a real bug,
+see below), quick actions in the list, folder management (create/rename/delete), draft
+autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
+by display name.
 
-## Login/Setup und Abmelden
+Tests: 74 Vitest + 36 Playwright (desktop + mobile; state-mutating specs are
+desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
+confirmed by the user.
 
-Eine einzige Maske für alle Server: **E-Mail + Passwort**, keine Provider-Presets
-mehr (Fastmail und der explizite Stalwart-Eintrag sind raus). Aus der Adresse
-rät `discoveryCandidates()` die Session-URL — `mail.<domain>` zuerst, dann Apex,
-`jmap.`, `imap.`; für `@localhost` das Dev-Stalwart auf `http://localhost:8080`.
-Erst **wenn alle Kandidaten scheitern**, klappt in der Maske ein Bereich auf mit
-(a) Button „Per DNS suchen" (`srvCandidates()`, DoH gegen Cloudflare, löst
-`_jmap._tcp.<domain>` SRV auf) und (b) manueller Serveradresse + Auth-Methode.
-**Der DoH-Weg läuft nie automatisch** — er verrät die Mail-Domain an einen
-Dritten, also nur auf ausdrücklichen Klick (Vorgabe des Users).
+## Login, setup and signing out
 
-Warum überhaupt raten statt SRV: RFC 8620 sieht den SRV-Record vor, aber
-**Browser haben keine DNS-API** und die App hat kein Backend. Realfall
-`reetz.me`: SRV (`0 1 443 mail.reetz.me`) und CORS sind korrekt, aber die Apex
-hat **gar keinen A-Record** — der naive Well-Known-Versuch auf `reetz.me` läuft
-also ins Leere, `mail.reetz.me` trifft sofort.
+One form for every server: **email plus password**, no provider presets any more
+(Fastmail and the explicit Stalwart entry are gone). `discoveryCandidates()` guesses
+the session URL from the address — `mail.<domain>` first, then the apex, `jmap.`,
+`imap.`; for `@localhost` the dev Stalwart on `http://localhost:8080`.
+Only **once every candidate has failed** does the form reveal (a) a "look up via DNS"
+button (`srvCandidates()`, DoH against Cloudflare, resolving the `_jmap._tcp.<domain>`
+SRV record) and (b) a manual server address plus auth method.
+**The DoH path never runs on its own** — it discloses the mail domain to a third
+party, so it happens on an explicit click only (user's rule).
 
-`signOut()` in `services/accounts.ts` ist der einzige Abmelde-Weg (Button in der
-Desktop-Kopfzeile + Settings). Zwei Fallen, beide gefixt:
-- `removeAccount` hatte `addressBooks`/`contacts`/`calendars`/`events`/`keyring`
-  **nicht** in seiner Tabellenliste — nach dem „Abmelden" lagen Kontakte und
-  Termine des Vorgängers weiter in IndexedDB. Unit-Test in `accounts.test.ts`
-  hält die Liste jetzt vollständig; **neue Per-Account-Tabelle ⇒ dort eintragen**.
-- `connectionFor` **cacht** die Verbindung, ein laufender Sync schreibt also
-  munter weiter. Deshalb die Reihenfolge in `signOut`: Konto-Row löschen (dann
-  kann niemand mehr neu verbinden) → `dropConnection` → `syncSettled` abwarten →
-  erst dann alles purgen. Lokal ist der Sync zu schnell, um das im e2e-Test
-  zuverlässig zu provozieren — nicht als „ungenutzt" wegoptimieren.
+Why guess rather than use SRV: RFC 8620 provides for the SRV record, but **browsers
+have no DNS API** and this app has no backend. Real case `reetz.me`: the SRV record
+(`0 1 443 mail.reetz.me`) and CORS are both correct, but the apex has **no A record at
+all** — so the naive well-known attempt against `reetz.me` goes nowhere while
+`mail.reetz.me` answers immediately.
 
-## Design-System (seit dem UI-Redesign)
+`signOut()` in `services/accounts.ts` is the only way out (button in the desktop
+header and in settings). Two traps, both fixed:
 
-Tokens in `src/index.css`: **OKLCH**-Farben mit Elevation-Leiter (`canvas → surface →
-raised → overlay`), Akzent = tiefes Violett, `honey` als semantischer Zweitton
-(Flags/Ungelesen). Flächen und Abstand tragen das Layout — **Borders sind Akzent, nicht
-Haupttrenner**. Panels schweben (`panel`-Utility), Chrome ist `glass`. Schrift: Inter
-Variable, self-hosted (kein CDN-Request!), Tabellenziffern global. Geteilte
-Control-Klassen in `src/ui/styles.ts` (`inputClass`, `primaryButtonClass`,
-`secondaryButtonClass`, `overlayPanelClass`) — **nicht wieder pro Datei duplizieren**.
-Motion via `animate-rise`/`animate-fade` + `prefers-reduced-motion`-Fallback.
-Bausteine: `ui/Skeleton.tsx` (statt Lade-Text), `ui/EmptyState.tsx` (statt nacktem Text).
-**Scrollbalken sind global gesetzt** (`scrollbar-width: thin` + `--mel-scrollbar`,
-`::-webkit-scrollbar` nur per `@supports not` für Safari): ohne das bekommt ein
-verschachtelter Scroller (Ordnerliste) den dicken Browser-Default, während die
-Seite selbst den schmalen Overlay-Balken hat — dieselbe Liste sah je nachdem,
-welches Element gerade scrollte, unterschiedlich aus. **Das reicht noch nicht:**
-nach dem Öffnen einer Mail wird der Balken der Ordnerliste weiterhin breiter
-(siehe Backlog A) — nicht als erledigt abhaken.
-HTML-Mail rendert bewusst auf Weiß (Absender kodieren dunkle Schrift hart);
-**Klartext-Mail** folgt dem App-Theme (`textFrameDoc` bekommt die Farben übergeben).
+- `removeAccount` did **not** list `addressBooks`/`contacts`/`calendars`/`events`/
+  `keyring` among its tables — after "signing out", the previous user's contacts and
+  events were still sitting in IndexedDB. A unit test in `accounts.test.ts` now keeps
+  the list complete; **a new per-account table must be added there**.
+- **A sync in flight writes straight over the purge.** `signOut` therefore, in this
+  order: `await stopScheduler()` → delete the account row (nothing can connect
+  afresh) → `dropConnection` → await `syncSettled` → only then purge.
+  The `await` on `stopScheduler` is the load-bearing part and was missing at first:
+  `syncSettled()` only knows about `syncAccount()`, so a tick still sitting in
+  `flush()` is invisible to it and goes on to write a complete fresh sync afterwards.
+  The scheduler now tracks in-flight ticks (`inflight` map) and `stopScheduler`
+  returns a promise for them.
+  This is **reproducible**: without the await, `e2e/navigation.spec.ts` finds
+  `emails: 4, mailboxes: 6` left behind on the first run. The test asserts per table
+  rather than on a total, because "1 row survived" tells you nothing about where.
 
-## Deployment (seit M)
+## Design system (since the UI redesign)
 
-Statisches Image, kein Backend: `Dockerfile` baut das Bundle und serviert es mit
-**nginx-unprivileged** (uid 101, Port 8080) — damit passt es ohne Kunstgriffe in
-einen harten k8s-`securityContext` (`runAsNonRoot`, `readOnlyRootFilesystem`).
-Beispiele im Repo: `compose.yaml` (Port 8081, weil 8080 das Dev-Stalwart hat)
-und `deploy/k8s/` (Deployment + Service + Ingress).
+Tokens in `src/index.css`: **OKLCH** colours with an elevation ladder (`canvas →
+surface → raised → overlay`), accent is a deep violet, `honey` as the semantic second
+tone (flags/unread). Surfaces and spacing carry the layout — **borders are an accent,
+not the primary separator**. Panels float (`panel` utility), chrome is `glass`.
+Typeface: Inter Variable, self-hosted (no CDN request). Tabular figures globally.
+Shared control classes in `src/ui/styles.ts` (`inputClass`, `primaryButtonClass`,
+`secondaryButtonClass`, `overlayPanelClass`) — **do not duplicate them per file
+again**. Motion via `animate-rise`/`animate-fade` plus a `prefers-reduced-motion`
+fallback. Building blocks: `ui/Skeleton.tsx` (instead of loading text),
+`ui/EmptyState.tsx` (instead of bare text).
 
-Zwei Fallen, beide verifiziert:
-- **nginx vererbt `add_header` nicht**: sobald ein `location` einen eigenen
-  Header setzt, verliert er *alle* geerbten. Die Security-Header liegen deshalb
-  in `docker/nginx-headers.conf` und werden pro Block `include`d. Ohne das
-  fehlten sie ausgerechnet auf `/` (das intern auf `/index.html` fällt).
-- **`sw.js` darf nicht gecacht werden**, sonst hängen Nutzer beliebig lange auf
-  einem alten Build fest. Nur `/assets/*` (gehasht) ist `immutable`.
+**Scrollbars are set globally** (`scrollbar-width: thin` plus `--mel-scrollbar`,
+with `::-webkit-scrollbar` only behind `@supports not` for Safari): without it a
+nested scroller (the folder list) gets the browser's chunky default while the page
+itself gets the slim overlay bar, so the same list looked different depending on
+which element happened to be scrolling. That the bar *widens* while the pointer is in
+it is native overlay-scrollbar behaviour and not a fault — see backlog A.
 
-Wichtig fürs Deployment: die App spricht den JMAP-Server **direkt aus dem
-Browser** an. Der Mailserver muss also CORS für die App-Origin erlauben — sonst
-scheitert alles als opakes `TypeError`, und zwar unbehebbar von unserer Seite.
+HTML mail deliberately renders on white (senders hardcode dark text);
+**plain-text mail** follows the app theme (`textFrameDoc` is handed the colours).
 
-CI (`.github/workflows/ci.yml`): `check` (lint, build=typecheck, Vitest) und
-`e2e` laufen parallel, `publish` hängt an beiden und pusht nur bei `push` nach
-ghcr. Der e2e-Job testet **das Image**, nicht den Dev-Server — dafür liest
-`playwright.config.ts` jetzt `MEL_E2E_BASE_URL` und lässt `webServer` dann weg.
-Nur so werden nginx-Auslieferung und der in PROD registrierte Service Worker
-überhaupt abgedeckt.
+## Deployment
 
-## Dev-Workflow
+Static image, no backend: the `Dockerfile` builds the bundle and serves it with
+**nginx-unprivileged** (uid 101, port 8080), so it drops into a hardened Kubernetes
+`securityContext` (`runAsNonRoot`, `readOnlyRootFilesystem`) without a shim.
+Examples in the repo: `compose.yaml` (port 8081, because 8080 belongs to the dev
+Stalwart) and `deploy/k8s/` (Deployment, Service, Ingress).
+
+Two traps, both verified:
+
+- **nginx does not inherit `add_header`**: as soon as a `location` sets a header of
+  its own it loses *every* inherited one. The security headers therefore live in
+  `docker/nginx-headers.conf` and are `include`d per block. Without that they were
+  missing on exactly the path that matters — `/` falls through to `/index.html`
+  internally.
+- **`sw.js` must not be cached**, or users stay pinned to an old build for as long as
+  the entry lives. Only `/assets/*` (hashed) is `immutable`.
+
+Important when deploying: the app talks to the JMAP server **straight from the
+browser**, so the origin decides what is needed. Served from a *different* origin —
+the usual case, and note that another subdomain already counts — the mail server has
+to permit mel's origin via CORS; without it everything fails as an opaque
+`TypeError` that nothing on our side can fix or even diagnose. Served from the *same*
+origin, CORS never applies at all, but then the proxy in front must route `/jmap`,
+`/.well-known/jmap` (and `/dav`) to the mail server first: mel's SPA fallback answers
+those paths with `index.html` otherwise (verified against the image), shadowing the
+mail server.
+
+CI (`.github/workflows/ci.yml`): `check` (lint, build = typecheck, Vitest) and `e2e`
+run in parallel, `publish` depends on both and pushes to ghcr on `push` only. The e2e
+job tests **the image**, not the dev server — `playwright.config.ts` reads
+`MEL_E2E_BASE_URL` and skips its `webServer` when that is set. Only that way are the
+nginx delivery and the service worker registered in production covered at all.
+
+## Dev workflow
 
 ```sh
-npm run stalwart:seed   # provisioniert Stalwart 0.16 in Docker von Null (idempotent)
+npm run stalwart:seed   # provisions Stalwart 0.16 in Docker from nothing (idempotent)
 npm run dev             # localhost:5173
 npm test                # Vitest
-npm run test:e2e        # Playwright (erwartet laufenden, geseedeten Stalwart)
-npm run build           # vite build + tsc (Reihenfolge wichtig: routeTree.gen)
+npm run test:e2e        # Playwright (expects a running, seeded Stalwart)
+npm run build           # vite build + tsc (order matters: routeTree.gen)
 ```
 
-Accounts: `alice@localhost` / `korrekt-pferd-batterie-alice` (bob analog),
-Admin-Passwort in `docker/stalwart/.admin-pass`. Kompletter Reset: siehe README.
+Accounts: `alice@localhost` / `korrekt-pferd-batterie-alice` (bob likewise), admin
+password in `docker/stalwart/.admin-pass`. Full reset: see the README.
 
-## Nächste Schritte (Reihenfolge vom User bestätigt)
+## Next steps (order confirmed by the user)
 
-1. ~~Kalender Week-/Day-Grid, Multi-Kalender-Farben/Toggles~~ **erledigt.**
-   Drag-Move/Resize von Events fehlt noch (aktuell: Klick-to-create + Dialog-Edit,
-   kein Drag) — bei Bedarf nachreichen.
-2. ~~Einladungen/RSVP~~ **erledigt** (s. o.). Offen als Nachtrag:
-   `CalendarEventNotification/get` wird noch nicht gelesen — der Server führt die
-   Liste (Typ `updated`/`created`, mit `changedBy` und `eventPatch`), damit ließe
-   sich „Bob hat zugesagt" als Benachrichtigung zeigen statt nur als Status im
-   Dialog. Ebenso fehlen lokale Kalender-Alerts.
-3. **recurrenceOverrides** (einzelne Instanzen bearbeiten — Stalwart-Format siehe
-   tests/src/jmap/calendar/event.rs im Stalwart-Repo)
-4. **vCard-Import/Export**, Kontaktgruppen-UI
-5. Inline-Bilder im Compose (cid:), Threading-Ansicht der Mail-Liste
-6. **Sieve-Editor zuletzt** (explizit vom User zurückgestellt)
+1. ~~Calendar week/day grid, multi-calendar colours and toggles~~ **done.**
+   Drag-move/resize of events is still missing (today: click-to-create plus dialog
+   editing, no drag) — add if wanted.
+2. ~~Invitations and RSVP~~ **done** (see above). Still open as a follow-up:
+   `CalendarEventNotification/get` is not read yet — the server keeps that list (type
+   `updated`/`created`, with `changedBy` and `eventPatch`), which would allow showing
+   "Bob accepted" as a notification rather than only as a status in the dialog. Local
+   calendar alerts are missing too.
+3. **recurrenceOverrides** (editing single instances — for Stalwart's format see
+   tests/src/jmap/calendar/event.rs in the Stalwart repo)
+4. **vCard import/export**, contact group UI
+5. Inline images in compose (`cid:`), threaded view of the mail list
+6. **Sieve editor last** (explicitly deferred by the user)
 
-Offen außerdem: Push-Test auf echtem Gerät (User), Fastmail-Interop Kontakte (User),
-Event-Sync-Fensterung für große Kalender, Woche-1-Perf mit 50k Mails.
+Also open: push test on a real device (user), Fastmail contacts interop (user),
+event sync windowing for large calendars, week-one performance with 50k mails.
 
-### Neu angemeldet (Reihenfolge noch NICHT mit dem User abgestimmt)
+### Newly raised (order NOT yet agreed with the user)
 
-Priorisierung steht aus, also vor dem Loslegen kurz nachfragen, was zuerst soll.
-**B, C und E sind erledigt**, der Rest ist offen. A ist kein Bug (s. dort).
+Prioritisation is pending, so ask which comes first before starting.
+**B, C, E, J and M are done**, the rest is open. A is not a bug (see there).
 
-**A. Bug: Scrollbalken der Ordnerliste wird breiter, sobald eine Mail geöffnet
-wird.** Der globale `scrollbar-width: thin`-Fix (s. o.) hat nur die
-Ausgangs-Inkonsistenz beseitigt, nicht diesen Wechsel. Noch nicht untersucht.
-Verdächtige, in dieser Reihenfolge: (1) beim Wechsel auf
-`/mail/$mailboxId/$emailId` scrollt womöglich ein anderes Element als vorher —
-erst per DevTools feststellen, *welcher* Container den Balken hat, bevor an CSS
-gedreht wird; (2) `@view-transition { navigation: auto }` in `index.css`;
-(3) das ReadingPane-iframe. Reproduzieren nur mit überlaufender Ordnerliste,
-also schmales/niedriges Fenster. Headless Chromium zeigt Overlay-Scrollbars
-(Breite 0) — der Bug ist dort **nicht** sichtbar, ein e2e-Test darauf wäre
-wertlos; am echten Browser messen.
+**A. The folder list's scrollbar changes width — not a bug, decision pending.**
+Reported by the user, then measured together: `offsetWidth - clientWidth` is **0px**,
+so the bar occupies no layout width at all and Chrome is drawing **overlay
+scrollbars**. Those are two-stage by design: thin and faint at rest, thicker and
+higher contrast while the pointer is in the scroll area or a relayout happens (opening
+DevTools is enough). It returns on its own. My original guesses — a different scroll
+container after the route change, `@view-transition`, the reading-pane iframe — were
+**all wrong**; do not investigate in that direction again.
 
-**B. ~~Sync-Status unten in der Ordner-Sidebar~~ erledigt.**
-`features/mail/SyncStatus.tsx` zeigt den *tatsächlichen* Live-Modus (Push via
-SSE / „Abruf alle 30 s" / Verbinde / Offline), wann zuletzt erfolgreich
-synchronisiert wurde, und wie viele Outbox-Einträge noch warten. Der Scheduler
-führt dafür einen kleinen beobachtbaren Store (`getSyncStatus` /
-`subscribeSyncStatus`, angezapft per `useSyncExternalStore`) — Snapshots werden
-**ersetzt, nie mutiert**, sonst merkt React die Änderung nicht.
-Zwei Details, die beim Nachbauen leicht schiefgehen: das `nav` war selbst der
-Scroll-Container, der Footer wäre also mitgescrollt — jetzt `nav` = Spalte,
-innerer `div` = Scrollbereich; und der Web-Push-Hinweis hängt an
-`isSubscribed()`, nicht an `capabilities.webPush`, sonst behauptet die Leiste
-„Push-Benachrichtigungen an", obwohl gar kein Abo existiert.
-Die Leiste rendert **immer zwei Zeilen** (zweite ggf. leer, feste Höhe) — sie
-ist unten angepinnt, eine erscheinende Zeile würde die Ordnerliste schieben.
-Der letzte Sync steht im `title`, nicht im Text: bei Push stünde dort dauerhaft
-„gerade eben" (User-Vorgabe).
+What remains is a matter of taste, three ways:
+1. leave it (native behaviour, matches the rest of the system) — the default;
+2. lower the thumb contrast (`--mel-scrollbar` in `index.css`, one line) — the
+   widening stays but is less noticeable;
+3. take it over entirely via `::-webkit-scrollbar` → an always-visible, stable bar
+   that occupies about 10px of layout width. **Check first:** since Chrome 121 the
+   standard `scrollbar-width`/`scrollbar-color` win over the `::-webkit-` pseudos, so
+   the current `*` block in `index.css` would have to go for Chrome and the standard
+   properties would remain for Firefox only. Whether that really applies is
+   **unverified** — headless Chromium reports 0px for every variant including the
+   browser default, so it cannot answer this. Measure in a real browser.
 
-**C. ~~Feature-Caps und ihre Gates sichtbar machen~~ erledigt.**
-Settings-Sektion „Server-Funktionen" (`features/settings/`): jede Capability mit
-Zustand **und der Auswirkung im UI** — die Flag-Liste allein erklärt nichts, ein
-ausgeblendetes Feature ist ja per Definition unsichtbar. Erreichbar über die
-Sync-Leiste unten in der Sidebar (dorthin schaut man, wenn etwas komisch ist)
-und über die Sperrbildschirme von Kalender/Kontakte. Die sagten vorher
-„coming in a later phase" — falsch, die Features sind fertig, der *Server* kann
-sie nicht; jetzt „Dieser Server bietet keinen Kalender an" + Link.
-`capabilityRows()` ist rein und getestet; ein Test hält Zeilen und
-`AccountCapabilities` deckungsgleich, **neue Capability ⇒ dort eintragen**,
-sonst schlägt er fehl.
+**B. ~~Sync status pinned to the bottom of the folder sidebar~~ done.**
+`features/mail/SyncStatus.tsx` shows the *actual* live mode (push over SSE / "checking
+every 30 s" / connecting / offline), when the last successful sync happened, and how
+many outbox entries are still waiting. For that the scheduler keeps a small observable
+store (`getSyncStatus` / `subscribeSyncStatus`, consumed via `useSyncExternalStore`) —
+snapshots are **replaced, never mutated**, or React misses the change.
+Two details that are easy to get wrong when rebuilding: the `nav` was itself the
+scroll container, so the footer would have scrolled away with the list — now `nav` is
+the column and an inner `div` scrolls; and the Web Push line is driven by
+`isSubscribed()` rather than `capabilities.webPush`, otherwise the bar claims
+"push notifications on" when no subscription exists at all.
+The bar always renders **two lines** (the second possibly empty, fixed height) — it is
+pinned to the bottom, so a line appearing would shove the folder list around.
+The last sync lives in the `title`, not the text: while pushing it would permanently
+read "just now" (user's rule).
 
-**D. Kalender anlegen** (und vermutlich umbenennen/löschen). Serverseitig
-vorhanden: `Calendar/set`, und die Account-Capability meldet
-`"mayCreateCalendar": true` (beim RSVP-Probing gesehen). Es fehlt der
-Provider-Teil (`CalendarProvider` in `providers/types.ts` kennt nur
-`syncCalendars`) plus UI in der Kalender-Sidebar — analog zur schon
-existierenden Ordner-Verwaltung in `MailboxSidebar.tsx`.
+**C. ~~Make feature caps and their gates visible~~ done.**
+Settings section "Server features" (`features/settings/`): every capability with its
+state **and the effect it has in the UI** — the flag list alone explains nothing,
+since a hidden feature is invisible by definition. Reachable from the sync bar at the
+bottom of the sidebar (where people look when something seems off) and from the
+calendar/contacts lock screens. Those used to say "coming in a later phase" — wrong,
+the features are finished and the *server* cannot do them; now "This server does not
+offer a calendar" plus a link.
+`capabilityRows()` is pure and tested; one test keeps the rows and
+`AccountCapabilities` in lockstep, so **a new capability must be added there** or it
+fails.
 
-**E. ~~Massenbearbeitung~~ erledigt.** Auswahl per Checkbox (der Avatar wird bei
-Hover dazu — kostet keine Spalte), Toolbar ersetzt bei aktiver Auswahl die
-Suchzeile: gelesen/ungelesen, Flag, In Ordner verschieben, Archivieren,
-Löschen — mit Undo. Auswahl-State liegt in `app/store.ts`, **nicht** in den
-Zeilen: Virtuoso unmountet weggescrollte Rows samt ihrem State. Beim
-Ordnerwechsel wird die Auswahl verworfen.
-Drei Dinge, die daran hängen:
-- `services/mailActions.ts` hat Bulk-Varianten, die **eine** Outbox-Action mit
-  allen Ids einreihen (nicht n Stück). `bulkDelete` teilt auf: was schon im
-  Papierkorb liegt, wird endgültig zerstört, der Rest wandert dorthin — nur der
-  zweite Teil ist per Undo umkehrbar.
-- `setEmails()` im JMAP-Provider **chunkt jetzt gegen `maxObjectsInSet`** (500
-  bei Stalwart). Ohne das sprengt „ganzer Ordner" das eine `Email/set`.
-- „Alles im Ordner" nimmt **nicht** die lokal geladenen Ids, sondern fragt
-  `queryMailboxIds()` serverseitig ab (Deckel: 5000).
+**D. Creating calendars** (and presumably renaming/deleting). Present server-side:
+`Calendar/set`, and the account capability reports `"mayCreateCalendar": true` (seen
+while probing for RSVP). Missing is the provider part (`CalendarProvider` in
+`providers/types.ts` only knows `syncCalendars`) plus UI in the calendar sidebar —
+analogous to the folder management already in `MailboxSidebar.tsx`.
 
-**F. Spam gesondert behandeln:** keine externen Inhalte automatisch laden, dazu
-ein „Kein Spam"-Button (Move in den Posteingang; ob Stalwart zusätzlich
-Lernen/Sieve anstößt, ist zu prüfen — der Spamfilter ist im Dev-Seed
-abgeschaltet, s. `seed.sh`). Die Junk-Rolle kennt die Mailbox-Liste bereits.
+**E. ~~Bulk editing~~ done.** Selection by checkbox (the avatar becomes one on hover —
+costs no column), and while a selection exists a toolbar replaces the search row:
+read/unread, flag, move to folder, archive, delete — all with undo. Selection state
+lives in `app/store.ts`, **not** in the rows: Virtuoso unmounts rows that scroll out of
+view along with their state. Changing folder drops the selection.
+Three things that hang off it:
 
-**G. Option „Bilder nicht automatisch laden"** (global, mit Freigabe pro Mail).
-Das ist der Mechanismus, auf dem F aufsetzt — F ist im Grunde G plus „in Junk
-immer an". Betrifft `lib/htmlSanitize.ts` und das Mail-iframe im ReadingPane;
-Remote-Referenzen müssen dort blockiert und nach Freigabe nachgeladen werden.
+- `services/mailActions.ts` has bulk variants that queue **one** outbox action
+  carrying every id (not n of them). `bulkDelete` splits the selection: what is
+  already in trash is destroyed for good, the rest moves there — and only the second
+  half is undoable.
+- `setEmails()` in the JMAP provider **chunks against `maxObjectsInSet`** (500 on
+  Stalwart). Without it a whole-folder action blows past a single `Email/set`.
+- "Everything in this folder" does **not** use the locally loaded ids but asks
+  `queryMailboxIds()` server-side, paging through the mailbox.
 
-**H. Bug: `capabilities.submission` gated nichts.** Beim Bauen von C
-aufgefallen: Das Flag wird in `capabilitiesFor()` berechnet, aber nirgends
-abgefragt. Auf einem Server ohne `urn:ietf:params:jmap:submission` bietet die
-App also „Neue Nachricht" an, und der Versand scheitert erst still in der
-Outbox. Verwandt: der App-Switcher zeigt Mail **immer**
-(`a.cap === 'mail' || …`), auch wenn `capabilities.mail` false ist — dann ist
-`conn.mail` null und die Ansicht bleibt leer. Beides steht so (ehrlich) schon in
-der neuen Settings-Sektion; die Gates fehlen aber noch. Vom User als eigener
-Punkt gewünscht.
+**F. Treat spam separately:** no external content loaded automatically, plus a "not
+spam" button (move to the inbox; whether Stalwart additionally triggers learning or
+Sieve needs checking — the spam filter is switched off in the dev seed, see
+`seed.sh`). The junk role is already known to the mailbox list.
 
-**I. Capabilities beim Login eingefroren.** `capabilitiesFor()` läuft nur in
-`addAccount()`; `open()` hat die frische Session zwar in der Hand, schreibt den
-gespeicherten Stand aber nie fort. Ändert der Server etwas, merkt die App es
-**nie** — der User hatte deshalb plötzlich keinen Kalender mehr und musste sich
-neu anmelden, um ihn zurückzubekommen. `open()` sollte die Account-Row
-aktualisieren. Dazu (Wunsch des Users) ein **Knopf „neu laden"** in der neuen
-Settings-Sektion `features/settings/ServerCapabilities.tsx`.
+**G. Option "do not load images automatically"** (global, with a per-message
+override). This is the mechanism F builds on — F is essentially G plus "always on in
+junk". Affects `lib/htmlSanitize.ts` and the mail iframe in the ReadingPane; remote
+references have to be blocked there and fetched once released.
 
-**J. „Alles im Ordner" schneidet bei 5000 Ids stumm ab.**
-`SELECT_ALL_LIMIT` in `features/mail/SelectionToolbar.tsx`. Für eine ehrliche
-Anzeige („12.480 Mails, die ersten 5000 ausgewählt") braucht es die Gesamtzahl
-aus `Email/query` mit `calculateTotal: true`.
+**H. Bug: `capabilities.submission` gates nothing.** Noticed while building C: the
+flag is computed in `capabilitiesFor()` but never read. On a server without
+`urn:ietf:params:jmap:submission` the app therefore offers "new message" and the send
+only fails silently in the outbox later. Related: the app switcher shows Mail
+**always** (`a.cap === 'mail' || …`), even when `capabilities.mail` is false — then
+`conn.mail` is null and the view stays empty. Both are stated honestly in the new
+settings section already; the gates themselves are still missing. The user wants this
+as its own item.
 
-**K. Panels in der Breite ziehbar** — Ordner / Mailliste / Detailansicht.
-Die Breiten stehen heute fest in `app/routes/mail.tsx` (`lg:w-56`) und
-`mail.$mailboxId.tsx` (`lg:w-96`). Gewählte Breiten pro Gerät in localStorage,
-analog zu den Kalender-Sichtbarkeits-Toggles.
+**I. Capabilities are frozen at login.** `capabilitiesFor()` runs only in
+`addAccount()`; `open()` has the fresh session in hand but never writes the stored
+state forward. If the server changes something the app **never** notices — this is why
+the user suddenly had no calendar and had to sign in again to get it back. `open()`
+should update the account row. On top of that (user's wish) a **"reload" button** in
+the new settings section `features/settings/ServerCapabilities.tsx`.
 
-**L. Theme- und Abmelden-Knopf oben rechts haben keinen Zeiger-Cursor.**
-`app/AppShell.tsx`; Einzeiler (`cursor-pointer`), aber Buttons ohne
-`cursor: pointer` fühlen sich tot an. Beim Prüfen gleich die übrigen
-Icon-Buttons mitnehmen.
+**J. ~~"Everything in this folder" truncated silently at 5000 ids~~ done.**
+`queryMailboxIds()` now pages through the whole mailbox up to `SELECT_ALL_LIMIT`
+(50,000) and reads the server's real total via `calculateTotal`; if the ceiling is
+reached the toolbar says so instead of quietly acting on the newest slice.
 
-**M. ~~GitHub CI~~ erledigt** — s. Abschnitt „Deployment" oben. Offen bleibt,
-dass noch nie ein Lauf auf GitHub selbst stattgefunden hat: lokal ist alles
-verifiziert (Image gebaut, Container getestet, `kubectl --dry-run` sauber), der
-erste echte Workflow-Lauf steht aber aus.
+**K. Resizable panel widths** — folders / mail list / detail view.
+The widths are fixed today in `app/routes/mail.tsx` (`lg:w-56`) and
+`mail.$mailboxId.tsx` (`lg:w-96`). Store the chosen widths per device in
+localStorage, like the calendar visibility toggles.
 
-**N. Theme-Editor**, mit dem sich die UI-Farben anpassen lassen, gespeichert im
-Browser (localStorage). Die Tokens sind bereits zentral als OKLCH-Variablen in
-`src/index.css` definiert und werden über `@theme` auf Tailwind gemappt — ein
-Editor müsste also nur die `--mel-*`-Variablen auf `:root` überschreiben.
+**L. The theme and sign-out buttons at the top right have no pointer cursor.**
+`app/AppShell.tsx`; a one-liner (`cursor-pointer`), but buttons without
+`cursor: pointer` feel dead. While checking, cover the remaining icon buttons too.
 
-**O. Settings serverseitig ablegen**, damit dieselben Einstellungen in mehreren
-Browsern gelten — **ohne eigenes Backend**. Zwei Kandidaten, beide vom User
-genannt: als Mail in einem eigenen Ordner, oder über den JMAP-FileNode-Storage.
-Wichtig: Stalwart meldet in der Session bereits
-`urn:ietf:params:jmap:filenode` (beim Capability-Probing gesehen), das wäre
-also der naheliegendere Weg — aber **nicht standardisiert**, also hinter einer
-Capability-Prüfung und mit Fallback auf rein lokale Settings.
+**M. ~~GitHub CI~~ done** — see the "Deployment" section above. What remains open is
+that no run has ever happened on GitHub itself: everything is verified locally (image
+built, container tested, `kubectl --dry-run` clean), but the first real workflow run
+is still pending.
 
-**P. Ordner verschieben** (Wunsch des User). Serverseitig trivial:
-`Mailbox/set` `update: {id: {parentId}}` — `MailboxEdit.update` kennt `parentId`
-bereits, `renameMailbox` nutzt denselben Weg. Es fehlt nur die UI. Naheliegend:
-Eintrag „Verschieben nach…" im „…"-Menü der Ordnerzeile (analog zum
-Verschieben-Menü in `features/mail/SelectionToolbar.tsx`), Drag & Drop wäre die
-Kür. Achtung: Zyklen verhindern (ein Ordner darf nicht unter einen seiner
-eigenen Nachfahren) — `descendantsOf()` aus `features/mail/mailboxTree.ts`
-liefert die Ausschlussliste.
+**N. Theme editor** for adjusting the UI colours, stored in the browser
+(localStorage). The tokens are already defined centrally as OKLCH variables in
+`src/index.css` and mapped onto Tailwind through `@theme` — an editor would only have
+to override the `--mel-*` variables on `:root`.
 
-### e2e-Stabilität (die früheren „Flakes" waren echte Ursachen)
-Die Suite galt lange als sporadisch flaky (~40 % rote Voll-Läufe) und das war als
-CPU-Last abgetan. Das war **falsch** — es waren drei reale Ursachen, alle gefixt:
+**O. Store settings server-side** so the same settings apply across browsers —
+**without a backend of our own**. Two candidates, both raised by the user: as a mail
+in a dedicated folder, or through JMAP FileNode storage. Note that Stalwart already
+reports `urn:ietf:params:jmap:filenode` in the session (seen while probing
+capabilities), which would be the more natural route — but it is **not standardised**,
+so it belongs behind a capability check with a fallback to purely local settings.
 
-0. **Angesammelter Posteingang.** `global-setup` räumte Drafts/Sent/Ordner auf,
-   ließ den **Inbox** aber unangetastet. Mit dem RSVP-Test kommen pro Lauf echte
-   iMIP-Mails an („Accepted: …" bei alice, „Invitation: …" bei bob) — nach ein
-   paar Läufen standen die vor den Seed-Mails, und die virtualisierte Liste
-   rendert `Willkommen bei mel`/`HTML-Test` dann gar nicht mehr. Symptom: mehrere
-   Mail-Specs finden „ihre" Mail nicht. Bob hatte so **70** Altmails angesammelt.
-   `global-setup` trimmt den Inbox jetzt auf die Seed-Betreffs (`SEEDED_INBOX`).
+**P. Moving folders** (user's wish). Trivial server-side: `Mailbox/set`
+`update: {id: {parentId}}` — `MailboxEdit.update` already knows `parentId` and
+`renameMailbox` uses the same path. Only the UI is missing. The obvious shape: a
+"move to…" entry in the folder row's "…" menu (like the move menu in
+`features/mail/SelectionToolbar.tsx`), with drag and drop as the luxury version.
+Careful: prevent cycles (a folder must not end up beneath one of its own
+descendants) — `descendantsOf()` from `features/mail/mailboxTree.ts` gives the
+exclusion list.
 
-0b. **Knöpfe, die still nichts tun.** „Neuer Termin" hatte `if
-   (!defaultCalendarId) return` — solange die Kalender noch nicht gesynct
-   waren, passierte beim Klick nichts, und der Test lief in den Timeout. Unter
-   Last (2 Worker) traf er dieses Fenster etwa jeden dritten Lauf. Der Knopf
-   ist jetzt `disabled`, womit Playwright von selbst wartet. **Regel: ein
-   Handler, der früh `return`t, gehört als `disabled` sichtbar gemacht** —
-   sonst ist es für Nutzer wie Tests ein toter Knopf.
+### e2e stability (the earlier "flakes" had real causes)
 
-1. **Angesammelte Testdaten.** Jeder Lauf ließ Entwürfe/Sent-Mails/Kontakte/Events
-   zurück (der Draft-Autosave-Test *muss* einen Entwurf hinterlassen; fehlgeschlagene
-   Tests überspringen ihr Cleanup). Nach ~50 Mails wurde der Erst-Sync so langsam,
-   dass 15-s-Waits rissen. → `e2e/global-setup.ts` setzt beide Konten vor jedem Lauf
-   auf den Seed-Zustand zurück. Per-Test-Cleanup allein reicht prinzipiell nicht.
-2. **Echter App-Bug** (siehe `mail.tsx`): der Inbox-Auto-Redirect prüfte nicht, ob man
-   noch auf `/mail` ist. Klick auf Kalender/Kontakte während des Erst-Syncs riss einen
-   zurück. Regression: `e2e/navigation.spec.ts`.
-3. **Stalwart-Ratenlimit**: 25 Mails/Stunde pro Absender-Empfänger-Paar. Der Send-Test
-   schickt alice→bob bei jedem Lauf; nach ~25 Läufen kam `452 4.4.5 Rate limit
-   exceeded` — sichtbar nur als „Mail kommt nie an". In `seed.sh` für Dev abgeschaltet
-   (`x:MtaInboundThrottle`, `enable:false`).
+The suite was long regarded as sporadically flaky (~40% red full runs) and that was
+put down to CPU load. That was **wrong** — there were real causes, all fixed:
 
-Außerdem: `workers: 2` und `mobile` hängt via `dependencies` hinter `desktop` — alle
-Specs fahren dasselbe Konto, parallele Dateien haben sich gegenseitig Mails
-wegarchiviert. Seither 6/6 grüne Voll-Läufe. **Wenn wieder etwas flackert: erst diese
-drei Klassen prüfen (Kontostand, geteilter Zustand, Serverlimits), nicht Systemlast
-annehmen.**
+0. **Accumulated inbox.** `global-setup` cleaned drafts/sent/folders but left the
+   **inbox** untouched. With the RSVP test, real iMIP mail arrives every run
+   ("Accepted: …" for alice, "Invitation: …" for bob) — after a few runs those sat
+   above the seeded mail and the virtualised list stopped rendering
+   `Willkommen bei mel`/`HTML-Test` at all. Symptom: several mail specs cannot find
+   "their" message. Bob had accumulated **70** stale mails this way. `global-setup`
+   now trims the inbox back to the seeded subjects (`SEEDED_INBOX`).
 
-## Stolpersteine (hart erarbeitet — nicht neu entdecken)
+0b. **Buttons that silently do nothing.** "New event" began with
+   `if (!defaultCalendarId) return` — before the calendars had synced, clicking did
+   nothing and the test ran into its timeout. Under load (2 workers) it hit that
+   window roughly every third run. The button is `disabled` now, which makes
+   Playwright wait on its own. **Rule: a handler that returns early belongs behind a
+   visible `disabled`** — otherwise it is a dead button for people and tests alike.
 
-- **Stalwart ≥0.16 hat KEINE REST-Admin-API.** Alles über JMAP-Management
-  (`urn:stalwart:jmap`, Objekte `x:Bootstrap`, `x:Http`, `x:Account`, `x:Jmap`,
+1. **Accumulated test data.** Every run left drafts/sent mail/contacts/events behind
+   (the draft-autosave test *must* leave a draft; failing tests skip their cleanup).
+   After ~50 mails the initial sync got slow enough that 15s waits expired. →
+   `e2e/global-setup.ts` resets both accounts to the seeded state before every run.
+   Per-test cleanup alone is not enough in principle.
+2. **A real app bug** (see `mail.tsx`): the inbox auto-redirect did not check whether
+   you were still on `/mail`. Clicking Calendar/Contacts during the first sync yanked
+   you back. Regression: `e2e/navigation.spec.ts`.
+3. **Stalwart rate limit**: 25 mails per hour per sender/recipient pair. The send test
+   goes alice→bob every run; after ~25 runs it produced `452 4.4.5 Rate limit
+   exceeded` — visible only as "the mail never arrives". Switched off for dev in
+   `seed.sh` (`x:MtaInboundThrottle`, `enable:false`).
+
+Also: `workers: 2`, and `mobile` sits behind `desktop` via `dependencies` — every spec
+drives the same account, and parallel files were archiving each other's mail. Green
+full runs ever since. **If something flickers again, check these classes first
+(account state, shared state, server limits) rather than assuming system load.**
+
+## Hard-won gotchas (do not rediscover)
+
+- **Stalwart ≥0.16 has NO REST admin API.** Everything goes through JMAP management
+  (`urn:stalwart:jmap`, objects `x:Bootstrap`, `x:Http`, `x:Account`, `x:Jmap`,
   `x:Task`…). Schema: `GET /api/schema` (gzip). Details in `docker/stalwart/seed.sh`
-  und in der Memory-Datei `stalwart-jmap-management-api.md`. Kernpunkte: Settings im
-  Bootstrap-Modus überleben nicht (erst Restart, dann als permanenter Admin
-  konfigurieren, nochmal Restart); Credentials-Maps brauchen numerische Keys;
-  zxcvbn-Passwortzwang; EHLO ohne Punkt → 550; `STALWART_PUBLIC_URL` nötig;
-  `usePermissiveCors` reicht nicht (statische `responseHeaders` nötig);
-  FTS braucht `searchStore` + ggf. `reindex`-Task; VAPID = `webPushKey`
+  and in the memory file `stalwart-jmap-management-api.md`. Key points: settings
+  written in bootstrap mode do not survive (restart, then configure as the permanent
+  admin, restart again); credential maps need numeric keys; zxcvbn password strength
+  is enforced; EHLO without a dot → 550; `STALWART_PUBLIC_URL` is required;
+  `usePermissiveCors` is not enough (static `responseHeaders` are needed); FTS needs
+  `searchStore` plus possibly a `reindex` task; VAPID is `webPushKey`
   (`{"@type":"Text","secret":"<PKCS#8 PEM>"}`).
-- **Ein Browser kann CORS nicht von DNS-Fehler/Refused/TLS unterscheiden** —
-  `fetch()` wirft für alles dasselbe opake `TypeError: Failed to fetch`. Also
-  nie „CORS-Fehler" behaupten; `lib/netError.ts` klassifiziert nur grob
-  (`unreachable`/`auth`/`other`) und die Texte nennen die Kandidaten plus den
-  Hinweis auf die Browser-Konsole, wo der echte Grund steht.
-  Zwei Stellen, an denen der Fehler früher komplett verschwand:
-  1. `startSse()` holte die Session **außerhalb** seines `try` — schlug das per
-     CORS fehl, lief die Rejection ins Leere, es gab keinen Poll-Fallback und
-     die Statusleiste stand für immer auf „Verbinde…".
-  2. `tick()` verschluckte jeden Fehler (`catch {}`), ein abgelehnter Server sah
-     also aus wie ein leeres Postfach. `SyncStatus.error` trägt das jetzt.
-  Beim Login unterscheidet `NoServerFound.lastError` jetzt „nichts gefunden" von
-  „nicht erreichbar" — sonst schickt „Kein Mailserver gefunden" den User auf
-  Tippfehlersuche, obwohl sein Server läuft und nur die CORS-Header fehlen.
-- **e2e: `page.route('**/jmap/**')` blockt auch die eigenen App-Module**, die
-  Vite im Dev unter `src/providers/jmap/…` ausliefert → weiße Seite, Test misst
-  nichts. Für Verbindungsabbrüche die Server-Origin routen
-  (`http://localhost:8080/**`).
-- **Paging: Cursor immer um die *angeforderte* Seitengröße weiterschieben.**
-  In `listAllEmailHeaders` stand `limit: QUERY_PAGE` (200), der Cursor lief aber
-  um `BULK_QUERY_PAGE` (1000) weiter → **80 % aller Mails wurden nie geholt**,
-  und weil `fullEmailSync` lokale Zeilen löscht, die der Server angeblich nicht
-  mehr hat, wurden sie zusätzlich **aktiv gelöscht**. Symptom: Ordner sieht leer
-  aus, Server meldet aber Mails. Regression in `providers/jmap/mail.test.ts`
-  (Seiten müssen lückenlos `[0, 200, 400, 600]` sein). Entstanden durch ein
-  globales Suchen-und-Ersetzen — bei `position +=` genau hinsehen.
-- **Ein Delta-Sync repariert keine Lücken.** Fehlende Zeilen hat der Server nie
-  „geändert", der Cursor überspringt sie also für immer. Dafür gibt es
-  `resyncAccount()` (Settings → Konto → „Alles neu abrufen"): wirft die
-  Sync-Cursor weg, erzwingt einen Vollsync, füllt auf und räumt auf.
-- **Ordner löschen hat zwei getrennte Ablehnungen** (am Server verifiziert):
-  `mailboxHasChild` („Mailbox has at least one children.") → Kinder müssen
-  zuerst weg; `mailboxHasEmail` („Mailbox is not empty.") → braucht
-  `onDestroyRemoveEmails: true`. Letzteres löscht Mails **nicht** pauschal: jede
-  Mail verliert nur diese Mailbox, endgültig weg ist sie nur, wenn sie sonst
-  nirgends lag. Der Bestätigungsdialog sagt das so.
-  **Die Ordnerliste dafür kommt vom Server** (`serverMailboxes()`), nicht aus
-  Dexie: der Fall tritt ja gerade auf, wenn der lokale Spiegel unvollständig ist
-  — sonst findet die App keine Kinder und scheitert im Kreis. Gelöscht wird
-  tiefstes Kind zuerst.
-- **Die Ordner-Sidebar war eine flache, global sortierte Liste** mit pauschal
-  2 rem Einzug für alles mit Parent. Unterordner standen dadurch alphabetisch
-  zwischen fremden Ordnern und ein Elternordner sah kinderlos aus.
-  `features/mail/mailboxTree.ts` ordnet jetzt als echten Baum (Einzug pro Ebene);
-  Ordner mit unbekanntem Parent werden als Wurzel gezeigt statt verschluckt.
-- **`new URL()` zerstört `{platzhalter}`** der JMAP-URL-Templates (percent-encoding)
-  — Fix in `client/session.ts` `abs()`; nicht entfernen.
-- **JMAP `properties: []` heißt „nur id"** — für alle Properties `undefined` schicken
-  (Bug hatte Mailbox-Namen lokal gewischt).
-- **Dexie-Crypto-Middleware muss synchron sein** (async WebCrypto → IndexedDB-Txn
-  auto-commit), daher @noble/ciphers. **Keine Cursor-Reads** (`.filter().first()`,
-  `.each()`) auf Tabellen mit payload — nur get/bulkGet/toArray/query, sonst
-  umgeht man die Entschlüsselung (openEnvelope wirft dann).
-- Stalwart-Kalender: `recurrenceRule` **Singular** (nicht `recurrenceRules`);
-  ContactCards sind **flache** JSContact-Objekte (kein `card`-Wrapper).
-- **Scheduling/iTIP hat drei Fallen, alle stumm** (mühsam erprobt, s.
+- **A browser cannot tell CORS from a DNS failure, a refused connection or TLS** —
+  `fetch()` throws the same opaque `TypeError: Failed to fetch` for all of them. So
+  never claim "CORS error"; `lib/netError.ts` only classifies coarsely
+  (`unreachable`/`auth`/`other`) and the copy names the candidates plus a pointer to
+  the browser console, where the real reason is printed.
+  Two places where the error used to vanish completely:
+  1. `startSse()` fetched the session **outside** its `try` — if that failed on CORS
+     the rejection went nowhere, there was no polling fallback, and the status bar sat
+     on "connecting" forever.
+  2. `tick()` swallowed every error (`catch {}`), so a server refusing us looked
+     exactly like an empty mailbox. `SyncStatus.error` carries it now.
+  At login, `NoServerFound.lastError` now distinguishes "nothing found" from "not
+  reachable" — otherwise "no mail server found" sends the user hunting for a typo when
+  their server is up and merely missing CORS headers.
+- **e2e: `page.route('**/jmap/**')` also blocks the app's own modules**, which Vite
+  serves in dev under `src/providers/jmap/…` → blank page, test measures nothing. For
+  connection failures, route the server origin (`http://localhost:8080/**`).
+- **Paging: always advance the cursor by the page size actually requested.**
+  `listAllEmailHeaders` had `limit: QUERY_PAGE` (200) while the cursor moved by
+  `BULK_QUERY_PAGE` (1000) → **80% of all mail was never fetched**, and because
+  `fullEmailSync` deletes local rows the server supposedly no longer has, they were
+  **actively deleted** as well. Symptom: a folder looks empty while the server reports
+  mail. Regression in `providers/jmap/mail.test.ts` (pages must be contiguous:
+  `[0, 200, 400, 600]`). Caused by a global search-and-replace — look closely at any
+  `position +=`.
+- **A delta sync cannot repair gaps.** The server never "changed" the missing rows, so
+  the cursor skips them forever. That is what `resyncAccount()` is for (Settings →
+  Account → "fetch everything again"): it drops the sync cursors, forces a full sync,
+  fills the gaps and prunes.
+- **Deleting a folder has two separate refusals** (verified against the server):
+  `mailboxHasChild` ("Mailbox has at least one children.") → children must go first;
+  `mailboxHasEmail` ("Mailbox is not empty.") → needs `onDestroyRemoveEmails: true`.
+  The latter does **not** delete mail wholesale: each message merely loses this
+  mailbox, and it only ceases to exist if it was filed nowhere else. The confirmation
+  dialog says exactly that.
+  **The folder list for that walk comes from the server** (`serverMailboxes()`), not
+  from Dexie: this case arises precisely when the local mirror is incomplete —
+  otherwise the app finds no children and fails in circles. Deepest child first.
+- **The folder sidebar used to be a flat, globally sorted list** with a blanket 2rem
+  indent for anything with a parent. Subfolders therefore sat alphabetically among
+  unrelated folders and a parent looked childless.
+  `features/mail/mailboxTree.ts` now orders it as a real tree (indent per level);
+  folders whose parent is unknown are shown as roots rather than swallowed.
+- **`new URL()` destroys `{placeholders}`** in JMAP URL templates (percent-encoding) —
+  fixed in `client/session.ts` `abs()`; do not remove.
+- **JMAP `properties: []` means "id only"** — send `undefined` for all properties
+  (this bug had wiped mailbox names locally).
+- **The Dexie crypto middleware must be synchronous** (async WebCrypto → IndexedDB
+  transaction auto-commit), hence @noble/ciphers. **No cursor reads**
+  (`.filter().first()`, `.each()`) on tables carrying a payload — only
+  get/bulkGet/toArray/query, or decryption is bypassed (openEnvelope then throws).
+- Stalwart calendar: `recurrenceRule` is **singular** (not `recurrenceRules`);
+  ContactCards are **flat** JSContact objects (no `card` wrapper).
+- **Scheduling/iTIP has three traps, all silent** (worked out the hard way, see
   `providers/jmap/calendars.ts`):
-  1. `CalendarEvent/set` braucht das Argument **`sendSchedulingMessages: true`**.
-     Ohne das wird der Termin samt Teilnehmern gespeichert, aber **keine
-     Einladung verschickt** — kein Fehler, keine Warnung.
-  2. Teilnehmer heißen bei Stalwart **`calendarAddress: "mailto:…"`** (neuer
-     JSCalendar-Entwurf), *nicht* `sendTo`/`email`/`replyTo` wie in RFC 8984.
-     Schickt man die RFC-8984-Form, landet sie als opaker `JSPROP`-Fallback im
-     iCalendar, es entstehen **keine ATTENDEE-Zeilen**, `/get` liefert
-     `participants` gar nicht zurück — und wieder: kein Fehler.
-  3. `roles: {owner: true}` allein reicht nicht: **ohne
-     `organizerCalendarAddress` schreibt Stalwart keinen ORGANIZER** und
-     verschickt nichts. Preis dafür: der Server spiegelt den Organisator als
-     zweiten, rollenlosen Teilnehmer-Eintrag zurück — `toParticipants` faltet
-     das über die Adresse wieder zusammen und behält den Eintrag *mit* Rollen
-     (nur dessen Key funktioniert für RSVP-Patches).
-  Rollen sind `owner`/`chair`/`required`/`optional`. RSVP = Patch auf
-  `participants/<id>/participationStatus` (ein Patch, der einen *ganzen* neuen
-  Teilnehmer anlegen will, scheitert mit `invalidPatch`).
-  Debug-Trick: den rohen iCalendar über CalDAV lesen
-  (`PROPFIND`/`GET` auf `/dav/cal/<user>/default/…`) — dort sieht man sofort, ob
-  ATTENDEE/ORGANIZER wirklich geschrieben wurden oder nur `JSPROP`-Zeilen.
-- Server-Settings dafür: `x:CalendarScheduling` (`enable`, `autoAddInvitations`,
-  HTTP-RSVP) — im Dev-Stalwart ist `enable` schon an, nichts zu tun.
-- Kalender geht nur gegen Stalwart (Fastmail hat keinen Standard-JMAP-Kalender);
-  Capability-gating in AppShell vorhanden.
-- e2e: Desktop+Mobile teilen einen Server-Account → zustandsändernde Specs nur
-  desktop (`testIgnore`); Tests müssen ihre Server-Artefakte aufräumen oder
-  zufällige Namen/Tage nutzen (Kalender-Zellen cappen bei 3 Chips).
-- **`new Date()` als Anchor/Grid-Datum trägt die aktuelle Uhrzeit mit** — direkt als
-  Sync-Fenstergrenze benutzt (`grid[0]`/`grid[last]`) verschiebt das Fenster nach
-  Mittag auf "jetzt bis morgen-jetzt" statt Mitternacht-Mitternacht, wodurch frühere
-  Events rausfallen. Immer auf Mitternacht normalisieren, bevor Datumsobjekte als
-  Fenstergrenzen verwendet werden (siehe `byDay` in `calendar.tsx`).
-- **`e2e/contacts.spec.ts` hat früher nie aufgeräumt** → bei jedem Lauf ein weiterer
-  "Erika Testling…"-Kontakt, bis `suggestRecipients` (Cap bei 8 Treffern) den neusten
-  irgendwann verdrängt und der Test flackert. Gefixt (löscht sich jetzt selbst) —
-  falls wieder Kontakt-Autocomplete-Flakes auftreten, zuerst `ContactCard/get` auf
-  dem Account prüfen, ob sich wieder Test-Leichen angesammelt haben.
-- **Hover-Swaps müssen höhenneutral sein.** In der Ordnerliste wird der
-  Ungelesen-Zähler bei Hover gegen den „…"-Menü-Button getauscht; der war höher
-  als das Badge, wodurch jede Zeile darunter um 3 px sprang. Beide sitzen jetzt
-  in einer festen 20-px-Box, die Zeile hat `min-h-[34px]` + `leading-5`.
-  Regression: `e2e/navigation.spec.ts` misst jede Zeile mit und ohne Hover.
-- **JMAP-`preview` enthält oft CSS.** Baut der Server die Vorschau aus dem
-  HTML-Teil, rutscht der Inhalt eines inline-`<style>` mit hinein und die Liste
-  zeigt „html, body, * { -webkit-text-size-adjust: none; …". Da die Vorschau
-  abgeschnitten wird, ist der Block meist **unbalanciert** — `lib/preview.ts`
-  entfernt darum auch die angefangene letzte Regel. Nur Blöcke mit
-  `prop: value` fliegen raus, damit „Hi {name}" heil bleibt.
-- Playwright `getByRole({name: 'X'})` matcht **case-insensitive als Substring**
-  (nicht exact) — "Week" matchte z. B. Reste mit "…weekly" im Titel. Bei kurzen/
-  generischen Labels (View-Switcher, Aktions-Buttons) `exact: true` setzen.
+  1. `CalendarEvent/set` needs the argument **`sendSchedulingMessages: true`**.
+     Without it the event including its participants is stored but **no invitation is
+     sent** — no error, no warning.
+  2. Stalwart names participants by **`calendarAddress: "mailto:…"`** (the newer
+     JSCalendar draft), *not* `sendTo`/`email`/`replyTo` as in RFC 8984. Send the
+     RFC 8984 shape and it lands as an opaque `JSPROP` fallback in the iCalendar,
+     **no ATTENDEE lines** are produced, `/get` does not return `participants` at all
+     — and again: no error.
+  3. `roles: {owner: true}` alone is not enough: **without
+     `organizerCalendarAddress` Stalwart writes no ORGANIZER** and sends nothing. The
+     price is that the server mirrors the organiser back as a second, roleless
+     participant entry — `toParticipants` folds that back together by address and
+     keeps the entry *with* roles (only its key works for RSVP patches).
+  Roles are `owner`/`chair`/`required`/`optional`. RSVP is a patch on
+  `participants/<id>/participationStatus` (a patch trying to create a *whole* new
+  participant fails with `invalidPatch`).
+  Debugging trick: read the raw iCalendar over CalDAV (`PROPFIND`/`GET` on
+  `/dav/cal/<user>/default/…`) — that shows immediately whether ATTENDEE/ORGANIZER
+  were really written or only `JSPROP` lines.
+- Server settings for it: `x:CalendarScheduling` (`enable`, `autoAddInvitations`,
+  HTTP RSVP) — `enable` is already on in the dev Stalwart, nothing to do.
+- Calendar only works against Stalwart (Fastmail has no standard JMAP calendar);
+  capability gating is in place in the AppShell.
+- e2e: desktop and mobile share one server account → state-mutating specs are desktop
+  only (`testIgnore`); tests must clean up their server-side artifacts or use random
+  names/days (calendar cells cap at 3 chips).
+- **`new Date()` as an anchor/grid date carries the current time along** — used
+  directly as a sync window boundary (`grid[0]`/`grid[last]`) it shifts the window
+  after midday to "now until tomorrow-now" instead of midnight to midnight, dropping
+  earlier events. Always normalise to midnight before using date objects as window
+  boundaries (see `byDay` in `calendar.tsx`).
+- **`e2e/contacts.spec.ts` never used to clean up** → one more "Erika Testling…"
+  contact every run, until `suggestRecipients` (capped at 8 hits) eventually pushed
+  the newest one out and the test flickered. Fixed (it deletes itself now) — if
+  contact autocomplete flakes reappear, check `ContactCard/get` on the account first
+  for accumulated test corpses.
+- **Hover swaps must be height-neutral.** In the folder list the unread counter is
+  swapped for the "…" menu button on hover; that button was taller than the badge, so
+  every row below jumped by 3px. Both now sit in a fixed 20px box and the row has
+  `min-h-[34px]` plus `leading-5`. Regression: `e2e/navigation.spec.ts` measures every
+  row with and without hover.
+- **The JMAP `preview` often contains CSS.** If the server builds the preview from the
+  HTML part, the contents of an inline `<style>` come along and the list shows
+  "html, body, * { -webkit-text-size-adjust: none; …". Because the preview is
+  truncated the block is usually **unbalanced** — so `lib/preview.ts` also removes the
+  trailing partial rule. Only blocks containing `prop: value` are dropped, so
+  "Hi {name}" survives.
+- Playwright's `getByRole({name: 'X'})` matches **case-insensitively as a substring**
+  (not exact) — "Week" also matched leftovers with "…weekly" in the title. For short
+  or generic labels (view switchers, action buttons) pass `exact: true`.
 
-## Architektur-Regeln
+## Architecture rules
 
-- `src/domain/` provider-agnostisch, importiert nie aus `providers/`.
-- Alle Rows tragen Inhalte im `plain`/`enc`-Umschlag (`storage/envelope.ts`);
-  Index-Spalten nur IDs/Timestamps/Flags (Verschlüsselung!).
-- Mutationen: lokal optimistisch + `sync/outbox.ts`-Action (Ausnahme: Creates
-  mit Navigations-Ziel sind server-first mit Offline-Fallback, s. contacts.ts).
-- Commits auf Deutsch zusammengefasste Phasen, englische Messages, mit
-  Co-Authored-By-Trailer. **Nach einem fertigen Feature erst beim User
-  nachfragen, ob alles passt — dann erst committen** (ausdrückliche Vorgabe).
-  Er prüft im echten Browser und findet dort regelmäßig, was Tests nicht sehen.
+- `src/domain/` is provider-agnostic and never imports from `providers/`.
+- Every row carries its contents in the `plain`/`enc` envelope
+  (`storage/envelope.ts`); index columns hold only ids/timestamps/flags (encryption).
+- Mutations: optimistic locally plus a `sync/outbox.ts` action (exception: creates
+  with a navigation target are server-first with an offline fallback, see contacts.ts).
+- Commit messages in English, with the Co-Authored-By trailer. **After finishing a
+  feature, ask the user whether everything is right before committing** (explicit
+  instruction). They check in a real browser and regularly find what the tests do not.

@@ -40,30 +40,32 @@ test('signing out clears the account and its cached data from the device', async
 
   // Back to the setup screen, and no account row left behind.
   await expect(page.getByPlaceholder('you@example.com')).toBeVisible({ timeout: 10_000 })
-  const rows = await page.evaluate(
+  const leftovers = await page.evaluate(
     () =>
-      new Promise<number>((resolve, reject) => {
+      new Promise<Record<string, number>>((resolve, reject) => {
         const open = indexedDB.open('mel')
         open.onerror = () => reject(open.error)
         open.onsuccess = () => {
           const dbh = open.result
-          // Contacts and events used to survive logout — they are not on the
+          // Contacts and events used to survive logout — they were not on the
           // list of tables the account teardown walked.
-          const tx = dbh.transaction(['accounts', 'contacts', 'events'], 'readonly')
+          const names = ['accounts', 'contacts', 'events', 'emails', 'mailboxes']
+          const tx = dbh.transaction(names, 'readonly')
           Promise.all(
-            ['accounts', 'contacts', 'events'].map(
+            names.map(
               (name) =>
-                new Promise<number>((res, rej) => {
+                new Promise<[string, number]>((res, rej) => {
                   const req = tx.objectStore(name).count()
-                  req.onsuccess = () => res(req.result)
+                  req.onsuccess = () => res([name, req.result])
                   req.onerror = () => rej(req.error)
                 }),
             ),
-          ).then((counts) => resolve(counts.reduce((a, b) => a + b, 0)), reject)
+          ).then((pairs) => resolve(Object.fromEntries(pairs)), reject)
         }
       }),
   )
-  expect(rows).toBe(0)
+  // Named per table: "1 row survived" on its own says nothing about where.
+  expect(leftovers).toEqual({ accounts: 0, contacts: 0, events: 0, emails: 0, mailboxes: 0 })
 })
 
 test('folder rows keep their height on hover', async ({ page }) => {

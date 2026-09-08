@@ -76,6 +76,23 @@ export function subscribeSyncStatus(fn: () => void): () => void {
   return () => listeners.delete(fn)
 }
 
+/**
+ * In-flight ticks, so a shutdown can wait for one to finish.
+ *
+ * syncSettled() only knows about syncAccount(); a tick sitting in flush() before
+ * it has even called syncAccount is invisible there, and would go on to write
+ * rows after a sign-out had already purged them.
+ */
+const inflight = new Map<string, Promise<void>>()
+
+function runTick(accountId: string): Promise<void> {
+  const p = tick(accountId).finally(() => {
+    if (inflight.get(accountId) === p) inflight.delete(accountId)
+  })
+  inflight.set(accountId, p)
+  return p
+}
+
 async function tick(accountId: string) {
   setStatus(accountId, { syncing: true })
   try {
@@ -98,7 +115,7 @@ function schedulePoll(accountId: string, ctl: Controller) {
   const interval = document.hidden ? POLL_HIDDEN_MS : POLL_FOREGROUND_MS
   setStatus(accountId, { mode: 'poll', intervalMs: interval })
   ctl.pollTimer = setTimeout(() => {
-    void tick(accountId).finally(() => schedulePoll(accountId, ctl))
+    void runTick(accountId).finally(() => schedulePoll(accountId, ctl))
   }, interval)
 }
 
@@ -137,7 +154,7 @@ async function startSse(accountId: string, ctl: Controller) {
         if (ev.event !== 'state' || !ev.data) return
         try {
           const change = JSON.parse(ev.data) as StateChange
-          if (change.changed) void tick(accountId)
+          if (change.changed) void runTick(accountId)
         } catch {
           /* malformed event */
         }
@@ -166,26 +183,29 @@ export function startScheduler(accountId: string) {
   }
   controllers.set(accountId, ctl)
   setStatus(accountId, { mode: 'connecting', intervalMs: 0 })
-  void tick(accountId)
+  void runTick(accountId)
   void startSse(accountId, ctl)
 
   const onVisibility = () => {
-    if (!document.hidden) void tick(accountId)
+    if (!document.hidden) void runTick(accountId)
   }
-  const onOnline = () => void tick(accountId)
+  const onOnline = () => void runTick(accountId)
   document.addEventListener('visibilitychange', onVisibility)
   window.addEventListener('online', onOnline)
 }
 
-export function stopScheduler(accountId: string) {
+/** Resolves once the scheduler has stopped *and* any running tick has finished. */
+export function stopScheduler(accountId: string): Promise<void> {
+  const settled = inflight.get(accountId)?.catch(() => {}) ?? Promise.resolve()
   const ctl = controllers.get(accountId)
-  if (!ctl) return
+  if (!ctl) return settled
   ctl.stopped = true
   ctl.abort.abort()
   if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
   controllers.delete(accountId)
   statuses.delete(accountId)
   for (const fn of listeners) fn()
+  return settled
 }
 
 /** Newest inbox arrivals, used by notifications to diff. */

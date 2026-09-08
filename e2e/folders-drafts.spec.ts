@@ -10,7 +10,7 @@ async function login(page: Page) {
 }
 
 test('create, rename and delete a folder', async ({ page }) => {
-  const name = `Ordner-${Date.now() % 100000}`
+  const name = `Folder-${Date.now() % 100000}`
   await login(page)
 
   await page.getByTitle('New folder').click()

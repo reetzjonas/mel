@@ -10,7 +10,7 @@ export async function storedAccount(
   accountId: string,
 ): Promise<{ account: Account; credentials: Credentials }> {
   const row = await db.accounts.get(accountId)
-  if (!row) throw new Error(`Account ${accountId} nicht gefunden`)
+  if (!row) throw new Error(`Account ${accountId} not found`)
   return openEnvelope(row.payload)
 }
 

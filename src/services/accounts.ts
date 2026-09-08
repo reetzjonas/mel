@@ -105,7 +105,10 @@ export async function removeAccount(accountId: string): Promise<void> {
  * in-flight pass to finish, and only then purge what it wrote.
  */
 export async function signOut(accountId: string): Promise<void> {
-  stopScheduler(accountId)
+  // Await it: a tick that is mid-flush has not called syncAccount yet, so
+  // syncSettled below cannot see it, and it would happily write a whole fresh
+  // sync over the rows we are about to delete.
+  await stopScheduler(accountId)
   await db.accounts.delete(accountId)
   dropConnection(accountId)
   await syncSettled(accountId)
