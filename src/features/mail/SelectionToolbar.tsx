@@ -6,8 +6,8 @@ import { bulkArchive, bulkDelete, bulkMove, bulkSetKeyword } from '../../service
 import { connectionFor } from '../../sync/connections'
 import { Icon, type IconName } from '../../ui/Icon'
 
-/** Hard ceiling for "select everything in this folder". */
-const SELECT_ALL_LIMIT = 5000
+/** Ceiling for "select everything in this folder"; anything beyond is reported, not hidden. */
+const SELECT_ALL_LIMIT = 50_000
 
 function ToolbarButton({
   icon,
@@ -72,8 +72,14 @@ export function SelectionToolbar({
     setBusy(true)
     try {
       const conn = await connectionFor(accountId)
-      const ids = await conn.mail?.queryMailboxIds(mailboxId, SELECT_ALL_LIMIT)
-      if (ids?.length) setSelection(mailboxId, ids)
+      const r = await conn.mail?.queryMailboxIds(mailboxId, SELECT_ALL_LIMIT)
+      if (!r?.ids.length) return
+      setSelection(mailboxId, r.ids)
+      // Say so when the folder is larger than the ceiling, rather than quietly
+      // acting on the newest slice and leaving the rest behind.
+      if (r.total > r.ids.length) {
+        showSnackbar({ message: `${t('bulk.cappedAt')} ${r.ids.length} / ${r.total}` })
+      }
     } catch {
       showSnackbar({ message: t('bulk.selectAllFailed') })
     } finally {

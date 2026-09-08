@@ -41,6 +41,13 @@ export interface MailboxEdit {
   create?: { name: string; parentId: string | null; role?: string }
   update?: { id: string; name?: string; parentId?: string | null }
   destroy?: string
+  /**
+   * JMAP onDestroyRemoveEmails. Without it a mailbox holding mail is refused
+   * with mailboxHasEmail. Note it does not delete the mail outright: each
+   * message merely loses this mailbox, and only messages that were *nowhere
+   * else* cease to exist.
+   */
+  destroyWithEmails?: boolean
 }
 
 export interface QueryOptions {
@@ -63,8 +70,8 @@ export interface MailProvider {
 
   /** JSON-patch style updates ({"keywords/$seen": true}) and destroys. */
   setEmails(updates: Record<string, Record<string, unknown>>, destroy: string[]): Promise<SetOutcome>
-  /** Ids of every message in a mailbox, newest first. */
-  queryMailboxIds(mailboxId: string, limit: number): Promise<string[]>
+  /** Ids in a mailbox, newest first, plus the server's total for that mailbox. */
+  queryMailboxIds(mailboxId: string, limit: number): Promise<{ ids: string[]; total: number }>
   editMailbox(edit: MailboxEdit): Promise<{ id: string | null; failure: SetFailure | null }>
   identities(): Promise<Identity[]>
   uploadBlob(data: Blob | ArrayBuffer, type: string): Promise<{ blobId: string; size: number }>

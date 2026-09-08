@@ -4,10 +4,16 @@ import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
-import { createMailbox, deleteMailbox, renameMailbox } from '../../services/mailboxes'
+import {
+  createMailbox,
+  deleteMailbox,
+  mailboxDeleteCost,
+  renameMailbox,
+} from '../../services/mailboxes'
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { mailboxTree } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
 
 const ROLE_ICONS: Record<string, IconName> = {
@@ -105,11 +111,25 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
     if (err) showSnackbar({ message: err })
   }
 
-  const onMenuAction = (mailbox: Mailbox, action: 'rename' | 'newSub' | 'delete') => {
-    if (action === 'rename') setDialog({ kind: 'rename', mailbox })
-    else if (action === 'newSub') setDialog({ kind: 'create', parentId: mailbox.id })
-    else if (confirm(t('folder.deleteConfirm')))
-      void deleteMailbox(accountId, mailbox.id).then(report)
+  const onMenuAction = async (mailbox: Mailbox, action: 'rename' | 'newSub' | 'delete') => {
+    if (action === 'rename') return setDialog({ kind: 'rename', mailbox })
+    if (action === 'newSub') return setDialog({ kind: 'create', parentId: mailbox.id })
+
+    // Counted on the server, not from our own list: subfolders it knows about
+    // and we do not are exactly what makes the delete fail, and totalEmails is
+    // right even for mail that was never fetched here.
+    const { children, mails } = await mailboxDeleteCost(accountId, mailbox.id)
+
+    const lines = [t('folder.deleteConfirm')]
+    if (children) lines.push(`${t('folder.deleteChildren')} (${children})`)
+    if (mails) lines.push(`${t('folder.deleteEmails')} (${mails})`)
+    if (!confirm(lines.join('\n\n'))) return
+
+    const r = await deleteMailbox(accountId, mailbox.id, {
+      recursive: children > 0,
+      withEmails: mails > 0,
+    })
+    report(r.ok ? null : (r.message ?? t('folder.deleteFailed')))
   }
 
   return (
@@ -150,13 +170,13 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           </span>
         </div>
         <div className="space-y-px">
-          {mailboxes.map((m) => (
+          {mailboxTree(mailboxes).map(({ mailbox: m, depth }) => (
             <Link
               key={m.id}
               to="/mail/$mailboxId"
               params={{ mailboxId: m.id }}
               className="group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
-              style={{ paddingLeft: m.parentId ? '2rem' : undefined }}
+              style={depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined}
             >
               <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate">{m.name}</span>
@@ -165,7 +185,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
                   {m.unreadEmails}
                 </span>
               )}
-              <FolderMenu mailbox={m} onAction={(a) => onMenuAction(m, a)} />
+              <FolderMenu mailbox={m} onAction={(a) => void onMenuAction(m, a)} />
             </Link>
           ))}
         </div>

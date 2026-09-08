@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 63 Vitest + 35 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 74 Vitest + 36 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -250,6 +250,15 @@ Wichtig: Stalwart meldet in der Session bereits
 also der naheliegendere Weg — aber **nicht standardisiert**, also hinter einer
 Capability-Prüfung und mit Fallback auf rein lokale Settings.
 
+**P. Ordner verschieben** (Wunsch des User). Serverseitig trivial:
+`Mailbox/set` `update: {id: {parentId}}` — `MailboxEdit.update` kennt `parentId`
+bereits, `renameMailbox` nutzt denselben Weg. Es fehlt nur die UI. Naheliegend:
+Eintrag „Verschieben nach…" im „…"-Menü der Ordnerzeile (analog zum
+Verschieben-Menü in `features/mail/SelectionToolbar.tsx`), Drag & Drop wäre die
+Kür. Achtung: Zyklen verhindern (ein Ordner darf nicht unter einen seiner
+eigenen Nachfahren) — `descendantsOf()` aus `features/mail/mailboxTree.ts`
+liefert die Ausschlussliste.
+
 ### e2e-Stabilität (die früheren „Flakes" waren echte Ursachen)
 Die Suite galt lange als sporadisch flaky (~40 % rote Voll-Läufe) und das war als
 CPU-Last abgetan. Das war **falsch** — es waren drei reale Ursachen, alle gefixt:
@@ -311,6 +320,33 @@ annehmen.**
   Vite im Dev unter `src/providers/jmap/…` ausliefert → weiße Seite, Test misst
   nichts. Für Verbindungsabbrüche die Server-Origin routen
   (`http://localhost:8080/**`).
+- **Paging: Cursor immer um die *angeforderte* Seitengröße weiterschieben.**
+  In `listAllEmailHeaders` stand `limit: QUERY_PAGE` (200), der Cursor lief aber
+  um `BULK_QUERY_PAGE` (1000) weiter → **80 % aller Mails wurden nie geholt**,
+  und weil `fullEmailSync` lokale Zeilen löscht, die der Server angeblich nicht
+  mehr hat, wurden sie zusätzlich **aktiv gelöscht**. Symptom: Ordner sieht leer
+  aus, Server meldet aber Mails. Regression in `providers/jmap/mail.test.ts`
+  (Seiten müssen lückenlos `[0, 200, 400, 600]` sein). Entstanden durch ein
+  globales Suchen-und-Ersetzen — bei `position +=` genau hinsehen.
+- **Ein Delta-Sync repariert keine Lücken.** Fehlende Zeilen hat der Server nie
+  „geändert", der Cursor überspringt sie also für immer. Dafür gibt es
+  `resyncAccount()` (Settings → Konto → „Alles neu abrufen"): wirft die
+  Sync-Cursor weg, erzwingt einen Vollsync, füllt auf und räumt auf.
+- **Ordner löschen hat zwei getrennte Ablehnungen** (am Server verifiziert):
+  `mailboxHasChild` („Mailbox has at least one children.") → Kinder müssen
+  zuerst weg; `mailboxHasEmail` („Mailbox is not empty.") → braucht
+  `onDestroyRemoveEmails: true`. Letzteres löscht Mails **nicht** pauschal: jede
+  Mail verliert nur diese Mailbox, endgültig weg ist sie nur, wenn sie sonst
+  nirgends lag. Der Bestätigungsdialog sagt das so.
+  **Die Ordnerliste dafür kommt vom Server** (`serverMailboxes()`), nicht aus
+  Dexie: der Fall tritt ja gerade auf, wenn der lokale Spiegel unvollständig ist
+  — sonst findet die App keine Kinder und scheitert im Kreis. Gelöscht wird
+  tiefstes Kind zuerst.
+- **Die Ordner-Sidebar war eine flache, global sortierte Liste** mit pauschal
+  2 rem Einzug für alles mit Parent. Unterordner standen dadurch alphabetisch
+  zwischen fremden Ordnern und ein Elternordner sah kinderlos aus.
+  `features/mail/mailboxTree.ts` ordnet jetzt als echten Baum (Einzug pro Ebene);
+  Ordner mit unbekanntem Parent werden als Wurzel gezeigt statt verschluckt.
 - **`new URL()` zerstört `{platzhalter}`** der JMAP-URL-Templates (percent-encoding)
   — Fix in `client/session.ts` `abs()`; nicht entfernen.
 - **JMAP `properties: []` heißt „nur id"** — für alle Properties `undefined` schicken

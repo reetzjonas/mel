@@ -25,6 +25,8 @@ const USING = [Cap.core, Cap.mail]
 const USING_SUBMIT = [Cap.core, Cap.mail, Cap.submission]
 const MAX_CHANGES = 256
 const QUERY_PAGE = 200
+/** Page size when walking a whole mailbox for a bulk selection. */
+const BULK_QUERY_PAGE = 1000
 
 /** Set-error types that will not succeed on retry. */
 const PERMANENT_SET_ERRORS = new Set([
@@ -188,6 +190,7 @@ export function createJmapMail(
         const headers = g.result.list.map(toEmailHeader)
         await onPage({ headers, state })
         if (q.result.ids.length < QUERY_PAGE) return state
+        // Must advance by exactly the page size that was requested above.
         position += QUERY_PAGE
       }
     },
@@ -253,18 +256,34 @@ export function createJmapMail(
       return outcome
     },
 
-    /** Every id in a mailbox, server-side — a bulk "select all" must not rely
-     *  on whatever happens to be cached locally. */
+    /**
+     * Every id in a mailbox, server-side — a bulk "select all" must not rely on
+     * whatever happens to be cached locally. Pages until the mailbox is
+     * exhausted or `limit` is reached, and reports the server's own total so
+     * the caller can say when it stopped short instead of silently truncating.
+     */
     async queryMailboxIds(mailboxId, limit) {
-      const b = batch()
-      const q = b.call<QueryResponse>('Email/query', {
-        accountId,
-        filter: { inMailbox: mailboxId },
-        sort: [{ property: 'receivedAt', isAscending: false }],
-        limit,
-      })
-      await b.send()
-      return q.result.ids
+      const filter = { inMailbox: mailboxId }
+      const sort = [{ property: 'receivedAt', isAscending: false }]
+      const ids: string[] = []
+      let total = 0
+      for (let position = 0; position < limit; position += BULK_QUERY_PAGE) {
+        const b = batch()
+        const q = b.call<QueryResponse & { total?: number }>('Email/query', {
+          accountId,
+          filter,
+          sort,
+          position,
+          limit: Math.min(BULK_QUERY_PAGE, limit - position),
+          calculateTotal: true,
+        })
+        await b.send()
+        const page = q.result
+        if (page.total !== undefined) total = page.total
+        ids.push(...page.ids)
+        if (!page.ids.length || ids.length >= total) break
+      }
+      return { ids, total: total || ids.length }
     },
 
     async editMailbox(edit) {
@@ -274,7 +293,7 @@ export function createJmapMail(
         create: edit.create ? { m0: edit.create } : undefined,
         update: edit.update ? { [edit.update.id]: { ...edit.update, id: undefined } } : undefined,
         destroy: edit.destroy ? [edit.destroy] : undefined,
-        onDestroyRemoveEmails: false,
+        onDestroyRemoveEmails: edit.destroyWithEmails ?? false,
       })
       await b.send()
       const r = s.result

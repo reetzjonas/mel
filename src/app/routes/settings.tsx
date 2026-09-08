@@ -5,7 +5,7 @@ import { useUi } from '../store'
 import { useAccounts } from '../../features/mail/hooks'
 import { ServerCapabilities } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
-import { signOut } from '../../services/accounts'
+import { resyncAccount, signOut } from '../../services/accounts'
 import {
   disableEncryption,
   enableEncryption,
@@ -265,6 +265,29 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
   )
 }
 
+function ResyncSetting({ accountId }: { accountId: string }) {
+  const [busy, setBusy] = useState(false)
+  const { showSnackbar } = useUi()
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        disabled={busy}
+        className={secondaryButtonClass}
+        onClick={() => {
+          setBusy(true)
+          void resyncAccount(accountId)
+            .then(() => showSnackbar({ message: t('settings.resync.done') }))
+            .finally(() => setBusy(false))
+        }}
+      >
+        {busy ? t('settings.resync.running') : t('settings.resync')}
+      </button>
+      <p className="text-xs text-ink-subtle">{t('settings.resync.hint')}</p>
+    </div>
+  )
+}
+
 function SettingsPage() {
   const { preference, setPreference } = useTheme()
   const accounts = useAccounts()
@@ -323,6 +346,7 @@ function SettingsPage() {
         {account && (
           <Section title={t('settings.account')}>
             <p className="text-sm text-ink-muted">{account.label}</p>
+            <ResyncSetting accountId={account.id} />
             <button
               type="button"
               className="rounded-control border border-danger px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-wash"

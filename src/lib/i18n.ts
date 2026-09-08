@@ -78,6 +78,7 @@ const en = {
   'bulk.selectAll': 'Select everything in this folder',
   'bulk.selectingAll': 'Loading the whole folder…',
   'bulk.selectAllFailed': 'Could not load the whole folder',
+  'bulk.cappedAt': 'Folder is larger than the limit — selected',
   'bulk.clear': 'Clear selection',
   'bulk.move': 'Move to folder',
   'bulk.moved': 'Moved',
@@ -87,7 +88,11 @@ const en = {
   'folder.newSub': 'New subfolder',
   'folder.rename': 'Rename',
   'folder.delete': 'Delete folder',
-  'folder.deleteConfirm': 'Delete this folder? Messages move to the parent/inbox.',
+  'folder.deleteConfirm': 'Delete this folder?',
+  'folder.deleteChildren': 'Its subfolders are deleted with it',
+  'folder.deleteEmails':
+    'It still holds mail. Messages that exist only here are deleted for good; messages filed elsewhere as well simply lose this folder',
+  'folder.deleteFailed': 'Folder could not be deleted',
   'folder.menu': 'Folder actions',
   'folder.create': 'Create',
   'folder.save': 'Save',
@@ -177,6 +182,11 @@ const en = {
 
   'settings.account': 'Account',
   'settings.account.remove': 'Remove account from this device',
+  'settings.resync': 'Fetch everything again',
+  'settings.resync.running': 'Fetching…',
+  'settings.resync.done': 'Sync complete',
+  'settings.resync.hint':
+    'Rebuilds the local copy from scratch. Use this if a folder shows fewer messages than the server reports.',
   'settings.signOut': 'Sign out',
   'settings.signOut.hint': 'Removes the account and all of its data from this device.',
   'settings.signOut.confirm':
@@ -359,6 +369,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'bulk.selectAll': 'Alles in diesem Ordner auswählen',
   'bulk.selectingAll': 'Ganzer Ordner wird geladen…',
   'bulk.selectAllFailed': 'Der ganze Ordner konnte nicht geladen werden',
+  'bulk.cappedAt': 'Ordner ist größer als das Limit — ausgewählt:',
   'bulk.clear': 'Auswahl aufheben',
   'bulk.move': 'In Ordner verschieben',
   'bulk.moved': 'Verschoben',
@@ -368,7 +379,11 @@ const de: Partial<Record<MsgKey, string>> = {
   'folder.newSub': 'Neuer Unterordner',
   'folder.rename': 'Umbenennen',
   'folder.delete': 'Ordner löschen',
-  'folder.deleteConfirm': 'Diesen Ordner löschen? Nachrichten wandern in den übergeordneten Ordner/Posteingang.',
+  'folder.deleteConfirm': 'Diesen Ordner löschen?',
+  'folder.deleteChildren': 'Die Unterordner werden mitgelöscht',
+  'folder.deleteEmails':
+    'Er enthält noch Mails. Mails, die es nur hier gibt, werden endgültig gelöscht; Mails, die auch woanders liegen, verlieren nur diesen Ordner',
+  'folder.deleteFailed': 'Ordner konnte nicht gelöscht werden',
   'folder.menu': 'Ordner-Aktionen',
   'folder.create': 'Anlegen',
   'folder.save': 'Speichern',
@@ -458,6 +473,11 @@ const de: Partial<Record<MsgKey, string>> = {
 
   'settings.account': 'Konto',
   'settings.account.remove': 'Konto von diesem Gerät entfernen',
+  'settings.resync': 'Alles neu abrufen',
+  'settings.resync.running': 'Wird abgerufen…',
+  'settings.resync.done': 'Abgleich abgeschlossen',
+  'settings.resync.hint':
+    'Baut die lokale Kopie neu auf. Sinnvoll, wenn ein Ordner weniger Mails zeigt, als der Server meldet.',
   'settings.signOut': 'Abmelden',
   'settings.signOut.hint': 'Entfernt das Konto und alle seine Daten von diesem Gerät.',
   'settings.signOut.confirm':

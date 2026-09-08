@@ -111,3 +111,16 @@ export async function signOut(accountId: string): Promise<void> {
   await syncSettled(accountId)
   await removeAccount(accountId)
 }
+
+/**
+ * Throw away the sync cursors and fetch everything again.
+ *
+ * A delta sync can only carry changes forward from its stored state, so it
+ * cannot repair a local mirror that is missing rows — the server never
+ * "changed" them. Dropping the cursors makes the next pass a full one, which
+ * both refills the gaps and prunes anything the server no longer has.
+ */
+export async function resyncAccount(accountId: string): Promise<void> {
+  await db.syncState.where('accountId').equals(accountId).delete()
+  await syncAccount(accountId)
+}
