@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 59 Vitest + 32 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 63 Vitest + 34 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -172,12 +172,21 @@ Provider-Teil (`CalendarProvider` in `providers/types.ts` kennt nur
 `syncCalendars`) plus UI in der Kalender-Sidebar — analog zur schon
 existierenden Ordner-Verwaltung in `MailboxSidebar.tsx`.
 
-**E. Massenbearbeitung** (verschieben, löschen, markieren) per Mehrfachauswahl
-und zusätzlich „alle in diesem Ordner". Die Outbox kann das Batch-seitig schon:
-`email.update` nimmt eine Map von Patches, `email.destroy` eine Id-Liste. Zwei
-Fallstricke: die Liste ist virtualisiert (Virtuoso), Auswahl-State gehört also
-in den Store und nicht in Row-Komponenten; und „alle im Ordner" darf nicht die
-lokal geladenen Ids nehmen, sondern braucht eine serverseitige Query.
+**E. ~~Massenbearbeitung~~ erledigt.** Auswahl per Checkbox (der Avatar wird bei
+Hover dazu — kostet keine Spalte), Toolbar ersetzt bei aktiver Auswahl die
+Suchzeile: gelesen/ungelesen, Flag, In Ordner verschieben, Archivieren,
+Löschen — mit Undo. Auswahl-State liegt in `app/store.ts`, **nicht** in den
+Zeilen: Virtuoso unmountet weggescrollte Rows samt ihrem State. Beim
+Ordnerwechsel wird die Auswahl verworfen.
+Drei Dinge, die daran hängen:
+- `services/mailActions.ts` hat Bulk-Varianten, die **eine** Outbox-Action mit
+  allen Ids einreihen (nicht n Stück). `bulkDelete` teilt auf: was schon im
+  Papierkorb liegt, wird endgültig zerstört, der Rest wandert dorthin — nur der
+  zweite Teil ist per Undo umkehrbar.
+- `setEmails()` im JMAP-Provider **chunkt jetzt gegen `maxObjectsInSet`** (500
+  bei Stalwart). Ohne das sprengt „ganzer Ordner" das eine `Email/set`.
+- „Alles im Ordner" nimmt **nicht** die lokal geladenen Ids, sondern fragt
+  `queryMailboxIds()` serverseitig ab (Deckel: 5000).
 
 **F. Spam gesondert behandeln:** keine externen Inhalte automatisch laden, dazu
 ein „Kein Spam"-Button (Move in den Posteingang; ob Stalwart zusätzlich

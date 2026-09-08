@@ -31,6 +31,18 @@ interface UiState {
   /** Bumped after unlocking encrypted accounts so live queries re-read. */
   unlockVersion: number
   bumpUnlock: () => void
+
+  /*
+   * Bulk selection. It lives here rather than in the list rows because the
+   * thread list is virtualised — a row that scrolls out of view unmounts, and
+   * with it any state it owned.
+   */
+  selection: string[]
+  /** Which mailbox the selection belongs to; leaving it clears the selection. */
+  selectionMailboxId: string | null
+  toggleSelected: (mailboxId: string, id: string) => void
+  setSelection: (mailboxId: string, ids: string[]) => void
+  clearSelection: () => void
 }
 
 let snackbarTimer: ReturnType<typeof setTimeout> | null = null
@@ -53,4 +65,16 @@ export const useUi = create<UiState>((set) => ({
   setHelpOpen: (helpOpen) => set({ helpOpen }),
   unlockVersion: 0,
   bumpUnlock: () => set((s) => ({ unlockVersion: s.unlockVersion + 1 })),
+
+  selection: [],
+  selectionMailboxId: null,
+  toggleSelected: (mailboxId, id) =>
+    set((s) => {
+      const base = s.selectionMailboxId === mailboxId ? s.selection : []
+      const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
+      return { selection: next, selectionMailboxId: next.length ? mailboxId : null }
+    }),
+  setSelection: (mailboxId, ids) =>
+    set({ selection: ids, selectionMailboxId: ids.length ? mailboxId : null }),
+  clearSelection: () => set({ selection: [], selectionMailboxId: null }),
 }))

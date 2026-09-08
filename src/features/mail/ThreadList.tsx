@@ -78,12 +78,16 @@ function Row({
   email,
   snippet,
   selected,
+  checked,
+  onToggleSelect,
   onOpen,
 }: {
   accountId: string
   email: EmailHeader
   snippet?: { subject: string | null; preview: string | null }
   selected: boolean
+  checked: boolean
+  onToggleSelect: () => void
   onOpen: () => void
 }) {
   const unread = !email.keywords['$seen']
@@ -94,7 +98,11 @@ function Row({
   const doArchive = () =>
     void archiveEmail(accountId, email.id).then((undo) => {
       if (undo)
-        showSnackbar({ message: t('mail.archived'), actionLabel: t('mail.undo'), action: () => void undo() })
+        showSnackbar({
+          message: t('mail.archived'),
+          actionLabel: t('mail.undo'),
+          action: () => void undo(),
+        })
     })
   const doDelete = () =>
     void deleteEmail(accountId, email.id).then((undo) => {
@@ -114,13 +122,40 @@ function Row({
       onClick={onOpen}
       onKeyDown={(e) => e.key === 'Enter' && onOpen()}
       data-selected={selected || undefined}
+      data-checked={checked || undefined}
       {...handlers}
       style={dx ? { transform: `translateX(${dx}px)` } : undefined}
-      className="group relative flex w-full cursor-pointer gap-3 rounded-control px-3 py-2.5 text-left transition-colors duration-100 hover:bg-surface-2 data-selected:bg-accent-wash"
+      className="group relative flex w-full cursor-pointer gap-3 rounded-control px-3 py-2.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash"
     >
+      {/* The avatar doubles as the selection checkbox on hover, so multi-select
+          costs no extra column and the row keeps its width. */}
       <span className="relative shrink-0 pt-0.5">
-        <Avatar name={sender?.name ?? sender?.email ?? '?'} email={sender?.email ?? '?'} size={36} />
-        {unread && (
+        <span className={checked ? 'invisible' : 'group-hover:invisible'}>
+          <Avatar
+            name={sender?.name ?? sender?.email ?? '?'}
+            email={sender?.email ?? '?'}
+            size={36}
+          />
+        </span>
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={checked}
+          aria-label={t('bulk.select')}
+          onClick={(e) => {
+            e.stopPropagation()
+            onToggleSelect()
+          }}
+          className={`absolute inset-0 flex items-center justify-center rounded-full transition-colors ${
+            checked
+              ? 'bg-accent text-accent-ink'
+              : 'hidden bg-surface-2 text-ink-muted group-hover:flex hover:bg-line'
+          }`}
+          style={{ width: 36, height: 36 }}
+        >
+          {checked && <Icon name="check" size={18} />}
+        </button>
+        {unread && !checked && (
           <span className="absolute -top-0.5 -left-0.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-surface" />
         )}
       </span>
@@ -199,6 +234,8 @@ export function ThreadList({
   selectedId: string | undefined
 }) {
   const navigate = useNavigate()
+  const { selection, selectionMailboxId, toggleSelected } = useUi()
+  const selected = selectionMailboxId === mailboxId ? selection : []
   const open = (id: string) =>
     void navigate({ to: '/mail/$mailboxId/$emailId', params: { mailboxId, emailId: id } })
 
@@ -231,6 +268,8 @@ export function ThreadList({
           email={email}
           snippet={snippets?.[email.id]}
           selected={email.id === selectedId}
+          checked={selected.includes(email.id)}
+          onToggleSelect={() => toggleSelected(mailboxId, email.id)}
           onOpen={() => open(email.id)}
         />
       )}

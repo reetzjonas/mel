@@ -221,22 +221,50 @@ export function createJmapMail(
     },
 
     async setEmails(updates, destroy) {
+      // Bulk actions can span a whole mailbox, which blows past
+      // maxObjectsInSet (500 on Stalwart) in a single Email/set. Chunk both
+      // sides and merge the outcomes.
+      const ids = Object.keys(updates)
+      const max = limits.maxObjectsInSet
+      const updateChunks = ids.length ? chunkIds(ids, max) : []
+      const destroyChunks = destroy.length ? chunkIds(destroy, max) : []
+      const rounds = Math.max(updateChunks.length, destroyChunks.length, 1)
+
+      const outcome: SetOutcome = { updated: [], destroyed: [], failed: {} }
+      for (let i = 0; i < rounds; i++) {
+        const chunk = updateChunks[i]
+        const toDestroy = destroyChunks[i]
+        if (!chunk && !toDestroy) break
+        const patch: Record<string, Record<string, unknown>> = {}
+        for (const id of chunk ?? []) patch[id] = updates[id]!
+        const b = batch()
+        const s = b.call<SetResponse<JmapEmail>>('Email/set', {
+          accountId,
+          update: chunk?.length ? patch : undefined,
+          destroy: toDestroy?.length ? toDestroy : undefined,
+        })
+        await b.send()
+        const r = s.result
+        outcome.updated.push(...Object.keys(r.updated ?? {}))
+        outcome.destroyed.push(...(r.destroyed ?? []))
+        for (const [id, err] of Object.entries({ ...r.notUpdated, ...r.notDestroyed }))
+          outcome.failed[id] = toFailure(err)
+      }
+      return outcome
+    },
+
+    /** Every id in a mailbox, server-side — a bulk "select all" must not rely
+     *  on whatever happens to be cached locally. */
+    async queryMailboxIds(mailboxId, limit) {
       const b = batch()
-      const s = b.call<SetResponse<JmapEmail>>('Email/set', {
+      const q = b.call<QueryResponse>('Email/query', {
         accountId,
-        update: Object.keys(updates).length ? updates : undefined,
-        destroy: destroy.length ? destroy : undefined,
+        filter: { inMailbox: mailboxId },
+        sort: [{ property: 'receivedAt', isAscending: false }],
+        limit,
       })
       await b.send()
-      const r = s.result
-      const failed: SetOutcome['failed'] = {}
-      for (const [id, err] of Object.entries({ ...r.notUpdated, ...r.notDestroyed }))
-        failed[id] = toFailure(err)
-      return {
-        updated: Object.keys(r.updated ?? {}),
-        destroyed: r.destroyed ?? [],
-        failed,
-      }
+      return q.result.ids
     },
 
     async editMailbox(edit) {

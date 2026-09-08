@@ -98,3 +98,61 @@ test('search filters by subject server-side', async ({ page }) => {
   await expect(page.getByText('Kurzes Update')).toBeVisible({ timeout: 10_000 })
   await expect(page.getByText('Willkommen bei mel')).toBeHidden()
 })
+
+test('bulk select two messages, archive them, and undo', async ({ page }) => {
+  test.setTimeout(60_000)
+  await login(page, ...ALICE)
+  const rows = page.locator('[data-testid="virtuoso-item-list"] [role="button"]')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+
+  const subjects: string[] = []
+  for (const i of [0, 1]) {
+    const row = rows.nth(i)
+    subjects.push((await row.getByTestId('thread-subject').innerText()).trim())
+    // The avatar turns into a checkbox on hover — no extra column.
+    await row.hover()
+    await row.getByRole('checkbox').click()
+  }
+
+  const toolbar = page.getByTestId('selection-toolbar')
+  await expect(toolbar).toContainText('2 selected')
+
+  await toolbar.getByLabel('Archive').click()
+  await expect(page.getByText('Archived')).toBeVisible()
+  for (const s of subjects) await expect(page.getByText(s).first()).toBeHidden()
+
+  await page.getByRole('button', { name: 'Undo' }).click()
+  for (const s of subjects) {
+    await expect(page.getByText(s).first()).toBeVisible({ timeout: 10_000 })
+  }
+  // Let the undo reach the server before teardown.
+  await page.waitForTimeout(1500)
+})
+
+test('selecting every loaded row offers to select the whole folder server-side', async ({
+  page,
+}) => {
+  await login(page, ...ALICE)
+  const rows = page.locator('[data-testid="virtuoso-item-list"] [role="button"]')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+
+  const loaded = await rows.count()
+  for (let i = 0; i < loaded; i++) {
+    await rows.nth(i).hover()
+    await rows.nth(i).getByRole('checkbox').click()
+  }
+
+  const toolbar = page.getByTestId('selection-toolbar')
+  await expect(toolbar).toContainText(`${loaded} selected`)
+
+  // The offer only makes sense once the visible rows are exhausted.
+  const selectAll = toolbar.getByRole('button', { name: 'Select everything in this folder' })
+  await expect(selectAll).toBeVisible()
+  await selectAll.click()
+  // Ids come from the server, not from the local cache, so the count must hold.
+  await expect(toolbar).toContainText('selected')
+  await expect(toolbar).not.toContainText('0 selected')
+
+  await toolbar.getByLabel('Clear selection').click()
+  await expect(toolbar).toBeHidden()
+})

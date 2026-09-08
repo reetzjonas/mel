@@ -1,6 +1,6 @@
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox, MailboxRole } from '../domain/mailbox'
-import { db } from '../storage/db'
+import { db, type EmailRow } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { enqueue } from '../sync/outbox'
 
@@ -25,8 +25,36 @@ async function patchLocal(
   })
 }
 
+/** Batched sibling of patchLocal: one transaction, one bulkPut. */
+async function patchLocalMany(
+  accountId: string,
+  emailIds: string[],
+  mutate: (h: EmailHeader) => void,
+): Promise<void> {
+  await db.transaction('rw', db.emails, async () => {
+    const rows = await db.emails.bulkGet(emailIds.map((id) => [accountId, id]))
+    const next: EmailRow[] = []
+    for (const row of rows) {
+      if (!row) continue
+      const h = openEnvelope(row.payload)
+      mutate(h)
+      next.push({
+        ...row,
+        mailboxIds: Object.keys(h.mailboxIds),
+        unread: h.keywords['$seen'] ? 0 : 1,
+        flagged: h.keywords['$flagged'] ? 1 : 0,
+        payload: sealPlain(h),
+      })
+    }
+    await db.emails.bulkPut(next)
+  })
+}
+
 async function roleMailbox(accountId: string, role: MailboxRole): Promise<Mailbox | null> {
-  const rows = await db.mailboxes.where('[accountId+role]').equals([accountId, role ?? '']).toArray()
+  const rows = await db.mailboxes
+    .where('[accountId+role]')
+    .equals([accountId, role ?? ''])
+    .toArray()
   const first = rows[0]
   return first ? openEnvelope(first.payload) : null
 }
@@ -80,10 +108,10 @@ export async function moveEmail(
   }
 }
 
-export async function archiveEmail(accountId: string, emailId: string) {
+/** Stalwart doesn't provision an Archive mailbox by default — create one. */
+async function ensureArchive(accountId: string): Promise<Mailbox | null> {
   let archive = await roleMailbox(accountId, 'archive')
   if (!archive) {
-    // Stalwart doesn't provision an Archive mailbox by default — create one.
     const { connectionFor } = await import('../sync/connections')
     const { syncAccount } = await import('../sync/engine')
     const conn = await connectionFor(accountId)
@@ -93,8 +121,13 @@ export async function archiveEmail(accountId: string, emailId: string) {
     })
     await syncAccount(accountId)
     archive = await roleMailbox(accountId, 'archive')
-    if (!archive) return null
   }
+  return archive
+}
+
+export async function archiveEmail(accountId: string, emailId: string) {
+  const archive = await ensureArchive(accountId)
+  if (!archive) return null
   return moveEmail(accountId, emailId, archive.id)
 }
 
@@ -110,4 +143,101 @@ export async function deleteEmail(accountId: string, emailId: string) {
     return null
   }
   return moveEmail(accountId, emailId, trash.id)
+}
+
+/*
+ * Bulk variants. Each queues a *single* outbox action carrying every id, so a
+ * thousand-message move is one request rather than a thousand — the provider
+ * splits it again to respect maxObjectsInSet.
+ */
+
+export async function bulkSetKeyword(
+  accountId: string,
+  emailIds: string[],
+  keyword: string,
+  on: boolean,
+): Promise<void> {
+  if (!emailIds.length) return
+  await patchLocalMany(accountId, emailIds, (h) => {
+    if (on) h.keywords[keyword] = true
+    else delete h.keywords[keyword]
+  })
+  const updates: Record<string, Record<string, unknown>> = {}
+  for (const id of emailIds) updates[id] = { [`keywords/${keyword}`]: on ? true : null }
+  await enqueue(accountId, { kind: 'email.update', updates })
+}
+
+/** Move many messages, replacing their mailboxes. Returns an undo. */
+export async function bulkMove(
+  accountId: string,
+  emailIds: string[],
+  toMailboxId: string,
+): Promise<() => Promise<void>> {
+  const rows = await db.emails.bulkGet(emailIds.map((id) => [accountId, id]))
+  const previous = new Map<string, Record<string, true>>()
+  for (const row of rows) {
+    if (!row) continue
+    const ids: Record<string, true> = {}
+    for (const id of Object.keys(openEnvelope(row.payload).mailboxIds)) ids[id] = true
+    previous.set(row.id, ids)
+  }
+
+  await patchLocalMany(accountId, emailIds, (h) => {
+    h.mailboxIds = { [toMailboxId]: true }
+  })
+  const updates: Record<string, Record<string, unknown>> = {}
+  for (const id of emailIds) updates[id] = { mailboxIds: { [toMailboxId]: true } }
+  await enqueue(accountId, { kind: 'email.update', updates })
+
+  return async () => {
+    const back: Record<string, Record<string, unknown>> = {}
+    for (const [id, ids] of previous) back[id] = { mailboxIds: ids }
+    await db.transaction('rw', db.emails, async () => {
+      const current = await db.emails.bulkGet([...previous.keys()].map((id) => [accountId, id]))
+      const next: EmailRow[] = []
+      for (const row of current) {
+        if (!row) continue
+        const h = openEnvelope(row.payload)
+        h.mailboxIds = previous.get(row.id) ?? h.mailboxIds
+        next.push({ ...row, mailboxIds: Object.keys(h.mailboxIds), payload: sealPlain(h) })
+      }
+      await db.emails.bulkPut(next)
+    })
+    await enqueue(accountId, { kind: 'email.update', updates: back })
+  }
+}
+
+export async function bulkArchive(accountId: string, emailIds: string[]) {
+  if (!emailIds.length) return null
+  const archive = await ensureArchive(accountId)
+  return archive ? bulkMove(accountId, emailIds, archive.id) : null
+}
+
+/**
+ * Trash in one step, or destroy for good when a message already sits in trash —
+ * same rule as the single-message delete, applied per id.
+ */
+export async function bulkDelete(accountId: string, emailIds: string[]) {
+  if (!emailIds.length) return null
+  const trash = await roleMailbox(accountId, 'trash')
+  const rows = await db.emails.bulkGet(emailIds.map((id) => [accountId, id]))
+
+  const destroy: string[] = []
+  const move: string[] = []
+  for (const row of rows) {
+    if (!row) continue
+    const inTrash = trash && openEnvelope(row.payload).mailboxIds[trash.id]
+    if (!trash || inTrash) destroy.push(row.id)
+    else move.push(row.id)
+  }
+
+  if (destroy.length) {
+    await db.transaction('rw', [db.emails, db.bodyCache], async () => {
+      await db.emails.bulkDelete(destroy.map((id) => [accountId, id]))
+      await db.bodyCache.bulkDelete(destroy.map((id) => [accountId, id]))
+    })
+    await enqueue(accountId, { kind: 'email.destroy', ids: destroy })
+  }
+  // Only the moved half is reversible; a destroy is gone on the server too.
+  return move.length && trash ? bulkMove(accountId, move, trash.id) : null
 }

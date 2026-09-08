@@ -63,6 +63,8 @@ export interface MailProvider {
 
   /** JSON-patch style updates ({"keywords/$seen": true}) and destroys. */
   setEmails(updates: Record<string, Record<string, unknown>>, destroy: string[]): Promise<SetOutcome>
+  /** Ids of every message in a mailbox, newest first. */
+  queryMailboxIds(mailboxId: string, limit: number): Promise<string[]>
   editMailbox(edit: MailboxEdit): Promise<{ id: string | null; failure: SetFailure | null }>
   identities(): Promise<Identity[]>
   uploadBlob(data: Blob | ArrayBuffer, type: string): Promise<{ blobId: string; size: number }>

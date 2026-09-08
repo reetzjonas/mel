@@ -73,6 +73,15 @@ const en = {
   'mail.searchNoResults': 'No results',
   'mail.searchClear': 'Clear search',
 
+  'bulk.select': 'Select message',
+  'bulk.selected': 'selected',
+  'bulk.selectAll': 'Select everything in this folder',
+  'bulk.selectAllFailed': 'Could not load the whole folder',
+  'bulk.clear': 'Clear selection',
+  'bulk.move': 'Move to folder',
+  'bulk.moved': 'Moved',
+  'bulk.marked': 'Updated',
+
   'folder.new': 'New folder',
   'folder.newSub': 'New subfolder',
   'folder.rename': 'Rename',
@@ -343,6 +352,15 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.searchPlaceholder': 'Suchen — z. B. from: oder is:unread',
   'mail.searchNoResults': 'Keine Treffer',
   'mail.searchClear': 'Suche löschen',
+
+  'bulk.select': 'Nachricht auswählen',
+  'bulk.selected': 'ausgewählt',
+  'bulk.selectAll': 'Alles in diesem Ordner auswählen',
+  'bulk.selectAllFailed': 'Der ganze Ordner konnte nicht geladen werden',
+  'bulk.clear': 'Auswahl aufheben',
+  'bulk.move': 'In Ordner verschieben',
+  'bulk.moved': 'Verschoben',
+  'bulk.marked': 'Aktualisiert',
 
   'folder.new': 'Neuer Ordner',
   'folder.newSub': 'Neuer Unterordner',

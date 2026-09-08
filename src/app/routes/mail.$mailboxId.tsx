@@ -1,7 +1,9 @@
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
+import { SelectionToolbar } from '../../features/mail/SelectionToolbar'
 import { ThreadList } from '../../features/mail/ThreadList'
-import { useAccounts, useMailboxEmails } from '../../features/mail/hooks'
+import { useAccounts, useMailboxEmails, useMailboxes } from '../../features/mail/hooks'
+import { useUi } from '../store'
 import { t } from '../../lib/i18n'
 import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
@@ -27,6 +29,15 @@ function MailboxView() {
   const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
+  const mailboxes = useMailboxes(account?.id)
+  const { selection, selectionMailboxId, clearSelection } = useUi()
+  const hasSelection = selectionMailboxId === mailboxId && selection.length > 0
+
+  // A selection belongs to one folder; leaving drops it rather than silently
+  // carrying ids into a list where they aren't visible.
+  useEffect(() => {
+    clearSelection()
+  }, [mailboxId, clearSelection])
 
   useEffect(() => {
     setInput(q ?? '')
@@ -81,36 +92,45 @@ function MailboxView() {
         onTouchEnd={onTouchEnd}
         className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-96 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
-        <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
-          <div className="relative flex-1">
-            <Icon
-              name="search"
-              size={14}
-              className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-subtle"
-            />
-            <input
-              id="mail-search"
-              className="w-full rounded-control bg-surface-2 py-2 pr-7 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent"
-              placeholder={t('mail.searchPlaceholder')}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') submitSearch(input.trim())
-                if (e.key === 'Escape') submitSearch('')
-              }}
-            />
-            {q && (
-              <button
-                type="button"
-                title={t('mail.searchClear')}
-                onClick={() => submitSearch('')}
-                className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
-              >
-                ✕
-              </button>
-            )}
+        {hasSelection && account ? (
+          <SelectionToolbar
+            accountId={account.id}
+            mailboxId={mailboxId}
+            mailboxes={mailboxes ?? []}
+            loadedCount={list?.length ?? 0}
+          />
+        ) : (
+          <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
+            <div className="relative flex-1">
+              <Icon
+                name="search"
+                size={14}
+                className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-subtle"
+              />
+              <input
+                id="mail-search"
+                className="w-full rounded-control bg-surface-2 py-2 pr-7 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent"
+                placeholder={t('mail.searchPlaceholder')}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') submitSearch(input.trim())
+                  if (e.key === 'Escape') submitSearch('')
+                }}
+              />
+              {q && (
+                <button
+                  type="button"
+                  title={t('mail.searchClear')}
+                  onClick={() => submitSearch('')}
+                  className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
         {refreshing && (
           <div className="animate-fade py-1 text-center text-[11px] text-ink-subtle">
             {t('mail.syncing')}
