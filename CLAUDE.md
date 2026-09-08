@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 74 Vitest + 36 Playwright (desktop + mobile; state-mutating specs are
+Tests: 86 Vitest + 36 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -164,7 +164,10 @@ password in `docker/stalwart/.admin-pass`. Full reset: see the README.
 6. **Sieve editor last** (explicitly deferred by the user)
 
 Also open: push test on a real device (user), Fastmail contacts interop (user),
-event sync windowing for large calendars, week-one performance with 50k mails.
+event sync windowing for large calendars.
+
+**Q. ~~Windowed loading for very large mailboxes~~ done.** A 36k-message folder
+no longer materialises every header. See the note on mailbox listing below.
 
 ### Newly raised (order NOT yet agreed with the user)
 
@@ -437,6 +440,37 @@ full runs ever since. **If something flickers again, check these classes first
   fixed in `client/session.ts` `abs()`; do not remove.
 - **JMAP `properties: []` means "id only"** — send `undefined` for all properties
   (this bug had wiped mailbox names locally).
+- **`useLiveQuery` observes the whole result set.** `useMailboxEmails` used it,
+  so touching one row — which is exactly what `markRead()` does when you open an
+  unread message — invalidated the query and re-read, re-decrypted and re-sorted
+  the entire mailbox. Measured with a 20k mailbox: the avoidable list work per
+  single-row change was ~400ms; the hook now costs ~17ms on top of the bare
+  `put`. The list is loaded once and kept current from Dexie's *table hooks*
+  instead. Two things there that had to be checked against the runtime rather
+  than assumed (see `features/mail/hooks.test.tsx`):
+  1. `put()` on an existing key fires **`updating`**, not `creating`, and hands
+     over `(modifications, primKey, oldObj)` — the *old* row, not the new one.
+  2. `modifications` is a **deep diff keyed by dotted paths**
+     (`"payload.plain.keywords.$seen"`), so `{...oldObj, ...mods}` silently
+     produces a property literally called that instead of updating the payload.
+     Use `Dexie.setByKeyPath()` on a `structuredClone` of the old row.
+  `bulkPut`/`bulkDelete` do fire these hooks once per row, so no write path
+  needed changing.
+  Two more things the hooks impose: they run **inside the write transaction**,
+  where a fresh read cannot see the row being written, so a re-read has to be
+  deferred to a macrotask — which also coalesces a sync page of 200 rows into
+  one re-read instead of two hundred.
+- **Listing a mailbox never loads the whole mailbox.** Ordering comes from
+  index-only reads that never touch a payload: `primaryKeys()` over
+  `[accountId+receivedAt]` (already in date order) intersected with the
+  `*mailboxIds` index, then `bulkGet` for just the visible window (`PAGE = 100`,
+  grown by Virtuoso's `endReached`). Measured on 20k messages: opening the
+  folder went from 1785ms to 225ms, and the next page costs ~50ms.
+  This deliberately avoids the denormalised posting-list table that first looked
+  necessary — IndexedDB cannot sort a multiEntry `*mailboxIds` query by
+  `receivedAt`, but it does not have to: two index scans plus a set
+  intersection give the same order for a fraction of the cost, with no schema
+  change and no cursor reads.
 - **The Dexie crypto middleware must be synchronous** (async WebCrypto → IndexedDB
   transaction auto-commit), hence @noble/ciphers. **No cursor reads**
   (`.filter().first()`, `.each()`) on tables carrying a payload — only

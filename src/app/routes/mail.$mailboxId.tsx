@@ -25,7 +25,7 @@ function MailboxView() {
   const navigate = useNavigate()
   const accounts = useAccounts()
   const account = accounts?.[0]
-  const emails = useMailboxEmails(account?.id, mailboxId)
+  const mailbox = useMailboxEmails(account?.id, mailboxId)
   const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
@@ -83,7 +83,10 @@ function MailboxView() {
     })
 
   const inDetail = Boolean(params.emailId)
-  const list = results?.headers ?? emails
+  // Search results are a complete answer from the server; the mailbox list is
+  // a window that grows as you scroll.
+  const list = results?.headers ?? mailbox.emails
+  const loadMore = results ? undefined : mailbox.loadMore
 
   return (
     <div className="flex h-full gap-0 sm:gap-3">
@@ -148,6 +151,7 @@ function MailboxView() {
                 snippets={results?.snippets}
                 mailboxId={mailboxId}
                 selectedId={params.emailId}
+                onEndReached={loadMore}
               />
             )
           )}

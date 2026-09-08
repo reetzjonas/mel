@@ -232,12 +232,15 @@ export function ThreadList({
   snippets,
   mailboxId,
   selectedId,
+  onEndReached,
 }: {
   accountId: string
   emails: EmailHeader[]
   snippets?: Snippets
   mailboxId: string
   selectedId: string | undefined
+  /** Materialise the next page; omitted when the list is already complete. */
+  onEndReached?: (() => void) | undefined
 }) {
   const navigate = useNavigate()
   const { selection, selectionMailboxId, toggleSelected } = useUi()
@@ -257,6 +260,9 @@ export function ThreadList({
       if (e.key !== 'j' && e.key !== 'k') return
       const idx = selectedId ? emails.findIndex((m) => m.id === selectedId) : -1
       const next = e.key === 'j' ? Math.min(idx + 1, emails.length - 1) : Math.max(idx - 1, 0)
+      // Stepping onto the last loaded row pulls in the next page, so keyboard
+      // navigation doesn't stop at the window edge.
+      if (e.key === 'j' && next >= emails.length - 1) onEndReached?.()
       const target = emails[next]
       if (target && target.id !== selectedId) open(target.id)
     }
@@ -272,6 +278,8 @@ export function ThreadList({
     <Virtuoso
       className="px-1.5 py-1.5"
       data={emails}
+      endReached={onEndReached}
+      increaseViewportBy={600}
       computeItemKey={(_, e) => e.id}
       itemContent={(_, email) => (
         <Row

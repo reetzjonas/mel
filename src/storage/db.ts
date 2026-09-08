@@ -113,7 +113,7 @@ export interface KeyringRow {
   verifier: Uint8Array
 }
 
-type AccountScopedKey = [string, string]
+export type AccountScopedKey = [string, string]
 
 export class MelDb extends Dexie {
   accounts!: Table<AccountRow, string>
