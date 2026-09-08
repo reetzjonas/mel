@@ -3,7 +3,8 @@ import { useEffect, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate } from '../../lib/dates'
-import { mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
+import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
+import { imagePolicy } from '../../lib/imagePolicy'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
 import { archiveEmail, deleteEmail, markRead, setFlagged } from '../../services/mailActions'
@@ -123,6 +124,10 @@ export function ReadingPane({
   ownEmail: string
 }) {
   const [body, setBody] = useState<EmailBody | null | 'loading'>('loading')
+  // Releasing remote content is per message, never sticky: the next message is
+  // a different sender with a different reason to want your IP.
+  const [released, setReleased] = useState(false)
+  const allowRemote = released || imagePolicy() === 'always'
   const navigate = useNavigate()
   const { openCompose, showSnackbar } = useUi()
   const frameTheme = useFrameTheme()
@@ -130,6 +135,7 @@ export function ReadingPane({
   useEffect(() => {
     let alive = true
     setBody('loading')
+    setReleased(false)
     getEmailBody(accountId, email.id)
       .then((b) => alive && setBody(b))
       .catch(() => alive && setBody(null))
@@ -174,10 +180,12 @@ export function ReadingPane({
   const doc =
     body !== 'loading' && body
       ? body.html
-        ? mailFrameDoc(body.html)
+        ? mailFrameDoc(body.html, allowRemote)
         : textFrameDoc(body.text ?? '', frameTheme)
       : null
   const sender = email.from[0]
+  const blocked =
+    !allowRemote && body !== 'loading' && body?.html ? hasRemoteContent(body.html) : false
 
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
@@ -249,6 +257,19 @@ export function ReadingPane({
         {body === null && (
           <div className="flex h-full items-center justify-center text-sm text-danger">
             {t('mail.loadError')}
+          </div>
+        )}
+        {blocked && (
+          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2 text-xs text-ink-muted">
+            <Icon name="offline" size={13} className="shrink-0" />
+            <span className="min-w-0 flex-1">{t('mail.imagesBlocked')}</span>
+            <button
+              type="button"
+              onClick={() => setReleased(true)}
+              className="shrink-0 font-medium text-accent hover:underline"
+            >
+              {t('mail.loadImages')}
+            </button>
           </div>
         )}
         {doc && (

@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 86 Vitest + 36 Playwright (desktop + mobile; state-mutating specs are
+Tests: 92 Vitest + 38 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -245,15 +245,26 @@ Three things that hang off it:
 - "Everything in this folder" does **not** use the locally loaded ids but asks
   `queryMailboxIds()` server-side, paging through the mailbox.
 
-**F. Treat spam separately:** no external content loaded automatically, plus a "not
-spam" button (move to the inbox; whether Stalwart additionally triggers learning or
-Sieve needs checking — the spam filter is switched off in the dev seed, see
-`seed.sh`). The junk role is already known to the mailbox list.
+**F. Treat spam separately** — now mostly "G plus a button": remote content is
+already blocked by default, so what remains is the "not spam" action (move to
+inbox; whether Stalwart additionally triggers learning or Sieve needs checking
+— the spam filter is off in the dev seed, see `seed.sh`). If the image default
+is ever switched to always-load, junk must keep blocking regardless.
 
-**G. Option "do not load images automatically"** (global, with a per-message
-override). This is the mechanism F builds on — F is essentially G plus "always on in
-junk". Affects `lib/htmlSanitize.ts` and the mail iframe in the ReadingPane; remote
-references have to be blocked there and fetched once released.
+**G. ~~Option "do not load images automatically"~~ done.** Default is to block;
+Settings → Privacy switches to always-loading. Releasing is **per message** and
+resets when another is opened — the next message is a different sender.
+The block lives in the iframe's **Content-Security-Policy** (`img-src data:
+cid:` versus `http: https: data: cid:`), not in markup rewriting, because the
+CSP also covers what rewriting `<img>` misses: CSS `background-image`,
+`srcset`, `<picture>`, `poster`. `data:`/`cid:` stay allowed throughout — those
+travel inside the message and tell the sender nothing.
+`hasRemoteContent()` decides whether the banner appears and is deliberately
+over-eager: a false positive shows a banner that changes nothing, a false
+negative loads content without saying so.
+Covered from both sides, which is the point: a unit test pins the exact policy
+strings, and an e2e proves the browser enforces them (0 requests blocked, 1
+after release) — neither half is worth much alone.
 
 **H. Bug: `capabilities.submission` gates nothing.** Noticed while building C: the
 flag is computed in `capabilitiesFor()` but never read. On a server without

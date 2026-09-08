@@ -5,6 +5,7 @@ import { useUi } from '../store'
 import { useAccounts } from '../../features/mail/hooks'
 import { ServerCapabilities } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
+import { imagePolicy, setImagePolicy, type ImagePolicy } from '../../lib/imagePolicy'
 import { resyncAccount, signOut } from '../../services/accounts'
 import {
   disableEncryption,
@@ -265,6 +266,28 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
   )
 }
 
+function ImageSetting() {
+  const [policy, setPolicy] = useState<ImagePolicy>(() => imagePolicy())
+  return (
+    <div className="space-y-1">
+      <select
+        className={inputClass}
+        aria-label={t('settings.images.ask')}
+        value={policy}
+        onChange={(e) => {
+          const next = e.target.value as ImagePolicy
+          setImagePolicy(next)
+          setPolicy(next)
+        }}
+      >
+        <option value="ask">{t('settings.images.ask')}</option>
+        <option value="always">{t('settings.images.always')}</option>
+      </select>
+      <p className="text-xs text-ink-subtle">{t('settings.images.hint')}</p>
+    </div>
+  )
+}
+
 function ResyncSetting({ accountId }: { accountId: string }) {
   const [busy, setBusy] = useState(false)
   const { showSnackbar } = useUi()
@@ -313,6 +336,10 @@ function SettingsPage() {
             <option value="light">{t('settings.theme.light')}</option>
             <option value="dark">{t('settings.theme.dark')}</option>
           </select>
+        </Section>
+
+        <Section title={t('settings.privacy')}>
+          <ImageSetting />
         </Section>
 
         <Section title={t('settings.notifications')}>
