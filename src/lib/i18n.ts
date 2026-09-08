@@ -216,6 +216,7 @@ const en = {
   'contacts.notFound': 'Contact not found',
   'contacts.sendMail': 'Send email',
 
+  'cal.loading': 'Loading calendars…',
   'cal.today': 'Today',
   'cal.newEvent': 'New event',
   'cal.editEvent': 'Edit event',
@@ -507,6 +508,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'contacts.notFound': 'Kontakt nicht gefunden',
   'contacts.sendMail': 'E-Mail senden',
 
+  'cal.loading': 'Kalender werden geladen…',
   'cal.today': 'Heute',
   'cal.newEvent': 'Neuer Termin',
   'cal.editEvent': 'Termin bearbeiten',

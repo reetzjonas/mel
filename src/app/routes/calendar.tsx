@@ -303,8 +303,13 @@ function CalendarApp() {
             ))}
           </div>
 
+          {/* Without a calendar there is nothing to create an event in, and
+              openNew() would return silently — a button that does nothing when
+              pressed. Disabled until the calendar list has actually arrived. */}
           <button
             type="button"
+            disabled={!defaultCalendarId}
+            title={defaultCalendarId ? undefined : t('cal.loading')}
             onClick={() => openNew(view === 'month' ? new Date() : anchor)}
             className={`ml-auto flex items-center gap-2 !py-1.5 ${primaryButtonClass}`}
           >

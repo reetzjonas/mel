@@ -1,0 +1,10 @@
+node_modules
+dist
+dist-ssr
+.git
+.github
+test-results
+playwright-report
+docker/stalwart/etc
+docker/stalwart/.admin-pass
+*.local

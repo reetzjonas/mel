@@ -62,8 +62,12 @@ test('offline: cached mail readable, queued flag syncs on reconnect', async ({ p
   await context.setOffline(true)
 
   // Body must come from the local cache after navigating away and back.
-  await page.getByText('HTML-Test').click()
-  await page.getByText(SUBJECT).click()
+  // Scoped to the list: the subject also appears as the heading in the reading
+  // pane, so an unscoped match is ambiguous whenever that mail is still open.
+  const row = (subject: string) =>
+    page.locator('[data-testid="virtuoso-item-list"] [role="button"]', { hasText: subject }).first()
+  await row('HTML-Test').click()
+  await row(SUBJECT).click()
   await expect(frame.getByText('dies ist die erste Testmail')).toBeVisible()
 
   // Flag it while offline — optimistic UI, action queued in the outbox.

@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  check:
+    name: Lint, types and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      # build is also the typecheck: it runs vite build (which generates
+      # routeTree.gen.ts) and only then tsc, and that order matters.
+      - run: npm run build
+      - run: npm test
+
+  e2e:
+    name: End-to-end against the built image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # The specs drive a real JMAP server. seed.sh provisions Stalwart from
+      # nothing and is idempotent, so it doubles as the CI fixture.
+      - name: Provision Stalwart
+        run: npm run stalwart:seed
+
+      # Test the artifact that gets published, not a dev server: the production
+      # build registers a service worker and serves through nginx, and neither
+      # of those is exercised by `vite dev`.
+      - name: Build image
+        run: docker build -t mel:ci .
+      - name: Serve it
+        run: |
+          docker run -d --name mel-ci -p 8081:8080 mel:ci
+          timeout 60 sh -c 'until curl -sf http://localhost:8081/index.html >/dev/null; do sleep 1; done'
+
+      - run: npx playwright install --with-deps chromium
+      - name: Run Playwright
+        env:
+          MEL_E2E_BASE_URL: http://localhost:8081
+        run: npm run test:e2e
+
+      - name: Container logs on failure
+        if: failure()
+        run: docker logs mel-ci
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  publish:
+    name: Push to ghcr
+    needs: [check, e2e]
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=long
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # The e2e job already built these layers; reuse them rather than
+          # compiling the bundle a second time.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -1,0 +1,30 @@
+# Serve mel over HTTPS. Two things are not optional:
+#
+#  1. TLS. Service workers, notifications and the Web Crypto bits mel relies on
+#     are only available in a secure context.
+#  2. CORS on the *mail server*, not here. The browser calls the JMAP server
+#     directly from this origin, so that server must allow it. Without it every
+#     request fails as an opaque TypeError, which no amount of configuration on
+#     this side can fix or even diagnose.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mel
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: [mel.example.com]
+      secretName: mel-tls
+  rules:
+    - host: mel.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mel
+                port:
+                  name: http

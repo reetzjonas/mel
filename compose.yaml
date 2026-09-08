@@ -1,0 +1,35 @@
+# Example deployment. mel is a static bundle with no backend of its own — it
+# talks to your JMAP server straight from the browser.
+#
+# Because of that, the one thing that must be right is on the *mail server*:
+# it has to send CORS headers permitting this app's origin, or the browser
+# blocks every request and mel can only report "server unreachable" without
+# being able to say why (a CORS rejection is indistinguishable from a DNS
+# failure in JavaScript).
+#
+#   docker compose up -d   →   http://localhost:8081
+#
+# Port 8081 rather than 8080: the dev Stalwart in docker/stalwart already uses
+# 8080, and having the example clash with it is a pointless first impression.
+services:
+  mel:
+    image: ghcr.io/reetzjonas/mel:latest
+    # Building from this checkout instead of pulling:
+    #   docker compose build
+    build: .
+    pull_policy: missing
+    restart: unless-stopped
+    ports:
+      - '8081:8080'
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/index.html']
+      interval: 30s
+      timeout: 3s
+      start_period: 5s

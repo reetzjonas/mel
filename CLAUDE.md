@@ -87,6 +87,33 @@ nach dem Öffnen einer Mail wird der Balken der Ordnerliste weiterhin breiter
 HTML-Mail rendert bewusst auf Weiß (Absender kodieren dunkle Schrift hart);
 **Klartext-Mail** folgt dem App-Theme (`textFrameDoc` bekommt die Farben übergeben).
 
+## Deployment (seit M)
+
+Statisches Image, kein Backend: `Dockerfile` baut das Bundle und serviert es mit
+**nginx-unprivileged** (uid 101, Port 8080) — damit passt es ohne Kunstgriffe in
+einen harten k8s-`securityContext` (`runAsNonRoot`, `readOnlyRootFilesystem`).
+Beispiele im Repo: `compose.yaml` (Port 8081, weil 8080 das Dev-Stalwart hat)
+und `deploy/k8s/` (Deployment + Service + Ingress).
+
+Zwei Fallen, beide verifiziert:
+- **nginx vererbt `add_header` nicht**: sobald ein `location` einen eigenen
+  Header setzt, verliert er *alle* geerbten. Die Security-Header liegen deshalb
+  in `docker/nginx-headers.conf` und werden pro Block `include`d. Ohne das
+  fehlten sie ausgerechnet auf `/` (das intern auf `/index.html` fällt).
+- **`sw.js` darf nicht gecacht werden**, sonst hängen Nutzer beliebig lange auf
+  einem alten Build fest. Nur `/assets/*` (gehasht) ist `immutable`.
+
+Wichtig fürs Deployment: die App spricht den JMAP-Server **direkt aus dem
+Browser** an. Der Mailserver muss also CORS für die App-Origin erlauben — sonst
+scheitert alles als opakes `TypeError`, und zwar unbehebbar von unserer Seite.
+
+CI (`.github/workflows/ci.yml`): `check` (lint, build=typecheck, Vitest) und
+`e2e` laufen parallel, `publish` hängt an beiden und pusht nur bei `push` nach
+ghcr. Der e2e-Job testet **das Image**, nicht den Dev-Server — dafür liest
+`playwright.config.ts` jetzt `MEL_E2E_BASE_URL` und lässt `webServer` dann weg.
+Nur so werden nginx-Auslieferung und der in PROD registrierte Service Worker
+überhaupt abgedeckt.
+
 ## Dev-Workflow
 
 ```sh
@@ -231,11 +258,10 @@ analog zu den Kalender-Sichtbarkeits-Toggles.
 `cursor: pointer` fühlen sich tot an. Beim Prüfen gleich die übrigen
 Icon-Buttons mitnehmen.
 
-**M. GitHub CI:** Tests fahren, danach Container bauen und nach ghcr pushen.
-Achtung: `npm run test:e2e` braucht ein geseedetes Stalwart — `stalwart:seed`
-läuft in Docker und ist idempotent, taugt also als CI-Schritt (s.
-`docker/stalwart/`). Reihenfolge im Build beachten: `vite build` vor `tsc`
-wegen `routeTree.gen`.
+**M. ~~GitHub CI~~ erledigt** — s. Abschnitt „Deployment" oben. Offen bleibt,
+dass noch nie ein Lauf auf GitHub selbst stattgefunden hat: lokal ist alles
+verifiziert (Image gebaut, Container getestet, `kubectl --dry-run` sauber), der
+erste echte Workflow-Lauf steht aber aus.
 
 **N. Theme-Editor**, mit dem sich die UI-Farben anpassen lassen, gespeichert im
 Browser (localStorage). Die Tokens sind bereits zentral als OKLCH-Variablen in
@@ -270,6 +296,14 @@ CPU-Last abgetan. Das war **falsch** — es waren drei reale Ursachen, alle gefi
    rendert `Willkommen bei mel`/`HTML-Test` dann gar nicht mehr. Symptom: mehrere
    Mail-Specs finden „ihre" Mail nicht. Bob hatte so **70** Altmails angesammelt.
    `global-setup` trimmt den Inbox jetzt auf die Seed-Betreffs (`SEEDED_INBOX`).
+
+0b. **Knöpfe, die still nichts tun.** „Neuer Termin" hatte `if
+   (!defaultCalendarId) return` — solange die Kalender noch nicht gesynct
+   waren, passierte beim Klick nichts, und der Test lief in den Timeout. Unter
+   Last (2 Worker) traf er dieses Fenster etwa jeden dritten Lauf. Der Knopf
+   ist jetzt `disabled`, womit Playwright von selbst wartet. **Regel: ein
+   Handler, der früh `return`t, gehört als `disabled` sichtbar gemacht** —
+   sonst ist es für Nutzer wie Tests ein toter Knopf.
 
 1. **Angesammelte Testdaten.** Jeder Lauf ließ Entwürfe/Sent-Mails/Kontakte/Events
    zurück (der Draft-Autosave-Test *muss* einen Entwurf hinterlassen; fehlgeschlagene

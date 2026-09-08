@@ -1,5 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
 
+/*
+ * Point the suite at an already-running deployment — the built container, say —
+ * instead of the dev server. CI uses this to prove the image it is about to
+ * push actually serves a working app, not just that the bundle compiled.
+ */
+const baseURL = process.env['MEL_E2E_BASE_URL'] ?? 'http://localhost:5173'
+const external = Boolean(process.env['MEL_E2E_BASE_URL'])
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 30_000,
@@ -13,7 +21,7 @@ export default defineConfig({
   // instances from starving the dev server into timeout territory.
   workers: 2,
   use: {
-    baseURL: 'http://localhost:5173',
+    baseURL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -40,9 +48,11 @@ export default defineConfig({
       ],
     },
   ],
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-  },
+  webServer: external
+    ? undefined
+    : {
+        command: 'npm run dev',
+        url: 'http://localhost:5173',
+        reuseExistingServer: true,
+      },
 })
