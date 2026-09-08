@@ -140,13 +140,18 @@ export function ReadingPane({
     }
   }, [accountId, email.id])
 
-  const backToList = () =>
-    void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
+  const backToList = () => void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
 
   async function onArchive() {
     const undo = await archiveEmail(accountId, email.id)
     backToList()
-    if (undo) showSnackbar({ message: t('mail.archived'), actionLabel: t('mail.undo'), action: () => void undo() })
+    // null means no Archive mailbox could be created. Staying silent here is
+    // indistinguishable from success and leaves the message where it was.
+    showSnackbar(
+      undo
+        ? { message: t('mail.archived'), actionLabel: t('mail.undo'), action: () => void undo() }
+        : { message: t('mail.archiveFailed') },
+    )
   }
 
   async function onDelete() {
@@ -273,7 +278,9 @@ export function ReadingPane({
                 >
                   <Icon name="paperclip" size={11} />
                   {a.name ?? 'attachment'}
-                  <span className="text-ink-muted">({Math.max(1, Math.round(a.size / 1024))} KB)</span>
+                  <span className="text-ink-muted">
+                    ({Math.max(1, Math.round(a.size / 1024))} KB)
+                  </span>
                 </button>
                 <button
                   type="button"

@@ -321,6 +321,20 @@ put down to CPU load. That was **wrong** — there were real causes, all fixed:
    "their" message. Bob had accumulated **70** stale mails this way. `global-setup`
    now trims the inbox back to the seeded subjects (`SEEDED_INBOX`).
 
+0a. **Stalwart provisions no Archive mailbox.** Its defaults are Inbox, Drafts,
+   Sent Items, Deleted Items and Junk Mail, so the *first* archive action has to
+   create one — which only shows up on a freshly seeded server, i.e. in CI and
+   never locally once a run has created it. Two consequences: the assertion on
+   the "Archived" snackbar gets a longer timeout, and `ensureArchiveId()` uses
+   the id `Mailbox/set` returns instead of syncing the whole account to look it
+   up (measured at 143ms vs 166ms locally — a real simplification, but *not*
+   what made CI fail; do not credit it with that).
+   The actual cause was the third instance of the same pattern as 0b:
+   `archiveEmail` returns null when no Archive mailbox could be created and
+   every call site did `if (undo) showSnackbar(...)`, so a failure was
+   **indistinguishable from success** — nothing happened at all. All three call
+   sites now report it.
+
 0b. **Buttons that silently do nothing.** "New event" began with
    `if (!defaultCalendarId) return` — before the calendars had synced, clicking did
    nothing and the test ran into its timeout. Under load (2 workers) it hit that
@@ -387,6 +401,12 @@ full runs ever since. **If something flickers again, check these classes first
   the cursor skips them forever. That is what `resyncAccount()` is for (Settings →
   Account → "fetch everything again"): it drops the sync cursors, forces a full sync,
   fills the gaps and prunes.
+- **Careful with `onDestroyRemoveEmails: true` while debugging.** Deleting the
+  Archive mailbox to reproduce a fresh-server state destroyed seeded mail twice,
+  because messages archived by an earlier test lived *only* there — and the seed
+  guard (`< 4 mails`) will not put them back. Move the contents out first, or
+  destroy with the flag off. Restoring means re-sending the specific message over
+  SMTP; see `docker/stalwart/seed.sh` for the exact payloads.
 - **Deleting a folder has two separate refusals** (verified against the server):
   `mailboxHasChild` ("Mailbox has at least one children.") → children must go first;
   `mailboxHasEmail` ("Mailbox is not empty.") → needs `onDestroyRemoveEmails: true`.

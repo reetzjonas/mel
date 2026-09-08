@@ -22,7 +22,10 @@ test('archive a mail and undo it', async ({ page }) => {
   await firstRow.click()
   await page.getByRole('article').getByTitle('Archive').click()
 
-  await expect(page.getByText('Archived')).toBeVisible()
+  // The first archive on a fresh server also has to create the Archive mailbox,
+  // which Stalwart does not provision — more than the default 5s allows for on
+  // a CI runner.
+  await expect(page.getByText('Archived')).toBeVisible({ timeout: 20_000 })
   await expect(page.getByText(subject).first()).toBeHidden()
 
   await page.getByRole('button', { name: 'Undo' }).click()
@@ -118,7 +121,10 @@ test('bulk select two messages, archive them, and undo', async ({ page }) => {
   await expect(toolbar).toContainText('2 selected')
 
   await toolbar.getByLabel('Archive').click()
-  await expect(page.getByText('Archived')).toBeVisible()
+  // The first archive on a fresh server also has to create the Archive mailbox,
+  // which Stalwart does not provision — more than the default 5s allows for on
+  // a CI runner.
+  await expect(page.getByText('Archived')).toBeVisible({ timeout: 20_000 })
   for (const s of subjects) await expect(page.getByText(s).first()).toBeHidden()
 
   await page.getByRole('button', { name: 'Undo' }).click()

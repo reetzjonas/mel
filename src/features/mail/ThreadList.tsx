@@ -97,12 +97,13 @@ function Row({
 
   const doArchive = () =>
     void archiveEmail(accountId, email.id).then((undo) => {
-      if (undo)
-        showSnackbar({
-          message: t('mail.archived'),
-          actionLabel: t('mail.undo'),
-          action: () => void undo(),
-        })
+      // null means no Archive mailbox could be created — saying nothing looks
+      // exactly like success and leaves the message sitting where it was.
+      showSnackbar(
+        undo
+          ? { message: t('mail.archived'), actionLabel: t('mail.undo'), action: () => void undo() }
+          : { message: t('mail.archiveFailed') },
+      )
     })
   const doDelete = () =>
     void deleteEmail(accountId, email.id).then((undo) => {

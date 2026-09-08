@@ -108,27 +108,37 @@ export async function moveEmail(
   }
 }
 
-/** Stalwart doesn't provision an Archive mailbox by default — create one. */
-async function ensureArchive(accountId: string): Promise<Mailbox | null> {
-  let archive = await roleMailbox(accountId, 'archive')
-  if (!archive) {
-    const { connectionFor } = await import('../sync/connections')
-    const { syncAccount } = await import('../sync/engine')
-    const conn = await connectionFor(accountId)
-    // Another client may create it concurrently — re-sync and retry either way.
-    await conn.mail?.editMailbox({
-      create: { name: 'Archive', parentId: null, role: 'archive' },
-    })
-    await syncAccount(accountId)
-    archive = await roleMailbox(accountId, 'archive')
+/**
+ * Stalwart does not provision an Archive mailbox, so the first archive action
+ * has to create one.
+ *
+ * Use the id Mailbox/set hands straight back rather than syncing the whole
+ * account to look it up afterwards: that sync is by far the slowest thing in
+ * this path, and the move needs nothing else from it.
+ */
+async function ensureArchiveId(accountId: string): Promise<string | null> {
+  const existing = await roleMailbox(accountId, 'archive')
+  if (existing) return existing.id
+
+  const { connectionFor } = await import('../sync/connections')
+  const { syncAccount } = await import('../sync/engine')
+  const conn = await connectionFor(accountId)
+  const created = await conn.mail?.editMailbox({
+    create: { name: 'Archive', parentId: null, role: 'archive' },
+  })
+  if (created?.id) {
+    // Let the sidebar catch up in the background; do not block the move on it.
+    void syncAccount(accountId)
+    return created.id
   }
-  return archive
+  // Another client may have created it concurrently — resync and look again.
+  await syncAccount(accountId)
+  return (await roleMailbox(accountId, 'archive'))?.id ?? null
 }
 
 export async function archiveEmail(accountId: string, emailId: string) {
-  const archive = await ensureArchive(accountId)
-  if (!archive) return null
-  return moveEmail(accountId, emailId, archive.id)
+  const archiveId = await ensureArchiveId(accountId)
+  return archiveId ? moveEmail(accountId, emailId, archiveId) : null
 }
 
 /** Move to trash, or destroy permanently when already in trash. */
@@ -209,8 +219,8 @@ export async function bulkMove(
 
 export async function bulkArchive(accountId: string, emailIds: string[]) {
   if (!emailIds.length) return null
-  const archive = await ensureArchive(accountId)
-  return archive ? bulkMove(accountId, emailIds, archive.id) : null
+  const archiveId = await ensureArchiveId(accountId)
+  return archiveId ? bulkMove(accountId, emailIds, archiveId) : null
 }
 
 /**

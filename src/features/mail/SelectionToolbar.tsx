@@ -52,16 +52,21 @@ export function SelectionToolbar({
   const [moveOpen, setMoveOpen] = useState(false)
   const count = selection.length
 
-  async function run(action: () => Promise<(() => Promise<void>) | null | void>, message: string) {
+  async function run(
+    action: () => Promise<(() => Promise<void>) | null | void>,
+    message: string,
+    /** Shown when the action reports it could not do anything. */
+    failMessage?: string,
+  ) {
     setBusy(true)
     try {
       const undo = await action()
       clearSelection()
-      showSnackbar(
-        typeof undo === 'function'
-          ? { message, actionLabel: t('mail.undo'), action: () => void undo() }
-          : { message },
-      )
+      if (typeof undo === 'function') {
+        showSnackbar({ message, actionLabel: t('mail.undo'), action: () => void undo() })
+      } else {
+        showSnackbar({ message: undo === null && failMessage ? failMessage : message })
+      }
     } finally {
       setBusy(false)
     }
@@ -162,7 +167,13 @@ export function SelectionToolbar({
             icon="archive"
             label={t('mail.archive')}
             disabled={busy}
-            onClick={() => void run(() => bulkArchive(accountId, selection), t('mail.archived'))}
+            onClick={() =>
+              void run(
+                () => bulkArchive(accountId, selection),
+                t('mail.archived'),
+                t('mail.archiveFailed'),
+              )
+            }
           />
           <ToolbarButton
             icon="trash"
