@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 50 Vitest + 29 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 54 Vitest + 31 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -148,6 +148,10 @@ Scroll-Container, der Footer wäre also mitgescrollt — jetzt `nav` = Spalte,
 innerer `div` = Scrollbereich; und der Web-Push-Hinweis hängt an
 `isSubscribed()`, nicht an `capabilities.webPush`, sonst behauptet die Leiste
 „Push-Benachrichtigungen an", obwohl gar kein Abo existiert.
+Die Leiste rendert **immer zwei Zeilen** (zweite ggf. leer, feste Höhe) — sie
+ist unten angepinnt, eine erscheinende Zeile würde die Ordnerliste schieben.
+Der letzte Sync steht im `title`, nicht im Text: bei Push stünde dort dauerhaft
+„gerade eben" (User-Vorgabe).
 
 **C. Feature-Caps und ihre Gates sichtbar machen.** Vermutlich eine
 Settings-Sektion. Die Flags entstehen in `providers/jmap/client/session.ts`
@@ -223,6 +227,24 @@ annehmen.**
   `usePermissiveCors` reicht nicht (statische `responseHeaders` nötig);
   FTS braucht `searchStore` + ggf. `reindex`-Task; VAPID = `webPushKey`
   (`{"@type":"Text","secret":"<PKCS#8 PEM>"}`).
+- **Ein Browser kann CORS nicht von DNS-Fehler/Refused/TLS unterscheiden** —
+  `fetch()` wirft für alles dasselbe opake `TypeError: Failed to fetch`. Also
+  nie „CORS-Fehler" behaupten; `lib/netError.ts` klassifiziert nur grob
+  (`unreachable`/`auth`/`other`) und die Texte nennen die Kandidaten plus den
+  Hinweis auf die Browser-Konsole, wo der echte Grund steht.
+  Zwei Stellen, an denen der Fehler früher komplett verschwand:
+  1. `startSse()` holte die Session **außerhalb** seines `try` — schlug das per
+     CORS fehl, lief die Rejection ins Leere, es gab keinen Poll-Fallback und
+     die Statusleiste stand für immer auf „Verbinde…".
+  2. `tick()` verschluckte jeden Fehler (`catch {}`), ein abgelehnter Server sah
+     also aus wie ein leeres Postfach. `SyncStatus.error` trägt das jetzt.
+  Beim Login unterscheidet `NoServerFound.lastError` jetzt „nichts gefunden" von
+  „nicht erreichbar" — sonst schickt „Kein Mailserver gefunden" den User auf
+  Tippfehlersuche, obwohl sein Server läuft und nur die CORS-Header fehlen.
+- **e2e: `page.route('**/jmap/**')` blockt auch die eigenen App-Module**, die
+  Vite im Dev unter `src/providers/jmap/…` ausliefert → weiße Seite, Test misst
+  nichts. Für Verbindungsabbrüche die Server-Origin routen
+  (`http://localhost:8080/**`).
 - **`new URL()` zerstört `{platzhalter}`** der JMAP-URL-Templates (percent-encoding)
   — Fix in `client/session.ts` `abs()`; nicht entfernen.
 - **JMAP `properties: []` heißt „nur id"** — für alle Properties `undefined` schicken

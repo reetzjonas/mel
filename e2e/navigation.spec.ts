@@ -102,3 +102,39 @@ test('the sidebar reports how updates are arriving', async ({ page }) => {
   await page.locator('nav div.overflow-y-auto').evaluate((e) => e.scrollTo(0, 9999))
   expect((await status.boundingBox())?.y).toBe(before)
 })
+
+test('a blocked connection is reported, not silently swallowed', async ({ page }) => {
+  // An aborted request fails exactly like a CORS rejection does from JS: an
+  // opaque "Failed to fetch" with no cause attached.
+  await page.route('**/.well-known/jmap', (r) => r.abort('failed'))
+  await page.route('**/jmap/session', (r) => r.abort('failed'))
+
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+
+  // Naming the hosts beats "no mail server found", which sends people looking
+  // for a typo when the server is up but missing CORS headers.
+  const error = page.locator('.text-danger').first()
+  await expect(error).toContainText('CORS', { timeout: 20_000 })
+  await expect(error).toContainText('localhost:8080')
+})
+
+test('a sync that cannot reach the server does not sit on "connecting"', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByTestId('sync-status')).toContainText('Live updates', { timeout: 15_000 })
+
+  // Only the server origin: '**/jmap/**' would also match this app's own
+  // modules under src/providers/jmap/ that Vite serves in dev, which blanks
+  // the page and tests nothing.
+  await page.route('http://localhost:8080/**', (r) => r.abort('failed'))
+  await page.reload()
+
+  await expect(page.getByTestId('sync-status')).toContainText('Server unreachable', {
+    timeout: 20_000,
+  })
+})

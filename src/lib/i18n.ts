@@ -16,6 +16,8 @@ const en = {
   'login.server': 'Server address',
   'login.serverPlaceholder': 'mail.example.com',
   'login.noServer': 'No mail server found for that address.',
+  'login.unreachable':
+    'No answer from these servers. If one of them is yours, it is most likely missing CORS headers — the browser console names the real reason. Tried:',
   'login.notFoundHelp':
     'We looked for a server on the usual hostnames and found none. You can let us look up the DNS record for your domain, or enter the server address yourself.',
   'login.tryDns': 'Look up via DNS',
@@ -117,6 +119,10 @@ const en = {
   'sync.webPush': 'push notifications on',
   'sync.queued.one': '1 change waiting to be sent',
   'sync.queued.many': 'changes waiting to be sent',
+  'sync.lastSync': 'Last synced',
+  'sync.error.unreachable': 'Server unreachable',
+  'sync.error.auth': 'Sign-in rejected',
+  'sync.error.hint': 'Network, TLS or CORS — console has details',
 
   'settings.title': 'Settings',
   'settings.language': 'Language',
@@ -257,6 +263,8 @@ const de: Partial<Record<MsgKey, string>> = {
   'login.server': 'Serveradresse',
   'login.serverPlaceholder': 'mail.example.com',
   'login.noServer': 'Zu dieser Adresse wurde kein Mailserver gefunden.',
+  'login.unreachable':
+    'Keine Antwort von diesen Servern. Falls einer davon deiner ist, fehlen ihm vermutlich die CORS-Header — den echten Grund nennt die Browser-Konsole. Versucht:',
   'login.notFoundHelp':
     'Auf den üblichen Hostnamen war kein Server zu finden. Du kannst den DNS-Eintrag deiner Domain abfragen lassen oder die Serveradresse selbst eintragen.',
   'login.tryDns': 'Per DNS suchen',
@@ -358,6 +366,10 @@ const de: Partial<Record<MsgKey, string>> = {
   'sync.webPush': 'Push-Benachrichtigungen an',
   'sync.queued.one': '1 Änderung wartet auf Übertragung',
   'sync.queued.many': 'Änderungen warten auf Übertragung',
+  'sync.lastSync': 'Zuletzt synchronisiert',
+  'sync.error.unreachable': 'Server nicht erreichbar',
+  'sync.error.auth': 'Anmeldung abgelehnt',
+  'sync.error.hint': 'Netzwerk, TLS oder CORS — Details in der Konsole',
 
   'settings.title': 'Einstellungen',
   'settings.language': 'Sprache',

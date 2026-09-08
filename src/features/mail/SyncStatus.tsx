@@ -87,36 +87,59 @@ export function SyncStatus({ account }: { account: Account }) {
 
   let label: string
   let icon: IconName = MODE_ICON[status.mode]
+  let tone = 'text-ink-muted'
   if (!online) {
     label = t('sync.offline')
     icon = 'offline'
+  } else if (status.error) {
+    label = status.error.kind === 'auth' ? t('sync.error.auth') : t('sync.error.unreachable')
+    icon = 'offline'
+    tone = 'text-danger'
   } else if (status.syncing) {
     label = t('sync.syncing')
   } else if (status.mode === 'push') {
     label = t('sync.push')
   } else if (status.mode === 'poll') {
-    label = `${t('sync.poll')} ${Math.round(status.intervalMs / 1000)} s`
+    label = `${t('sync.poll')} ${Math.round(status.intervalMs / 1000)} s`
   } else if (status.mode === 'connecting') {
     label = t('sync.connecting')
   } else {
     label = t('sync.paused')
   }
 
-  // Web Push keeps notifications flowing with the app closed, which is a
-  // different thing from the live connection above — and it only earns a
-  // mention once a subscription really exists, not when the server merely
-  // supports one.
-  const detail = [
-    status.lastSyncAt ? formatRelativePast(status.lastSyncAt) : null,
-    webPushActive ? t('sync.webPush') : null,
+  /*
+   * The second line is always rendered, even empty: this box is pinned to the
+   * bottom of the sidebar, so a line appearing or vanishing would shove the
+   * folder list around every time the sync state changed.
+   *
+   * Web Push only earns a mention once a subscription really exists, not when
+   * the server merely supports one. The last sync time is deliberately not
+   * shown while pushing — it says "just now" forever and reads as noise; it
+   * lives in the tooltip instead.
+   */
+  let detail = ''
+  if (queued > 0) {
+    detail = queued === 1 ? t('sync.queued.one') : `${queued} ${t('sync.queued.many')}`
+  } else if (status.error) {
+    detail = t('sync.error.hint')
+  } else if (webPushActive) {
+    detail = t('sync.webPush')
+  } else if (status.lastSyncAt && status.mode !== 'push') {
+    detail = formatRelativePast(status.lastSyncAt)
+  }
+
+  const tooltip = [
+    status.lastSyncAt ? `${t('sync.lastSync')}: ${formatRelativePast(status.lastSyncAt)}` : null,
+    status.error?.detail,
   ]
     .filter(Boolean)
-    .join(' · ')
+    .join('\n')
 
   return (
     <div
       className="shrink-0 border-t border-line px-3 py-2 text-[11px] text-ink-subtle"
       data-testid="sync-status"
+      title={tooltip || undefined}
     >
       <span className="flex items-center gap-1.5">
         <Icon
@@ -124,14 +147,11 @@ export function SyncStatus({ account }: { account: Account }) {
           size={12}
           className={status.syncing ? 'shrink-0 animate-spin' : 'shrink-0'}
         />
-        <span className="truncate font-medium text-ink-muted">{label}</span>
+        <span className={`truncate font-medium ${tone}`}>{label}</span>
       </span>
-      {detail && <span className="mt-0.5 block truncate">{detail}</span>}
-      {queued > 0 && (
-        <span className="mt-0.5 block truncate text-honey">
-          {queued === 1 ? t('sync.queued.one') : `${queued} ${t('sync.queued.many')}`}
-        </span>
-      )}
+      <span className={`mt-0.5 block h-[14px] truncate ${queued > 0 ? 'text-honey' : ''}`}>
+        {detail}
+      </span>
     </div>
   )
 }

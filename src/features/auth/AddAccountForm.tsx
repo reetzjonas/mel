@@ -6,6 +6,15 @@ import { addAccount, NoServerFound } from '../../services/accounts'
 import { Icon } from '../../ui/Icon'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
+/** Just the host, so the error names servers rather than full well-known URLs. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return url
+  }
+}
+
 /**
  * One mask for every server. The email address is enough for the common case:
  * discoveryCandidates() probes the conventional hosts, and only if all of them
@@ -35,7 +44,13 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
     } catch (err) {
       if (err instanceof NoServerFound) {
         setNotFound(true)
-        setError(t('login.noServer'))
+        // A reachable server that just lacks CORS headers fails identically to
+        // one that isn't there, so say both rather than assert the wrong one.
+        setError(
+          err.lastError?.kind === 'unreachable'
+            ? `${t('login.unreachable')} ${err.tried.map(hostOf).join(', ')}`
+            : t('login.noServer'),
+        )
       } else {
         setError(err instanceof Error ? err.message : String(err))
       }

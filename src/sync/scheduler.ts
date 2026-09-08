@@ -1,6 +1,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source'
 import { authHeader } from '../providers/jmap/client/transport'
 import type { StateChange } from '../providers/jmap/client/types/core'
+import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { db } from '../storage/db'
 import { openEnvelope } from '../storage/envelope'
 import { notifyNewMail } from '../services/notifications'
@@ -31,9 +32,17 @@ export interface SyncStatus {
   /** Epoch ms of the last tick that completed without throwing; 0 if none yet. */
   lastSyncAt: number
   syncing: boolean
+  /** Last failure, cleared by the next successful tick. */
+  error: ConnectionError | null
 }
 
-const IDLE: SyncStatus = { mode: 'stopped', intervalMs: 0, lastSyncAt: 0, syncing: false }
+const IDLE: SyncStatus = {
+  mode: 'stopped',
+  intervalMs: 0,
+  lastSyncAt: 0,
+  syncing: false,
+  error: null,
+}
 
 const statuses = new Map<string, SyncStatus>()
 const listeners = new Set<() => void>()
@@ -49,7 +58,9 @@ function setStatus(accountId: string, patch: Partial<SyncStatus>) {
     next.mode === prev.mode &&
     next.intervalMs === prev.intervalMs &&
     next.lastSyncAt === prev.lastSyncAt &&
-    next.syncing === prev.syncing
+    next.syncing === prev.syncing &&
+    next.error?.kind === prev.error?.kind &&
+    next.error?.detail === prev.error?.detail
   )
     return
   statuses.set(accountId, next)
@@ -71,9 +82,11 @@ async function tick(accountId: string) {
     await flush(accountId)
     await syncAccount(accountId)
     await notifyNewMail(accountId)
-    setStatus(accountId, { lastSyncAt: Date.now() })
-  } catch {
-    /* transient; next tick retries */
+    setStatus(accountId, { lastSyncAt: Date.now(), error: null })
+  } catch (e) {
+    // The next tick retries, but the failure must not stay invisible: a server
+    // that rejects us on CORS otherwise looks exactly like a quiet mailbox.
+    setStatus(accountId, { error: classifyConnectionError(e) })
   } finally {
     setStatus(accountId, { syncing: false })
   }
@@ -90,7 +103,17 @@ function schedulePoll(accountId: string, ctl: Controller) {
 }
 
 async function startSse(accountId: string, ctl: Controller) {
-  const conn = await connectionFor(accountId)
+  let conn
+  try {
+    conn = await connectionFor(accountId)
+  } catch (e) {
+    // Opening the connection means fetching the session document, and that is
+    // exactly where a missing CORS header bites. Without this catch the
+    // rejection went nowhere and the UI sat on "connecting" indefinitely.
+    setStatus(accountId, { error: classifyConnectionError(e) })
+    schedulePoll(accountId, ctl)
+    return
+  }
   if (!conn.push) {
     schedulePoll(accountId, ctl)
     return

@@ -1,4 +1,5 @@
 import type { Credentials } from '../domain/account'
+import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { JmapError } from '../providers/jmap/client/transport'
 import { providerFor } from '../providers/registry'
 import { db } from '../storage/db'
@@ -10,11 +11,19 @@ import { stopScheduler } from '../sync/scheduler'
 /** No candidate answered — the caller can offer the user a wider search. */
 export class NoServerFound extends Error {
   readonly tried: string[]
+  /**
+   * Why the last candidate failed. A browser cannot tell a CORS rejection from
+   * a DNS miss, so this is kept and surfaced verbatim rather than flattened
+   * into "not found" — for a server that exists but forgot its CORS headers,
+   * "not found" sends the user hunting in entirely the wrong place.
+   */
+  readonly lastError: ConnectionError | null
 
-  constructor(tried: string[]) {
+  constructor(tried: string[], lastError: ConnectionError | null) {
     super('no JMAP server found')
     this.name = 'NoServerFound'
     this.tried = tried
+    this.lastError = lastError
   }
 }
 
@@ -32,6 +41,7 @@ export async function addAccount(
   const localId = crypto.randomUUID()
   let conn
   const tried: string[] = []
+  let lastError: ConnectionError | null = null
   for (const candidate of candidates) {
     tried.push(candidate)
     try {
@@ -40,9 +50,10 @@ export async function addAccount(
     } catch (e) {
       if (e instanceof JmapError && e.kind === 'auth') throw e
       // Anything else (DNS failure, CORS, 404, a non-JMAP host) → next guess.
+      lastError = classifyConnectionError(e)
     }
   }
-  if (!conn) throw new NoServerFound(tried)
+  if (!conn) throw new NoServerFound(tried, lastError)
   await db.accounts.put({
     id: localId,
     provider: 'jmap',
