@@ -33,7 +33,7 @@ echter Bug, s. u.), Quick Actions in der Mail-Liste, Ordner-Verwaltung (anlegen/
 umbenennen/löschen), Draft-Autosave, Search-Snippets mit `<mark>`, Pull-to-Refresh.
 Kontakte sortieren jetzt korrekt alphabetisch nach Anzeigename.
 
-Tests: 63 Vitest + 34 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
+Tests: 63 Vitest + 35 Playwright (Desktop+Mobile; zustandsändernde Specs desktop-only,
 siehe `testIgnore` in playwright.config.ts). Fastmail-Interop Mail vom User bestätigt.
 
 ## Login/Setup und Abmelden
@@ -121,8 +121,8 @@ Event-Sync-Fensterung für große Kalender, Woche-1-Perf mit 50k Mails.
 
 ### Neu angemeldet (Reihenfolge noch NICHT mit dem User abgestimmt)
 
-Alles vom User in einem Rutsch gewünscht; Priorisierung steht aus, also vor dem
-Loslegen kurz nachfragen, was zuerst soll.
+Priorisierung steht aus, also vor dem Loslegen kurz nachfragen, was zuerst soll.
+**B, C und E sind erledigt**, der Rest ist offen. A ist kein Bug (s. dort).
 
 **A. Bug: Scrollbalken der Ordnerliste wird breiter, sobald eine Mail geöffnet
 wird.** Der globale `scrollbar-width: thin`-Fix (s. o.) hat nur die
@@ -193,6 +193,11 @@ ein „Kein Spam"-Button (Move in den Posteingang; ob Stalwart zusätzlich
 Lernen/Sieve anstößt, ist zu prüfen — der Spamfilter ist im Dev-Seed
 abgeschaltet, s. `seed.sh`). Die Junk-Rolle kennt die Mailbox-Liste bereits.
 
+**G. Option „Bilder nicht automatisch laden"** (global, mit Freigabe pro Mail).
+Das ist der Mechanismus, auf dem F aufsetzt — F ist im Grunde G plus „in Junk
+immer an". Betrifft `lib/htmlSanitize.ts` und das Mail-iframe im ReadingPane;
+Remote-Referenzen müssen dort blockiert und nach Freigabe nachgeladen werden.
+
 **H. Bug: `capabilities.submission` gated nichts.** Beim Bauen von C
 aufgefallen: Das Flag wird in `capabilitiesFor()` berechnet, aber nirgends
 abgefragt. Auf einem Server ohne `urn:ietf:params:jmap:submission` bietet die
@@ -203,10 +208,47 @@ Outbox. Verwandt: der App-Switcher zeigt Mail **immer**
 der neuen Settings-Sektion; die Gates fehlen aber noch. Vom User als eigener
 Punkt gewünscht.
 
-**G. Option „Bilder nicht automatisch laden"** (global, mit Freigabe pro Mail).
-Das ist der Mechanismus, auf dem F aufsetzt — F ist im Grunde G plus „in Junk
-immer an". Betrifft `lib/htmlSanitize.ts` und das Mail-iframe im ReadingPane;
-Remote-Referenzen müssen dort blockiert und nach Freigabe nachgeladen werden.
+**I. Capabilities beim Login eingefroren.** `capabilitiesFor()` läuft nur in
+`addAccount()`; `open()` hat die frische Session zwar in der Hand, schreibt den
+gespeicherten Stand aber nie fort. Ändert der Server etwas, merkt die App es
+**nie** — der User hatte deshalb plötzlich keinen Kalender mehr und musste sich
+neu anmelden, um ihn zurückzubekommen. `open()` sollte die Account-Row
+aktualisieren. Dazu (Wunsch des Users) ein **Knopf „neu laden"** in der neuen
+Settings-Sektion `features/settings/ServerCapabilities.tsx`.
+
+**J. „Alles im Ordner" schneidet bei 5000 Ids stumm ab.**
+`SELECT_ALL_LIMIT` in `features/mail/SelectionToolbar.tsx`. Für eine ehrliche
+Anzeige („12.480 Mails, die ersten 5000 ausgewählt") braucht es die Gesamtzahl
+aus `Email/query` mit `calculateTotal: true`.
+
+**K. Panels in der Breite ziehbar** — Ordner / Mailliste / Detailansicht.
+Die Breiten stehen heute fest in `app/routes/mail.tsx` (`lg:w-56`) und
+`mail.$mailboxId.tsx` (`lg:w-96`). Gewählte Breiten pro Gerät in localStorage,
+analog zu den Kalender-Sichtbarkeits-Toggles.
+
+**L. Theme- und Abmelden-Knopf oben rechts haben keinen Zeiger-Cursor.**
+`app/AppShell.tsx`; Einzeiler (`cursor-pointer`), aber Buttons ohne
+`cursor: pointer` fühlen sich tot an. Beim Prüfen gleich die übrigen
+Icon-Buttons mitnehmen.
+
+**M. GitHub CI:** Tests fahren, danach Container bauen und nach ghcr pushen.
+Achtung: `npm run test:e2e` braucht ein geseedetes Stalwart — `stalwart:seed`
+läuft in Docker und ist idempotent, taugt also als CI-Schritt (s.
+`docker/stalwart/`). Reihenfolge im Build beachten: `vite build` vor `tsc`
+wegen `routeTree.gen`.
+
+**N. Theme-Editor**, mit dem sich die UI-Farben anpassen lassen, gespeichert im
+Browser (localStorage). Die Tokens sind bereits zentral als OKLCH-Variablen in
+`src/index.css` definiert und werden über `@theme` auf Tailwind gemappt — ein
+Editor müsste also nur die `--mel-*`-Variablen auf `:root` überschreiben.
+
+**O. Settings serverseitig ablegen**, damit dieselben Einstellungen in mehreren
+Browsern gelten — **ohne eigenes Backend**. Zwei Kandidaten, beide vom User
+genannt: als Mail in einem eigenen Ordner, oder über den JMAP-FileNode-Storage.
+Wichtig: Stalwart meldet in der Session bereits
+`urn:ietf:params:jmap:filenode` (beim Capability-Probing gesehen), das wäre
+also der naheliegendere Weg — aber **nicht standardisiert**, also hinter einer
+Capability-Prüfung und mit Fallback auf rein lokale Settings.
 
 ### e2e-Stabilität (die früheren „Flakes" waren echte Ursachen)
 Die Suite galt lange als sporadisch flaky (~40 % rote Voll-Läufe) und das war als
@@ -341,5 +383,6 @@ annehmen.**
 - Mutationen: lokal optimistisch + `sync/outbox.ts`-Action (Ausnahme: Creates
   mit Navigations-Ziel sind server-first mit Offline-Fallback, s. contacts.ts).
 - Commits auf Deutsch zusammengefasste Phasen, englische Messages, mit
-  Co-Authored-By-Trailer; nur committen wenn der User es will (bisher: ja, pro
-  abgeschlossenem Block).
+  Co-Authored-By-Trailer. **Nach einem fertigen Feature erst beim User
+  nachfragen, ob alles passt — dann erst committen** (ausdrückliche Vorgabe).
+  Er prüft im echten Browser und findet dort regelmäßig, was Tests nicht sehen.

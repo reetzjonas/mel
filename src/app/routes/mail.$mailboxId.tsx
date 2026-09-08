@@ -97,7 +97,6 @@ function MailboxView() {
             accountId={account.id}
             mailboxId={mailboxId}
             mailboxes={mailboxes ?? []}
-            loadedCount={list?.length ?? 0}
           />
         ) : (
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">

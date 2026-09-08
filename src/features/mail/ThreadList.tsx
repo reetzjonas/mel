@@ -1,5 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { useUi } from '../../app/store'
 import type { EmailAddress, EmailHeader } from '../../domain/email'
@@ -127,37 +127,42 @@ function Row({
       style={dx ? { transform: `translateX(${dx}px)` } : undefined}
       className="group relative flex w-full cursor-pointer gap-3 rounded-control px-3 py-2.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash"
     >
-      {/* The avatar doubles as the selection checkbox on hover, so multi-select
-          costs no extra column and the row keeps its width. */}
-      <span className="relative shrink-0 pt-0.5">
-        <span className={checked ? 'invisible' : 'group-hover:invisible'}>
-          <Avatar
-            name={sender?.name ?? sender?.email ?? '?'}
-            email={sender?.email ?? '?'}
-            size={36}
-          />
+      {/* The avatar doubles as the selection checkbox, but only reacts to the
+          pointer being on the avatar itself — hovering anywhere in the row used
+          to blank it out, which read as the sender icon disappearing. Desktop
+          only, as with the quick actions; touch has no hover to reveal it. */}
+      <span className="shrink-0 pt-0.5">
+        {/* Exactly avatar-sized, so the overlay covers it edge to edge. The
+            padding above must not sit on this box or inset-0 is offset by it. */}
+        <span className="relative block h-9 w-9">
+          <span className={checked ? 'invisible' : undefined}>
+            <Avatar
+              name={sender?.name ?? sender?.email ?? '?'}
+              email={sender?.email ?? '?'}
+              size={36}
+            />
+          </span>
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={checked}
+            aria-label={t('bulk.select')}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggleSelect()
+            }}
+            className={`absolute inset-0 items-center justify-center rounded-full transition-opacity ${
+              checked
+                ? 'flex bg-accent text-accent-ink'
+                : 'hidden bg-surface-2 text-ink-muted opacity-0 ring-1 ring-line ring-inset hover:opacity-100 lg:flex'
+            }`}
+          >
+            <Icon name="check" size={18} />
+          </button>
+          {unread && !checked && (
+            <span className="absolute -top-0.5 -left-0.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-surface" />
+          )}
         </span>
-        <button
-          type="button"
-          role="checkbox"
-          aria-checked={checked}
-          aria-label={t('bulk.select')}
-          onClick={(e) => {
-            e.stopPropagation()
-            onToggleSelect()
-          }}
-          className={`absolute inset-0 flex items-center justify-center rounded-full transition-colors ${
-            checked
-              ? 'bg-accent text-accent-ink'
-              : 'hidden bg-surface-2 text-ink-muted group-hover:flex hover:bg-line'
-          }`}
-          style={{ width: 36, height: 36 }}
-        >
-          {checked && <Icon name="check" size={18} />}
-        </button>
-        {unread && !checked && (
-          <span className="absolute -top-0.5 -left-0.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-surface" />
-        )}
       </span>
 
       <span className="min-w-0 flex-1">
@@ -235,7 +240,12 @@ export function ThreadList({
 }) {
   const navigate = useNavigate()
   const { selection, selectionMailboxId, toggleSelected } = useUi()
-  const selected = selectionMailboxId === mailboxId ? selection : []
+  // A Set, not the array: "select the whole folder" can hold thousands of ids,
+  // and Array.includes per row turns every scroll frame into rows × ids work.
+  const selected = useMemo(
+    () => new Set(selectionMailboxId === mailboxId ? selection : []),
+    [selection, selectionMailboxId, mailboxId],
+  )
   const open = (id: string) =>
     void navigate({ to: '/mail/$mailboxId/$emailId', params: { mailboxId, emailId: id } })
 
@@ -268,7 +278,7 @@ export function ThreadList({
           email={email}
           snippet={snippets?.[email.id]}
           selected={email.id === selectedId}
-          checked={selected.includes(email.id)}
+          checked={selected.has(email.id)}
           onToggleSelect={() => toggleSelected(mailboxId, email.id)}
           onOpen={() => open(email.id)}
         />

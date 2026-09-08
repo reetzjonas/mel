@@ -129,30 +129,51 @@ test('bulk select two messages, archive them, and undo', async ({ page }) => {
   await page.waitForTimeout(1500)
 })
 
-test('selecting every loaded row offers to select the whole folder server-side', async ({
-  page,
-}) => {
+test('select-all in the folder is offered from the first tick, server-side', async ({ page }) => {
   await login(page, ...ALICE)
   const rows = page.locator('[data-testid="virtuoso-item-list"] [role="button"]')
   await expect(rows.first()).toBeVisible({ timeout: 15_000 })
 
-  const loaded = await rows.count()
-  for (let i = 0; i < loaded; i++) {
-    await rows.nth(i).hover()
-    await rows.nth(i).getByRole('checkbox').click()
-  }
+  // One row is enough — nobody should have to tick hundreds by hand first.
+  await rows.first().hover()
+  await rows.first().getByRole('checkbox').click()
 
   const toolbar = page.getByTestId('selection-toolbar')
-  await expect(toolbar).toContainText(`${loaded} selected`)
+  await expect(toolbar).toContainText('1 selected')
 
-  // The offer only makes sense once the visible rows are exhausted.
   const selectAll = toolbar.getByRole('button', { name: 'Select everything in this folder' })
   await expect(selectAll).toBeVisible()
   await selectAll.click()
-  // Ids come from the server, not from the local cache, so the count must hold.
-  await expect(toolbar).toContainText('selected')
-  await expect(toolbar).not.toContainText('0 selected')
+
+  // Ids come from the server, not the local cache, so every seeded mail counts.
+  const loaded = await rows.count()
+  await expect(toolbar).toContainText(`${loaded} selected`)
 
   await toolbar.getByLabel('Clear selection').click()
   await expect(toolbar).toBeHidden()
+})
+
+test('hovering a row leaves the sender avatar alone', async ({ page }) => {
+  await login(page, ...ALICE)
+  const row = page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first()
+  await expect(row).toBeVisible({ timeout: 15_000 })
+
+  const avatar = row.locator('span > span').first()
+  const checkbox = row.getByRole('checkbox')
+  const settle = () => page.waitForTimeout(400)
+
+  // Hover the tile far from the avatar: the sender icon must stay put. It used
+  // to be swapped for the checkbox by a row-wide group-hover, which read as the
+  // avatar vanishing whenever the pointer entered the row.
+  const box = (await row.boundingBox())!
+  await page.mouse.move(box.x + box.width - 30, box.y + box.height / 2)
+  await settle()
+  await expect(avatar).toBeVisible()
+  await expect(checkbox).toHaveCSS('opacity', '0')
+
+  // Only over the avatar itself does the selection affordance show up.
+  await checkbox.hover()
+  await settle()
+  await expect(checkbox).toHaveCSS('opacity', '1')
+  await expect(avatar).toBeVisible()
 })
