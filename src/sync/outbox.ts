@@ -24,6 +24,22 @@ export type OutboxAction =
       status: ParticipationStatus
     }
 
+/**
+ * Actions that can be replayed without duplicating anything: they set a value
+ * rather than adding one, so running them twice lands in the same place.
+ * Creates and sends are missing on purpose — replaying those risks a second
+ * message or a duplicate contact.
+ */
+const REPLAYABLE = new Set([
+  'email.update',
+  'email.destroy',
+  'contact.update',
+  'contact.destroy',
+  'event.update',
+  'event.destroy',
+  'event.rsvp',
+])
+
 const BASE_BACKOFF_MS = 5_000
 const MAX_BACKOFF_MS = 5 * 60_000
 
@@ -68,12 +84,41 @@ function scheduleFlush(accountId: string, delayMs: number) {
 
 const flushing = new Set<string>()
 
+/**
+ * Put actions left `inflight` by a dead run back in the queue.
+ *
+ * An action is marked inflight while it executes. Close or reload the tab at
+ * that moment and nothing ever resets it: flush only picks up `pending`, so the
+ * row is stranded — never retried, never failed, silent — while the optimistic
+ * local change gets reverted by the next sync. That is a move that appears to
+ * work and then undoes itself.
+ *
+ * Reaching here means we hold the outbox lock and none of our own executes are
+ * running, so anything still inflight belongs to a run that is gone.
+ */
+async function recoverStranded(accountId: string): Promise<void> {
+  const rows = await db.outbox.where('accountId').equals(accountId).toArray()
+  for (const row of rows) {
+    if (row.status !== 'inflight') continue
+    if (REPLAYABLE.has(row.kind)) {
+      await db.outbox.update(row.seq!, { status: 'pending', notBefore: 0 })
+    } else {
+      console.warn(
+        `[mel] outbox action "${row.kind}" was interrupted mid-flight and cannot be` +
+          ' replayed without risking a duplicate, so it is marked failed.',
+      )
+      await db.outbox.update(row.seq!, { status: 'failed' })
+    }
+  }
+}
+
 /** Replay pending actions in order. Transient failures back off; permanent ones are marked failed. */
 export async function flush(accountId: string): Promise<void> {
   if (flushing.has(accountId) || !navigator.onLine) return
   flushing.add(accountId)
   try {
     await navigator.locks.request(`mel-outbox-${accountId}`, async () => {
+      await recoverStranded(accountId)
       for (;;) {
         const now = Date.now()
         // toArray (query path) instead of .filter().first() — cursor reads
