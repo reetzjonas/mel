@@ -196,3 +196,22 @@ test('an action that never reached the server is reported, not dropped quietly',
   })
   expect(warnings.some((w) => w.includes('failed permanently'))).toBe(true)
 })
+
+test('controls show a pointer, disabled ones do not', async ({ page }) => {
+  // Tailwind 4 dropped the preflight rule that used to give buttons a pointer,
+  // so this is set once globally — and worth pinning, because losing it again
+  // makes every control in the app feel inert without breaking anything.
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+
+  for (const control of [
+    page.getByTitle('Theme'),
+    page.getByRole('button', { name: 'Sign out' }),
+    page.getByRole('button', { name: 'New message' }),
+  ]) {
+    await expect(control).toHaveCSS('cursor', 'pointer')
+  }
+})

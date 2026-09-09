@@ -150,6 +150,20 @@ h2 {
   letter-spacing: -0.014em;
 }
 
+/*
+ * Tailwind 4 dropped the old preflight rule that gave buttons a pointer, so
+ * every control in the app rendered with the default arrow and felt inert.
+ * Set once here rather than on sixty individual buttons, where it would be
+ * forgotten on the sixty-first. Disabled controls keep the plain cursor, since
+ * a pointer promises something they will not do.
+ */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+label:has(> input[type='checkbox']),
+summary {
+  cursor: pointer;
+}
+
 /* A focus ring you can actually see, only for keyboard users. */
 :focus-visible {
   outline: 2px solid var(--mel-accent);

@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 98 Vitest + 40 Playwright (desktop + mobile; state-mutating specs are
+Tests: 98 Vitest + 41 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -299,9 +299,14 @@ The widths are fixed today in `app/routes/mail.tsx` (`lg:w-56`) and
 `mail.$mailboxId.tsx` (`lg:w-96`). Store the chosen widths per device in
 localStorage, like the calendar visibility toggles.
 
-**L. The theme and sign-out buttons at the top right have no pointer cursor.**
-`app/AppShell.tsx`; a one-liner (`cursor-pointer`), but buttons without
-`cursor: pointer` feel dead. While checking, cover the remaining icon buttons too.
+**L. ~~Missing pointer cursor~~ done.** It was not just those two buttons:
+Tailwind 4 dropped the preflight rule that used to give buttons a pointer, so
+all 64 of them rendered with the default arrow and felt inert. Set once in
+`index.css` for `button`, `[role=button]`, checkbox labels and `summary` rather
+than on sixty individual elements, where the sixty-first would be forgotten.
+Disabled controls keep the plain cursor — a pointer promises something they
+will not do. Pinned in `e2e/navigation.spec.ts`, since losing it again degrades
+every control without breaking anything.
 
 **M. ~~GitHub CI~~ done** — see the "Deployment" section above. What remains open is
 that no run has ever happened on GitHub itself: everything is verified locally (image
