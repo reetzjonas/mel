@@ -131,7 +131,12 @@ export function useMailboxEmails(
       const emails: EmailHeader[] = []
       for (const id of order.slice(0, windowSize)) {
         const header = cache.get(id)
-        if (header) emails.push(header)
+        // The header decides membership, not the index that produced `order`.
+        // Rows are rendered from the header, so trusting the index here can
+        // list a message that its own row says has moved away — it looks like
+        // a move that did nothing, since everything about the row updates
+        // except its presence.
+        if (header && header.mailboxIds[mailbox]) emails.push(header)
       }
       setState({ emails, total: order.length })
     }

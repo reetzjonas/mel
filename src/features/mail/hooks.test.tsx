@@ -225,3 +225,30 @@ describe('useMailboxEmails paging', () => {
     expect(result.current.total).toBe(MANY + 1)
   })
 })
+
+describe('useMailboxEmails consistency', () => {
+  it('drops a row whose own header says it left the mailbox', async () => {
+    // Guards the case where the ordering index still reports membership after
+    // a move: the row would come back from the cache refill with an updated
+    // header, so everything about it changed except that it was still listed.
+    await db.emails.clear()
+    await db.emails.bulkPut([
+      row('stays', '2024-01-01T00:00:00.000Z'),
+      row('moved', '2024-01-02T00:00:00.000Z'),
+    ])
+    const { result } = await mounted()
+    expect(ids(result.current)).toEqual(['moved', 'stays'])
+
+    // Payload says inbox, index column deliberately left claiming junk.
+    const stale = await db.emails.get([ACC, 'moved'])
+    await act(async () => {
+      await db.emails.put({
+        ...stale!,
+        mailboxIds: [MB],
+        payload: sealPlain(header('moved', '2024-01-02T00:00:00.000Z', ['other-box'])),
+      })
+    })
+
+    await waitFor(() => expect(ids(result.current)).toEqual(['stays']))
+  })
+})

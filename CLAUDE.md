@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 92 Vitest + 40 Playwright (desktop + mobile; state-mutating specs are
+Tests: 98 Vitest + 40 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -461,6 +461,30 @@ full runs ever since. **If something flickers again, check these classes first
   unrelated folders and a parent looked childless.
   `features/mail/mailboxTree.ts` now orders it as a real tree (indent per level);
   folders whose parent is unknown are shown as roots rather than swallowed.
+- **An outbox action stranded in `inflight` is invisible forever.** The status is
+  set just before `execute()`; close or reload the tab at that moment and nothing
+  resets it, because `flush()` only ever selects `pending`. The row then never
+  runs, never fails and reports nothing, while the optimistic local change is
+  reverted by the next sync — a move that looks like it worked and then undoes
+  itself. `recoverStranded()` runs at the start of every flush, inside the lock
+  (so anything inflight there belongs to a dead run) and requeues it. Only the
+  **idempotent** kinds are replayed — `REPLAYABLE`; creates and sends are failed
+  loudly instead, because replaying those risks a second message.
+  Found from a user's IndexedDB dump: `{kind: 'email.update', status: 'inflight',
+  attempts: 0}` sitting there while the mail kept reappearing in junk.
+- **A missing server limit silently dropped every mutation.** `coreLimits()` was
+  `core ?? defaults`, all-or-nothing: a server that sends the core capability but
+  omits one number left it `undefined`. `chunkIds(ids, undefined)` then returned
+  **one empty chunk** — so `setEmails` issued an `Email/set` carrying neither
+  `update` nor `destroy`, got back `{updated: {}, failed: {}}`, reported success,
+  and the outbox deleted the action. Every move, flag and mark-read was applied
+  locally, never sent, and reverted by the next sync — **with no error anywhere**.
+  It only reproduces against such a server; the dev Stalwart sends 500 and works.
+  Fixed in three layers, each independently sufficient: limits merge per field;
+  `chunkIds` returns one full chunk for a nonsense size (an oversized request is
+  rejected visibly, dropping ids is not); and `setEmails` marks any id the server
+  acknowledged in neither direction as a transient failure, so the outbox retries
+  and the sync bar shows it instead of losing the change.
 - **`new URL()` destroys `{placeholders}`** in JMAP URL templates (percent-encoding) —
   fixed in `client/session.ts` `abs()`; do not remove.
 - **JMAP `properties: []` means "id only"** — send `undefined` for all properties
@@ -485,6 +509,14 @@ full runs ever since. **If something flickers again, check these classes first
   where a fresh read cannot see the row being written, so a re-read has to be
   deferred to a macrotask — which also coalesces a sync page of 200 rows into
   one re-read instead of two hundred.
+- **The mailbox list trusts the header, not the index that ordered it.**
+  `publish()` skips any row whose own header no longer lists the mailbox. Without
+  that, a message removed from the cache on a move could be pulled straight back
+  by the next `materialise()` if the ordering index still reported membership —
+  the row then reappears carrying its *updated* header, so everything about it
+  changes except that it is still listed. Reported from the field as "the mail
+  stays in junk but the not-spam button disappears"; not reproduced locally, so
+  the fix is a consistency guarantee rather than a diagnosed root cause.
 - **Listing a mailbox never loads the whole mailbox.** Ordering comes from
   index-only reads that never touch a payload: `primaryKeys()` over
   `[accountId+receivedAt]` (already in date order) intersected with the
