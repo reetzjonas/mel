@@ -334,6 +334,15 @@ user folders are not nested inside them. The same rule removed "new subfolder"
 from role folders, which leaves them with no menu at all, since every entry was
 already disabled for them.
 
+**Q. Not yet investigated: request storm on first load in a fresh browser.**
+Opening mel in a brand-new browser (empty IndexedDB/cache) fired ~361 requests to
+`jmap/` — all `Email/query` calls per the Network tab payload — totalling 33.3 MB
+over about 8 minutes before `DOMContentLoaded`. Not reproduced/diagnosed yet
+(observed only via a screenshot of DevTools' Network panel); candidates to check
+first: something looping per-page or per-message instead of batching during
+initial full sync, or a cursor/limit mismatch like the one in the "paging" gotcha
+above. Needs a HAR or console trace to pin down before touching code.
+
 ### e2e stability (the earlier "flakes" had real causes)
 
 The suite was long regarded as sporadically flaky (~40% red full runs) and that was
