@@ -343,6 +343,25 @@ first: something looping per-page or per-message instead of batching during
 initial full sync, or a cursor/limit mismatch like the one in the "paging" gotcha
 above. Needs a HAR or console trace to pin down before touching code.
 
+**R. Filter for unread/flagged only.** A view that shows just unread or just
+flagged mail, per folder — possibly with a separator/divider in the list rather
+than a separate route, so context (which folder) stays visible.
+
+**S. Group the mail list by date.** Break the list into date buckets (Today,
+Yesterday, this week, older, or similar) for orientation in a long list —
+currently it is one continuous virtualised list with no date grouping.
+
+**T. Bug: folder switcher unreachable on mobile.** The user cannot see or reach
+the folder list on the mobile layout, so they are stuck in whatever mailbox they
+opened — needs its own mobile entry point (drawer/sheet) since the desktop
+sidebar layout does not fit.
+
+**U. Mail metadata detail view.** A way to inspect a message's full metadata
+(headers, routing, etc.) beyond what the reading pane shows today.
+
+**V. Rewrite the compose popup**, including its formatting controls (Tiptap
+toolbar etc.) — current compose UI needs a broader pass, not just a fix.
+
 ### e2e stability (the earlier "flakes" had real causes)
 
 The suite was long regarded as sporadically flaky (~40% red full runs) and that was
