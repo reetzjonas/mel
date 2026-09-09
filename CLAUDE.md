@@ -172,28 +172,26 @@ no longer materialises every header. See the note on mailbox listing below.
 ### Newly raised (order NOT yet agreed with the user)
 
 Prioritisation is pending, so ask which comes first before starting.
-**B, C, E, J and M are done**, the rest is open. A is not a bug (see there).
+**A is settled; B, C, E, G, F, J, L, M and P are done**, the rest is open. A is not a bug (see there).
 
-**A. The folder list's scrollbar changes width — not a bug, decision pending.**
-Reported by the user, then measured together: `offsetWidth - clientWidth` is **0px**,
-so the bar occupies no layout width at all and Chrome is drawing **overlay
-scrollbars**. Those are two-stage by design: thin and faint at rest, thicker and
-higher contrast while the pointer is in the scroll area or a relayout happens (opening
-DevTools is enough). It returns on its own. My original guesses — a different scroll
-container after the route change, `@view-transition`, the reading-pane iframe — were
-**all wrong**; do not investigate in that direction again.
+**A. ~~Scrollbar width changes~~ settled.** Not a bug: measured together with the
+user, `offsetWidth - clientWidth` is **0px** on their machine, so Chrome is
+drawing overlay scrollbars — thin and faint at rest, thicker while the pointer
+is in the scroll area, returning on its own. My original guesses (a different
+scroll container after the route change, `@view-transition`, the reading-pane
+iframe) were **all wrong**; do not go there again.
 
-What remains is a matter of taste, three ways:
-1. leave it (native behaviour, matches the rest of the system) — the default;
-2. lower the thumb contrast (`--mel-scrollbar` in `index.css`, one line) — the
-   widening stays but is less noticeable;
-3. take it over entirely via `::-webkit-scrollbar` → an always-visible, stable bar
-   that occupies about 10px of layout width. **Check first:** since Chrome 121 the
-   standard `scrollbar-width`/`scrollbar-color` win over the `::-webkit-` pseudos, so
-   the current `*` block in `index.css` would have to go for Chrome and the standard
-   properties would remain for Firefox only. Whether that really applies is
-   **unverified** — headless Chromium reports 0px for every variant including the
-   browser default, so it cannot answer this. Measure in a real browser.
+Resolved by softening the thumb (`--mel-scrollbar`) rather than taking the bar
+over. Whether it reserves layout width is a platform preference — the same
+rules measure 10px in a headed browser here and 0px on a machine set to overlay
+— and overriding that costs 10px of sidebar to overrule a choice the user made
+for every app they run.
+
+The open question in this note is now **answered by measurement**: with both
+present, the standard properties win and `::-webkit-scrollbar` is ignored
+(Chrome ≥121). A 24px webkit rule yields 24px on its own but 10px alongside
+`scrollbar-width: thin`. So taking the bar over would mean dropping the global
+standard-property block for Chrome and keeping it for Firefox only.
 
 **B. ~~Sync status pinned to the bottom of the folder sidebar~~ done.**
 `features/mail/SyncStatus.tsx` shows the *actual* live mode (push over SSE / "checking

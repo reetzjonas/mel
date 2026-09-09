@@ -63,7 +63,7 @@
   --mel-accent-wash: oklch(0.48 0.2 292 / 0.1);
   --mel-honey: oklch(0.68 0.15 72);
   --mel-success: oklch(0.55 0.14 150);
-  --mel-scrollbar: oklch(0.245 0.017 300 / 0.28);
+  --mel-scrollbar: oklch(0.245 0.017 300 / 0.18);
   --mel-danger: oklch(0.53 0.2 25);
   --mel-danger-wash: oklch(0.53 0.2 25 / 0.1);
 
@@ -89,7 +89,7 @@
   --mel-accent-wash: oklch(0.72 0.17 292 / 0.16);
   --mel-honey: oklch(0.79 0.14 72);
   --mel-success: oklch(0.72 0.14 150);
-  --mel-scrollbar: oklch(0.98 0.005 300 / 0.28);
+  --mel-scrollbar: oklch(0.98 0.005 300 / 0.2);
   --mel-danger: oklch(0.7 0.17 25);
   --mel-danger-wash: oklch(0.7 0.17 25 / 0.16);
 
@@ -119,6 +119,18 @@ body {
  * chunky opaque bar while the page itself gets the slim overlay one, so the
  * same list looks different depending on which element ended up scrolling.
  * Pin every scroller to the same slim, dimmed bar.
+ *
+ * Whether that bar reserves layout width is the *platform's* call, not ours:
+ * measured in a real browser, the same rules give 10px here and 0px on a
+ * machine configured for overlay scrollbars, where the bar also thickens while
+ * the pointer is in it. Deliberately not overridden — `::-webkit-scrollbar`
+ * could pin it to one fixed appearance, but that overrules a preference the
+ * user set for every app on their system, and costs 10px of sidebar. The thumb
+ * colour below is the one lever that does not fight the platform.
+ *
+ * Note the two cannot be combined: with both present the standard properties
+ * win and the -webkit- pseudos are ignored (Chrome ≥121, measured: a 24px
+ * webkit rule yields 24px alone but 10px alongside `scrollbar-width: thin`).
  */
 * {
   scrollbar-width: thin;
