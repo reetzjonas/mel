@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { Mailbox } from '../../domain/mailbox'
-import { descendantsOf, mailboxTree } from './mailboxTree'
+import { descendantsOf, mailboxTree, moveTargets } from './mailboxTree'
 
 const mb = (id: string, name: string, parentId: string | null, role: string | null = null) =>
-  ({ id, name, parentId, role, sortOrder: 0, totalEmails: 0 }) as Mailbox
+  ({ id, name, parentId, role, sortOrder: 0, totalEmails: 0, mayCreateChild: true }) as Mailbox
 
 const shape = (list: Mailbox[]) =>
   mailboxTree(list).map((n) => `${'  '.repeat(n.depth)}${n.mailbox.name}`)
@@ -52,5 +52,38 @@ describe('descendantsOf', () => {
 
   it('is empty for a leaf', () => {
     expect(descendantsOf([mb('a', 'A', null)], 'a')).toEqual([])
+  })
+})
+
+describe('moveTargets', () => {
+  const tree = () => [
+    mb('a', 'A', null),
+    mb('b', 'B', 'a'),
+    mb('c', 'C', 'b'),
+    mb('d', 'D', null),
+    mb('i', 'Inbox', null, 'inbox'),
+  ]
+
+  it('never offers a folder its own descendants', () => {
+    // Moving A under B or C would detach that subtree from the tree entirely.
+    expect(moveTargets(tree(), tree()[0]!).map((m) => m.name)).toEqual(['D'])
+  })
+
+  it('never offers the folder itself', () => {
+    expect(moveTargets(tree(), tree()[3]!).map((m) => m.id)).not.toContain('d')
+  })
+
+  it('omits the current parent, which would change nothing', () => {
+    // C sits under B already.
+    expect(moveTargets(tree(), tree()[2]!).map((m) => m.name)).toEqual(['A', 'D'])
+  })
+
+  it('never offers a role folder as a parent', () => {
+    // Inbox, Trash and the rest mean something to the server and other clients.
+    expect(moveTargets(tree(), tree()[3]!).map((m) => m.role)).not.toContain('inbox')
+  })
+
+  it('can be empty when there is nowhere left to go', () => {
+    expect(moveTargets([mb('only', 'Only', null)], mb('only', 'Only', null))).toEqual([])
   })
 })

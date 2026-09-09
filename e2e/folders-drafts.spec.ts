@@ -140,3 +140,54 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
   // Filed in the inbox as well, so it loses the folder and nothing more.
   await expect(page.getByText('Willkommen bei mel').first()).toBeVisible({ timeout: 15_000 })
 })
+
+test('move a folder under another one, and back to the top level', async ({ page }) => {
+  test.setTimeout(60_000)
+  const outer = `Outer-${Date.now() % 100000}`
+  const inner = `Inner-${Date.now() % 100000}`
+
+  await login(page)
+  for (const name of [outer, inner]) {
+    await page.getByTitle('New folder').click()
+    await page.locator('form input').fill(name)
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByRole('link', { name: new RegExp(`^${name}( \\d+)?$`) })).toBeVisible({
+      timeout: 10_000,
+    })
+  }
+
+  const row = (name: string) => page.getByRole('link', { name: new RegExp(`^${name}( \\d+)?$`) })
+  const indentOf = async (name: string) =>
+    row(name).evaluate((el) => parseFloat(getComputedStyle(el).paddingLeft))
+
+  const flat = await indentOf(inner)
+
+  await row(inner).hover()
+  await row(inner).getByTitle('Folder actions').click()
+  await page.getByRole('button', { name: 'Move to…' }).click()
+  // Not itself, and not a role folder: Inbox and friends mean something to the
+  // server and to other clients, so user folders do not get nested inside them.
+  await expect(page.getByRole('button', { name: inner, exact: true })).toHaveCount(0)
+  for (const role of ['Inbox', 'Deleted Items', 'Drafts', 'Sent Items', 'Junk Mail']) {
+    await expect(page.getByRole('button', { name: role, exact: true })).toHaveCount(0)
+  }
+  await page.getByRole('button', { name: outer, exact: true }).click()
+
+  // Nesting is visible as indentation, which is what the tree ordering produces.
+  await expect.poll(() => indentOf(inner), { timeout: 15_000 }).toBeGreaterThan(flat)
+
+  await row(inner).hover()
+  await row(inner).getByTitle('Folder actions').click()
+  await page.getByRole('button', { name: 'Move to…' }).click()
+  await page.getByRole('button', { name: 'Top level' }).click()
+  await expect.poll(() => indentOf(inner), { timeout: 15_000 }).toBe(flat)
+
+  // Clean up both folders.
+  for (const name of [inner, outer]) {
+    page.once('dialog', (d) => void d.accept())
+    await row(name).hover()
+    await row(name).getByTitle('Folder actions').click()
+    await page.getByRole('button', { name: 'Delete folder' }).click()
+    await expect(row(name)).toHaveCount(0, { timeout: 15_000 })
+  }
+})

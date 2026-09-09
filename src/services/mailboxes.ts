@@ -24,6 +24,10 @@ export const createMailbox = (accountId: string, name: string, parentId: string 
 export const renameMailbox = (accountId: string, id: string, name: string) =>
   edit(accountId, { update: { id, name } }).then((r) => message(r.failure))
 
+/** Re-parent a folder; `null` puts it at the top level. */
+export const moveMailbox = (accountId: string, id: string, parentId: string | null) =>
+  edit(accountId, { update: { id, parentId } }).then((r) => message(r.failure))
+
 /** Why a delete was refused, so the UI can offer the matching way out. */
 export type DeleteBlocker = 'hasChild' | 'hasEmail' | 'other'
 

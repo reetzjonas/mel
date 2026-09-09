@@ -8,12 +8,14 @@ import {
   createMailbox,
   deleteMailbox,
   mailboxDeleteCost,
+  moveMailbox,
   renameMailbox,
 } from '../../services/mailboxes'
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
-import { mailboxTree } from './mailboxTree'
+import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { mailboxTree, moveTargets } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
 
 const ROLE_ICONS: Record<string, IconName> = {
@@ -26,14 +28,17 @@ const ROLE_ICONS: Record<string, IconName> = {
 }
 
 type Dialog =
-  { kind: 'create'; parentId: string | null } | { kind: 'rename'; mailbox: Mailbox } | null
+  | { kind: 'create'; parentId: string | null }
+  | { kind: 'rename'; mailbox: Mailbox }
+  | { kind: 'move'; mailbox: Mailbox }
+  | null
 
 function FolderMenu({
   mailbox,
   onAction,
 }: {
   mailbox: Mailbox
-  onAction: (a: 'rename' | 'newSub' | 'delete') => void
+  onAction: (a: 'rename' | 'newSub' | 'move' | 'delete') => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -48,9 +53,15 @@ function FolderMenu({
   }, [open])
 
   const custom = mailbox.role === null
-  const items: Array<['rename' | 'newSub' | 'delete', string, boolean]> = [
+  const items: Array<['rename' | 'newSub' | 'move' | 'delete', string, boolean]> = [
     ['rename', t('folder.rename'), custom && mailbox.mayRename],
-    ['newSub', t('folder.newSub'), mailbox.mayCreateChild],
+    // Not under Inbox, Trash and friends: those carry meaning for the server
+    // and other clients, and nesting user folders in them invites filters that
+    // quietly misfire.
+    ['newSub', t('folder.newSub'), custom && mailbox.mayCreateChild],
+    // Re-parenting goes through the same Mailbox/set update as renaming, so it
+    // is gated on the same right.
+    ['move', t('folder.move'), custom && mailbox.mayRename],
     ['delete', t('folder.delete'), custom && mailbox.mayDelete],
   ]
   if (!items.some(([, , enabled]) => enabled)) return null
@@ -94,6 +105,67 @@ function FolderMenu({
   )
 }
 
+/** Target picker for moving a folder. Depth is shown so nesting stays readable. */
+function MoveFolderDialog({
+  mailbox,
+  mailboxes,
+  onPick,
+  onClose,
+}: {
+  mailbox: Mailbox
+  mailboxes: Mailbox[]
+  onPick: (parentId: string | null) => void
+  onClose: () => void
+}) {
+  const targets = moveTargets(mailboxes, mailbox)
+  const depthOf = (m: Mailbox) =>
+    mailboxTree(mailboxes).find((n) => n.mailbox.id === m.id)?.depth ?? 0
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        className={`animate-rise w-full max-w-xs space-y-2 p-5 ${overlayPanelClass}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-sm font-semibold">
+          {t('folder.moveTitle')} {mailbox.name}
+        </h2>
+        <div className="max-h-72 space-y-px overflow-y-auto">
+          {mailbox.parentId !== null && (
+            <button
+              type="button"
+              onClick={() => onPick(null)}
+              className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
+            >
+              {t('folder.moveTop')}
+            </button>
+          )}
+          {targets.map((m) => (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onPick(m.id)}
+              className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
+              style={{ paddingLeft: `${0.5 + depthOf(m) * 0.85}rem` }}
+            >
+              {m.name}
+            </button>
+          ))}
+          {targets.length === 0 && mailbox.parentId === null && (
+            <p className="text-xs text-ink-subtle">{t('folder.moveNowhere')}</p>
+          )}
+        </div>
+        <button type="button" onClick={onClose} className={secondaryButtonClass}>
+          {t('folder.cancel')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 export function MailboxSidebar({ account, mailboxes }: { account: Account; mailboxes: Mailbox[] }) {
   const accountId = account.id
   const [refreshing, setRefreshing] = useState(false)
@@ -111,9 +183,13 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
     if (err) showSnackbar({ message: err })
   }
 
-  const onMenuAction = async (mailbox: Mailbox, action: 'rename' | 'newSub' | 'delete') => {
+  const onMenuAction = async (
+    mailbox: Mailbox,
+    action: 'rename' | 'newSub' | 'move' | 'delete',
+  ) => {
     if (action === 'rename') return setDialog({ kind: 'rename', mailbox })
     if (action === 'newSub') return setDialog({ kind: 'create', parentId: mailbox.id })
+    if (action === 'move') return setDialog({ kind: 'move', mailbox })
 
     // Counted on the server, not from our own list: subfolders it knows about
     // and we do not are exactly what makes the delete fail, and totalEmails is
@@ -202,6 +278,17 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           onConfirm={(name) => {
             setDialog(null)
             void createMailbox(accountId, name, dialog.parentId).then(report)
+          }}
+        />
+      )}
+      {dialog?.kind === 'move' && (
+        <MoveFolderDialog
+          mailbox={dialog.mailbox}
+          mailboxes={mailboxes}
+          onClose={() => setDialog(null)}
+          onPick={(parentId) => {
+            setDialog(null)
+            void moveMailbox(accountId, dialog.mailbox.id, parentId).then(report)
           }}
         />
       )}

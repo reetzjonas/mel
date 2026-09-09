@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 98 Vitest + 41 Playwright (desktop + mobile; state-mutating specs are
+Tests: 103 Vitest + 42 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -325,14 +325,16 @@ reports `urn:ietf:params:jmap:filenode` in the session (seen while probing
 capabilities), which would be the more natural route — but it is **not standardised**,
 so it belongs behind a capability check with a fallback to purely local settings.
 
-**P. Moving folders** (user's wish). Trivial server-side: `Mailbox/set`
-`update: {id: {parentId}}` — `MailboxEdit.update` already knows `parentId` and
-`renameMailbox` uses the same path. Only the UI is missing. The obvious shape: a
-"move to…" entry in the folder row's "…" menu (like the move menu in
-`features/mail/SelectionToolbar.tsx`), with drag and drop as the luxury version.
-Careful: prevent cycles (a folder must not end up beneath one of its own
-descendants) — `descendantsOf()` from `features/mail/mailboxTree.ts` gives the
-exclusion list.
+**P. ~~Moving folders~~ done.** "Move to…" in the folder row's "…" menu opens a
+target picker; `moveMailbox()` is the same `Mailbox/set` update path as renaming
+and is gated on the same right.
+`moveTargets()` in `features/mail/mailboxTree.ts` decides what is offered, and
+excludes three things: the folder itself, **every descendant** (moving a folder
+under its own child would detach that subtree), and **role folders** — Inbox,
+Trash and the rest mean something to the server and to every other client, so
+user folders are not nested inside them. The same rule removed "new subfolder"
+from role folders, which leaves them with no menu at all, since every entry was
+already disabled for them.
 
 ### e2e stability (the earlier "flakes" had real causes)
 

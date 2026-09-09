@@ -55,3 +55,25 @@ export function descendantsOf(mailboxes: Mailbox[], id: string): Mailbox[] {
   const kids = mailboxes.filter((m) => m.parentId === id)
   return kids.flatMap((k) => [k, ...descendantsOf(mailboxes, k.id)])
 }
+
+/**
+ * Where a folder may be moved to.
+ *
+ * Excludes itself and every descendant — a folder placed beneath its own child
+ * would detach that whole subtree — and its current parent, which would change
+ * nothing. Role folders are excluded as well: Inbox, Trash and the rest have
+ * meaning to the server and to every other client, and nesting user folders
+ * inside them invites rules and filters that quietly do the wrong thing.
+ */
+export function moveTargets(mailboxes: Mailbox[], mailbox: Mailbox): Mailbox[] {
+  const forbidden = new Set([mailbox.id, ...descendantsOf(mailboxes, mailbox.id).map((m) => m.id)])
+  return mailboxTree(mailboxes)
+    .map((n) => n.mailbox)
+    .filter(
+      (m) =>
+        m.role === null &&
+        m.mayCreateChild &&
+        !forbidden.has(m.id) &&
+        m.id !== mailbox.parentId,
+    )
+}
