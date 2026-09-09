@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+import type { Transport } from './client/transport'
+import { createJmapCalendars } from './calendars'
 import type { CalendarEvent, Participant } from '../../domain/calendar'
 import { fromEvent, toEvent, type JmapCalendarEvent } from './calendars'
 
@@ -155,5 +157,59 @@ describe('participant mapping', () => {
   it('round-trips through the wire shape', () => {
     const wire = fromEvent(domainEvent([organizer, attendee()])) as unknown as JmapCalendarEvent
     expect(toEvent({ ...wire, id: 'e1' }).participants).toEqual([organizer, attendee()])
+  })
+})
+
+describe('createJmapCalendars provider', () => {
+  it('omits immutable uid from updateEvent patch', async () => {
+    const capturedCalls: Array<{ name: string; args: Record<string, unknown> }> = []
+    const transport: Transport = {
+      fetchRaw: vi.fn(),
+      request: async (req) => {
+        const [name, args, callId] = req.methodCalls[0]!
+        capturedCalls.push({ name, args: args as Record<string, unknown> })
+        return {
+          methodResponses: [[name, { updated: { e1: null } }, callId]],
+          sessionState: 's',
+        } as never
+      },
+    }
+
+    const provider = createJmapCalendars(transport, 'acc1')
+    const event = domainEvent([])
+    const failure = await provider.updateEvent(event)
+
+    expect(failure).toBeNull()
+    expect(capturedCalls).toHaveLength(1)
+    expect(capturedCalls[0]!.name).toBe('CalendarEvent/set')
+    const updateMap = capturedCalls[0]!.args['update'] as Record<string, Record<string, unknown>>
+    expect(updateMap['e1']).toBeDefined()
+    expect(updateMap['e1']!['title']).toBe('Standup')
+    // uid is immutable in RFC 8984 and must not be present in the update patch
+    expect(updateMap['e1']!['uid']).toBeUndefined()
+  })
+
+  it('includes uid when creating an event', async () => {
+    const capturedCalls: Array<{ name: string; args: Record<string, unknown> }> = []
+    const transport: Transport = {
+      fetchRaw: vi.fn(),
+      request: async (req) => {
+        const [name, args, callId] = req.methodCalls[0]!
+        capturedCalls.push({ name, args: args as Record<string, unknown> })
+        return {
+          methodResponses: [[name, { created: { e0: { id: 'created-id' } } }, callId]],
+          sessionState: 's',
+        } as never
+      },
+    }
+
+    const provider = createJmapCalendars(transport, 'acc1')
+    const event = domainEvent([])
+    const res = await provider.createEvent(event)
+
+    expect(res.id).toBe('created-id')
+    expect(res.failure).toBeNull()
+    const createMap = capturedCalls[0]!.args['create'] as Record<string, Record<string, unknown>>
+    expect(createMap['e0']!['uid']).toBe('u1')
   })
 })

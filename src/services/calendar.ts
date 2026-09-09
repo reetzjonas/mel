@@ -18,13 +18,15 @@ export async function createEvent(
   accountId: string,
   event: Omit<CalendarEvent, 'id'>,
 ): Promise<string> {
+  const uid = event.uid || crypto.randomUUID()
+  const eventWithUid = { ...event, uid }
   if (navigator.onLine) {
     try {
       const conn = await connectionFor(accountId)
       if (conn.calendars) {
-        const r = await conn.calendars.createEvent({ ...event, id: '' })
+        const r = await conn.calendars.createEvent({ ...eventWithUid, id: '' })
         if (r.failure) throw new Error(r.failure.description ?? r.failure.type)
-        const full: CalendarEvent = { ...event, id: r.id! }
+        const full: CalendarEvent = { ...eventWithUid, id: r.id! }
         await db.events.put(toRow(accountId, full))
         return r.id!
       }
@@ -33,7 +35,7 @@ export async function createEvent(
     }
   }
   const tempId = `local-${crypto.randomUUID()}`
-  const full: CalendarEvent = { ...event, id: tempId }
+  const full: CalendarEvent = { ...eventWithUid, id: tempId }
   await db.events.put(toRow(accountId, full))
   await enqueue(accountId, { kind: 'event.create', event: full, tempId })
   return tempId

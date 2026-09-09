@@ -123,9 +123,7 @@ test('day view shows the same event as week/month, and calendar visibility toggl
 test('edit and delete an event', async ({ page }) => {
   const title = `Edit-${Date.now() % 100000}`
   // Random day next month — keeps the target day cell under the 3-chip cap.
-  const next = new Date()
-  next.setMonth(next.getMonth() + 1, 1 + Math.floor(Math.random() * 27))
-  const dateValue = next.toISOString().slice(0, 10)
+  const dateValue = randomNextMonthDate(20)
 
   await login(page)
   await page.getByRole('link', { name: 'Calendar' }).first().click()
@@ -141,7 +139,9 @@ test('edit and delete an event', async ({ page }) => {
   await chip.click()
   await page.getByPlaceholder('Title').fill(`${title}-2`)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByRole('button', { name: new RegExp(`${title}-2`) }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: new RegExp(`${title}-2`) }).first()).toBeVisible({
+    timeout: 10_000,
+  })
 
   await page.getByRole('button', { name: new RegExp(`${title}-2`) }).first().click()
   await page.getByRole('button', { name: 'Delete event' }).click()

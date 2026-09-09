@@ -175,7 +175,7 @@ function CalendarApp() {
       event: {
         id: '',
         calendarIds: { [defaultCalendarId]: true },
-        uid: '',
+        uid: crypto.randomUUID(),
         title: '',
         description: '',
         location: '',
@@ -197,8 +197,9 @@ function CalendarApp() {
   }
 
   function onDialogSave(e: CalendarEvent) {
+    const isNew = dialog?.isNew
     setDialog(null)
-    if (dialog?.isNew) {
+    if (isNew) {
       const { id: _id, ...rest } = e
       void createEvent(account!.id, rest)
     } else {
@@ -438,8 +439,9 @@ function CalendarApp() {
             dialog.isNew
               ? null
               : () => {
+                  const eventId = dialog.event.id
                   setDialog(null)
-                  void deleteEvent(account.id, dialog.event.id).then(() =>
+                  void deleteEvent(account.id, eventId).then(() =>
                     showSnackbar({ message: t('cal.deleted') }),
                   )
                 }

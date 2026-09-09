@@ -263,11 +263,13 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
     },
 
     async updateEvent(event) {
+      // In RFC 8984 / JMAP Calendars, uid is immutable and cannot be changed on update.
+      const { uid: _uid, ...patch } = fromEvent(event)
       const b = batch()
       const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {
         accountId,
         sendSchedulingMessages: event.participants.length > 0,
-        update: { [event.id]: fromEvent(event) },
+        update: { [event.id]: patch },
       })
       await b.send()
       const err = s.result.notUpdated?.[event.id]
