@@ -1,4 +1,5 @@
 import { useNavigate } from '@tanstack/react-router'
+import DOMPurify from 'dompurify'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { useUi } from '../../app/store'
@@ -248,11 +249,18 @@ function Row({
 
 export type Snippets = Record<string, { subject: string | null; preview: string | null }>
 
-/** SearchSnippet HTML may only contain <mark> highlights — strip the rest. */
+/**
+ * SearchSnippet HTML may only contain <mark> highlights — everything else is
+ * stripped. Done via DOMPurify (a real parser) rather than a tag-stripping
+ * regex: a regex pass over untrusted input can be reopened by overlapping
+ * matches (e.g. `<scr<script>ipt>` losing only the inner tag), which is
+ * exactly what CodeQL's incomplete-multi-character-sanitization check flags.
+ * `<mark>` itself is emitted with no attributes, so the highlight class is
+ * safe to splice in afterwards — it's a fixed literal, not attacker input.
+ */
 function snippetHtml(s: string): string {
-  return s
-    .replace(/<(?!\/?mark\b)[^>]*>/gi, '')
-    .replace(/<mark\b[^>]*>/gi, '<mark class="bg-accent-wash text-accent rounded-xs px-0.5">')
+  const clean = DOMPurify.sanitize(s, { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: [] })
+  return clean.replaceAll('<mark>', '<mark class="bg-accent-wash text-accent rounded-xs px-0.5">')
 }
 
 export function ThreadList({
