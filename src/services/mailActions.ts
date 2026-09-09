@@ -264,3 +264,10 @@ export async function markNotSpam(accountId: string, emailId: string) {
   if (!inbox) return null
   return moveEmail(accountId, emailId, inbox.id)
 }
+
+/** Bulk sibling of markNotSpam: move a whole selection back to the inbox. */
+export async function bulkNotSpam(accountId: string, emailIds: string[]) {
+  if (!emailIds.length) return null
+  const inbox = await roleMailbox(accountId, 'inbox')
+  return inbox ? bulkMove(accountId, emailIds, inbox.id) : null
+}

@@ -243,12 +243,25 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
     )
     .toBe('data: cid:')
 
-  await page.getByTitle('Not spam').click()
+  // Reachable three ways: reading pane, row hover, and the bulk toolbar.
+  // Scoped, because all three are on screen at once and share the label.
+  await expect(page.getByRole('article').getByTitle('Not spam')).toBeVisible()
+  await page.getByRole('link', { name: /^Junk Mail( \d+)?$/ }).click()
+  await row.hover()
+  await expect(row.getByTitle('Not spam')).toBeVisible()
+  await row.getByRole('checkbox').click()
+  const toolbar = page.getByTestId('selection-toolbar')
+  await expect(toolbar.getByLabel('Not spam')).toBeVisible()
+
+  await toolbar.getByLabel('Not spam').click()
   await expect(page.getByText('Moved to inbox')).toBeVisible()
 
   // Back where it started, so the run leaves nothing behind.
   await page.getByRole('link', { name: /^Inbox( \d+)?$/ }).click()
   await expect(row).toBeVisible({ timeout: 15_000 })
+  // Nothing to un-junk here, so the shortcut must not clutter the row.
+  await row.hover()
+  await expect(row.getByTitle('Not spam')).toHaveCount(0)
   await page.waitForTimeout(2000)
   await page.evaluate(() => localStorage.removeItem('mel:images'))
 })

@@ -249,8 +249,10 @@ Three things that hang off it:
 place. Junk **always** blocks remote content, even with the account set to
 always load — a message the server already flagged is the last one that should
 get a confirmed address; only an explicit per-message release opens it. And a
-"Not spam" action appears in the reading pane for messages in junk, moving them
-to the inbox with undo.
+"Not spam" action appears wherever the others are — reading pane, row hover and
+the bulk toolbar — for messages filed as junk, moving them to the inbox with
+undo. It is keyed off the message's own mailboxes, not the folder being viewed,
+so it stays correct in search results.
 Only the move is done: JMAP has no "report as ham" method, and Stalwart's
 training hangs off its own Sieve rules, so there is nothing standard to call —
 `markNotSpam()` says so rather than implying the server learns from it. (The

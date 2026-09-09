@@ -6,7 +6,14 @@ import type { EmailAddress, EmailHeader } from '../../domain/email'
 import { formatListDate } from '../../lib/dates'
 import { t } from '../../lib/i18n'
 import { cleanPreview } from '../../lib/preview'
-import { archiveEmail, deleteEmail, markRead, setFlagged } from '../../services/mailActions'
+import { useMailboxes } from './hooks'
+import {
+  archiveEmail,
+  deleteEmail,
+  markNotSpam,
+  markRead,
+  setFlagged,
+} from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
@@ -79,6 +86,7 @@ function Row({
   snippet,
   selected,
   checked,
+  inJunk,
   onToggleSelect,
   onOpen,
 }: {
@@ -87,6 +95,8 @@ function Row({
   snippet?: { subject: string | null; preview: string | null }
   selected: boolean
   checked: boolean
+  /** Shows the "not spam" shortcut; only messages filed as junk get it. */
+  inJunk: boolean
   onToggleSelect: () => void
   onOpen: () => void
 }) {
@@ -180,6 +190,25 @@ function Row({
             active={flagged}
             onClick={() => void setFlagged(accountId, email.id, !flagged)}
           />
+          {inJunk && (
+            <QuickAction
+              icon="inbox"
+              label={t('mail.notSpam')}
+              onClick={() =>
+                void markNotSpam(accountId, email.id).then((undo) =>
+                  showSnackbar(
+                    undo
+                      ? {
+                          message: t('mail.movedToInbox'),
+                          actionLabel: t('mail.undo'),
+                          action: () => void undo(),
+                        }
+                      : { message: t('mail.notSpamFailed') },
+                  ),
+                )
+              }
+            />
+          )}
           <QuickAction icon="archive" label={t('mail.archive')} onClick={doArchive} />
           <QuickAction icon="trash" label={t('mail.delete')} onClick={doDelete} />
         </span>
@@ -244,6 +273,8 @@ export function ThreadList({
 }) {
   const navigate = useNavigate()
   const { selection, selectionMailboxId, toggleSelected } = useUi()
+  const mailboxes = useMailboxes(accountId)
+  const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
   // A Set, not the array: "select the whole folder" can hold thousands of ids,
   // and Array.includes per row turns every scroll frame into rows × ids work.
   const selected = useMemo(
@@ -288,6 +319,7 @@ export function ThreadList({
           snippet={snippets?.[email.id]}
           selected={email.id === selectedId}
           checked={selected.has(email.id)}
+          inJunk={Boolean(junkId && email.mailboxIds[junkId])}
           onToggleSelect={() => toggleSelected(mailboxId, email.id)}
           onOpen={() => open(email.id)}
         />

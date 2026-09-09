@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useUi } from '../../app/store'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
-import { bulkArchive, bulkDelete, bulkMove, bulkSetKeyword } from '../../services/mailActions'
+import {
+  bulkArchive,
+  bulkDelete,
+  bulkMove,
+  bulkNotSpam,
+  bulkSetKeyword,
+} from '../../services/mailActions'
 import { connectionFor } from '../../sync/connections'
 import { Icon, type IconName } from '../../ui/Icon'
 
@@ -93,6 +99,7 @@ export function SelectionToolbar({
   }
 
   const targets = mailboxes.filter((m) => m.id !== mailboxId)
+  const inJunk = mailboxes.find((m) => m.id === mailboxId)?.role === 'junk'
 
   return (
     <div className="px-2.5 pt-2.5 pb-1.5" data-testid="selection-toolbar">
@@ -111,6 +118,20 @@ export function SelectionToolbar({
         </span>
 
         <span className="ml-auto flex items-center">
+          {inJunk && (
+            <ToolbarButton
+              icon="inbox"
+              label={t('mail.notSpam')}
+              disabled={busy}
+              onClick={() =>
+                void run(
+                  () => bulkNotSpam(accountId, selection),
+                  t('mail.movedToInbox'),
+                  t('mail.notSpamFailed'),
+                )
+              }
+            />
+          )}
           <ToolbarButton
             icon="mail"
             label={t('mail.markRead')}

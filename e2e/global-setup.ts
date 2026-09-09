@@ -97,6 +97,34 @@ async function resetAccount(user: string, pass: string) {
         removed.push(`${q.ids.length} mail`)
       }
     }
+    // Junk back to the inbox first: the spam specs park a seeded message there,
+    // and a run that fails midway would otherwise leave it out of the inbox and
+    // trip the EXPECTED_INBOX check below for reasons that look unrelated.
+    const junk = boxes.list.find((b) => b.role === 'junk')
+    const inboxBox = boxes.list.find((b) => b.role === 'inbox')
+    if (junk && inboxBox) {
+      const stuck = (
+        await jmap(auth, [CORE, MAIL], [
+          ['Email/query', { accountId: mailAcc, filter: { inMailbox: junk.id } }, 'c0'],
+        ])
+      ).methodResponses[0]![1] as { ids: string[] }
+      if (stuck.ids.length) {
+        await jmap(auth, [CORE, MAIL], [
+          [
+            'Email/set',
+            {
+              accountId: mailAcc,
+              update: Object.fromEntries(
+                stuck.ids.map((id) => [id, { mailboxIds: { [inboxBox.id]: true } }]),
+              ),
+            },
+            'c0',
+          ],
+        ])
+        removed.push(`${stuck.ids.length} mail out of junk`)
+      }
+    }
+
     const inbox = boxes.list.find((b) => b.role === 'inbox')
     if (inbox) {
       const found = (
