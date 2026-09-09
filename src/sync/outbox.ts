@@ -100,6 +100,14 @@ export async function flush(accountId: string): Promise<void> {
             scheduleFlush(accountId, backoff)
             break // keep ordering: don't run later actions past a stuck one
           }
+          // A permanently failed action never reaches the server, while the
+          // optimistic local change already happened — so the next sync quietly
+          // undoes what the user asked for. Say so loudly enough to diagnose:
+          // the count surfaces in the sync bar, the reason here.
+          console.warn(
+            `[mel] outbox action "${row.kind}" failed permanently and was dropped:`,
+            e,
+          )
           await db.outbox.update(row.seq!, { status: 'failed' })
         }
       }

@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 92 Vitest + 39 Playwright (desktop + mobile; state-mutating specs are
+Tests: 92 Vitest + 40 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -404,6 +404,13 @@ full runs ever since. **If something flickers again, check these classes first
      on "connecting" forever.
   2. `tick()` swallowed every error (`catch {}`), so a server refusing us looked
      exactly like an empty mailbox. `SyncStatus.error` carries it now.
+  3. A **permanently failed outbox action** was marked `failed` and then filtered
+     *out* of the sync bar's count, so it vanished without a trace. The local
+     optimistic change had already happened, so the next sync quietly undid what
+     the user asked for — "I clicked not-spam and the mail is still in junk".
+     Failed actions now show in the bar in red, and the reason goes to the
+     console (`[mel] outbox action "…" failed permanently`). Regression in
+     `e2e/navigation.spec.ts`, which forces a 400 on `Email/set`.
   At login, `NoServerFound.lastError` now distinguishes "nothing found" from "not
   reachable" — otherwise "no mail server found" sends the user hunting for a typo when
   their server is up and merely missing CORS headers.

@@ -162,3 +162,37 @@ test('the sync bar leads to the server feature list', async ({ page }) => {
   // Sieve is offered by the server but mel has no editor yet — say so.
   await expect(caps).toContainText('filter editor is not built yet')
 })
+
+test('an action that never reached the server is reported, not dropped quietly', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const warnings: string[] = []
+  page.on('console', (m) => {
+    if (m.type() === 'warning') warnings.push(m.text())
+  })
+
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  const rows = page.locator('[data-testid="virtuoso-item-list"] [role="button"]')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+
+  // 400 is permanent, so the outbox gives up rather than retrying. The local
+  // change already happened optimistically, which is why silence here is worse
+  // than useless: the next sync just undoes what the user asked for.
+  await page.route('http://localhost:8080/jmap/**', async (route) => {
+    const body = route.request().postData() ?? ''
+    if (body.includes('Email/set')) return route.fulfill({ status: 400, body: 'nope' })
+    return route.continue()
+  })
+
+  await rows.first().hover()
+  await rows.first().getByTitle('Flag', { exact: true }).click()
+
+  await expect(page.getByTestId('sync-status')).toContainText('could not be sent', {
+    timeout: 30_000,
+  })
+  expect(warnings.some((w) => w.includes('failed permanently'))).toBe(true)
+})

@@ -77,14 +77,21 @@ export function SyncStatus({ account }: { account: Account }) {
   // toArray + filter in JS on purpose: a Dexie .filter() is a cursor read and
   // those bypass the crypto middleware on payload-carrying tables. The outbox
   // is short-lived and tiny, so reading it whole costs nothing.
-  const queued = useLiveQuery(
+  const outbox = useLiveQuery(
     async () => {
       const rows = await db.outbox.where('accountId').equals(account.id).toArray()
-      return rows.filter((r) => r.status !== 'failed').length
+      return {
+        queued: rows.filter((r) => r.status !== 'failed').length,
+        // Failed ones used to be filtered out entirely, so an action that never
+        // reached the server vanished without a trace — and the next sync
+        // silently reverted whatever the user had asked for.
+        failed: rows.filter((r) => r.status === 'failed').length,
+      }
     },
     [account.id],
-    0,
+    { queued: 0, failed: 0 },
   )
+  const queued = outbox.queued
 
   let label: string
   let icon: IconName = MODE_ICON[status.mode]
@@ -119,7 +126,14 @@ export function SyncStatus({ account }: { account: Account }) {
    * lives in the tooltip instead.
    */
   let detail = ''
-  if (queued > 0) {
+  let detailTone = ''
+  if (outbox.failed > 0) {
+    detail =
+      outbox.failed === 1
+        ? t('sync.failed.one')
+        : `${outbox.failed} ${t('sync.failed.many')}`
+    detailTone = 'text-danger'
+  } else if (queued > 0) {
     detail = queued === 1 ? t('sync.queued.one') : `${queued} ${t('sync.queued.many')}`
   } else if (status.error) {
     detail = t('sync.error.hint')
@@ -153,7 +167,9 @@ export function SyncStatus({ account }: { account: Account }) {
         />
         <span className={`truncate font-medium ${tone}`}>{label}</span>
       </span>
-      <span className={`mt-0.5 block h-[14px] truncate ${queued > 0 ? 'text-honey' : ''}`}>
+      <span
+        className={`mt-0.5 block h-[14px] truncate ${detailTone || (queued > 0 ? 'text-honey' : '')}`}
+      >
         {detail}
       </span>
     </Link>
