@@ -125,3 +125,62 @@ describe('listAllEmailHeaders', () => {
     expect(seen).toEqual([0, 200, 400, 600])
   })
 })
+
+describe('setEmails when the server is stingy about its limits', () => {
+  /** Captures what actually goes over the wire. */
+  function recordingTransport() {
+    const sent: Array<Record<string, unknown>> = []
+    const transport: Transport = {
+      fetchRaw: vi.fn(),
+      request: async (req) => {
+        const [, args, id] = req.methodCalls[0]!
+        sent.push(args)
+        const update = (args['update'] ?? {}) as Record<string, unknown>
+        return {
+          methodResponses: [
+            [
+              'Email/set',
+              { updated: Object.fromEntries(Object.keys(update).map((k) => [k, null])) },
+              id,
+            ],
+          ],
+          sessionState: 's',
+        } as never
+      },
+    }
+    return { transport, sent }
+  }
+
+  it('still sends the update when maxObjectsInSet is missing', async () => {
+    // Regression: an undefined chunk size produced one *empty* chunk, so the
+    // request went out carrying nothing and reported success — every move,
+    // flag and mark-read was silently dropped against such a server.
+    const { transport, sent } = recordingTransport()
+    const stingy = { maxObjectsInGet: 500 } as CoreCapability
+    const mail = createJmapMail(transport, 'acc', stingy, 'u', 'd')
+
+    const outcome = await mail.setEmails({ 'mail-1': { mailboxIds: { inbox: true } } }, [])
+
+    expect(sent[0]?.['update']).toEqual({ 'mail-1': { mailboxIds: { inbox: true } } })
+    expect(outcome.updated).toEqual(['mail-1'])
+    expect(outcome.failed).toEqual({})
+  })
+
+  it('reports an id the server acknowledged in neither direction', async () => {
+    const transport: Transport = {
+      fetchRaw: vi.fn(),
+      request: async (req) =>
+        ({
+          methodResponses: [['Email/set', { updated: {} }, req.methodCalls[0]![2]]],
+          sessionState: 's',
+        }) as never,
+    }
+    const mail = createJmapMail(transport, 'acc', limits, 'u', 'd')
+
+    const outcome = await mail.setEmails({ 'mail-1': { keywords: {} } }, [])
+
+    // Silence here used to read as success, so the outbox dropped the action.
+    expect(outcome.updated).toEqual([])
+    expect(outcome.failed['mail-1']).toMatchObject({ permanent: false })
+  })
+})

@@ -253,6 +253,14 @@ export function createJmapMail(
         for (const [id, err] of Object.entries({ ...r.notUpdated, ...r.notDestroyed }))
           outcome.failed[id] = toFailure(err)
       }
+      // An id the server acknowledged in neither direction was not applied.
+      // Calling that success loses the change silently while the UI shows it
+      // worked; treating it as transient makes the outbox retry and surface it.
+      for (const id of ids) {
+        if (!outcome.updated.includes(id) && !outcome.failed[id]) {
+          outcome.failed[id] = { type: 'notApplied', permanent: false }
+        }
+      }
       return outcome
     },
 

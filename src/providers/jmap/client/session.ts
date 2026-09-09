@@ -133,19 +133,28 @@ export async function fetchSession(
   }
 }
 
+/**
+ * Server limits, with a default per field.
+ *
+ * Deliberately not `core ?? defaults`: a server that sends the core capability
+ * but omits one number then leaves it `undefined`, and an undefined chunk size
+ * silently produced an *empty* chunk — the request went out carrying nothing
+ * and reported success, so every mutation was quietly dropped. Merging per
+ * field means one missing number cannot take the rest down with it.
+ */
 export function coreLimits(session: JmapSession): CoreCapability {
-  const core = session.capabilities[Cap.core] as CoreCapability | undefined
-  return (
-    core ?? {
-      maxSizeUpload: 50_000_000,
-      maxConcurrentUpload: 2,
-      maxSizeRequest: 10_000_000,
-      maxConcurrentRequests: 2,
-      maxCallsInRequest: 16,
-      maxObjectsInGet: 500,
-      maxObjectsInSet: 500,
-    }
-  )
+  const core = (session.capabilities[Cap.core] ?? {}) as Partial<CoreCapability>
+  const num = (v: unknown, fallback: number) =>
+    typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback
+  return {
+    maxSizeUpload: num(core.maxSizeUpload, 50_000_000),
+    maxConcurrentUpload: num(core.maxConcurrentUpload, 2),
+    maxSizeRequest: num(core.maxSizeRequest, 10_000_000),
+    maxConcurrentRequests: num(core.maxConcurrentRequests, 2),
+    maxCallsInRequest: num(core.maxCallsInRequest, 16),
+    maxObjectsInGet: num(core.maxObjectsInGet, 500),
+    maxObjectsInSet: num(core.maxObjectsInSet, 500),
+  }
 }
 
 /** Map JMAP account capabilities to the provider-agnostic feature flags. */

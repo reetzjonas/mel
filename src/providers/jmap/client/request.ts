@@ -97,8 +97,15 @@ export class Batch {
   }
 }
 
-/** Split ids into chunks respecting maxObjectsInGet. */
+/**
+ * Split ids into chunks respecting maxObjectsInGet.
+ *
+ * A size that is not a positive number yields one chunk holding everything
+ * rather than an empty one: too large a request is rejected visibly by the
+ * server, whereas dropping the ids here loses the caller's work in silence.
+ */
 export function chunkIds(ids: string[], maxObjects: number): string[][] {
+  if (!Number.isFinite(maxObjects) || maxObjects < 1) return [ids]
   if (ids.length <= maxObjects) return [ids]
   const out: string[][] = []
   for (let i = 0; i < ids.length; i += maxObjects) out.push(ids.slice(i, i + maxObjects))
