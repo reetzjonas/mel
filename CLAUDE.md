@@ -149,6 +149,13 @@ password in `docker/stalwart/.admin-pass`. Full reset: see the README.
 
 ## Next steps (order confirmed by the user)
 
+**As of 2026-09-09, open todos and bugs are tracked as GitHub issues on
+`reetzjonas/mel` instead of being added here.** The backlog below (including
+"Newly raised") is kept as historical context — it explains *why* something
+was built the way it was — but is no longer the place to add new items or to
+check what is still open. Use `gh issue list` (labelled `enhancement`/`bug`
+plus an `area: *` label) for the current, authoritative list.
+
 1. ~~Calendar week/day grid, multi-calendar colours and toggles~~ **done.**
    Drag-move/resize of events is still missing (today: click-to-create plus dialog
    editing, no drag) — add if wanted.
