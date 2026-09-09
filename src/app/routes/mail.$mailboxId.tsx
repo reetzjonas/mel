@@ -25,11 +25,12 @@ function MailboxView() {
   const navigate = useNavigate()
   const accounts = useAccounts()
   const account = accounts?.[0]
-  const mailbox = useMailboxEmails(account?.id, mailboxId)
+  const accountId = account?.id
+  const mailbox = useMailboxEmails(accountId, mailboxId)
   const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
-  const mailboxes = useMailboxes(account?.id)
+  const mailboxes = useMailboxes(accountId)
   const { selection, selectionMailboxId, clearSelection } = useUi()
   const hasSelection = selectionMailboxId === mailboxId && selection.length > 0
 
@@ -39,20 +40,22 @@ function MailboxView() {
     clearSelection()
   }, [mailboxId, clearSelection])
 
+  // Depends only on the id, not the account object: only switching accounts
+  // (or the query) should re-run the search.
   useEffect(() => {
     setInput(q ?? '')
-    if (!q || !account) {
+    if (!q || !accountId) {
       setResults(null)
       return
     }
     let alive = true
-    void searchEmails(account.id, q).then((r) => {
+    void searchEmails(accountId, q).then((r) => {
       if (alive) setResults(r ?? { headers: [], snippets: {} })
     })
     return () => {
       alive = false
     }
-  }, [q, account?.id])
+  }, [q, accountId])
 
   // Pull-to-refresh (touch): drag down while the list is scrolled to the top.
   const pull = useRef<{ y: number; scroller: HTMLElement | null } | null>(null)

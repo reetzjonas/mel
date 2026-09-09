@@ -22,15 +22,19 @@ export const Route = createFileRoute('/mail')({
 function MailLayout() {
   const accounts = useAccounts()
   const account = accounts?.[0]
-  const mailboxes = useMailboxes(account?.id)
+  const accountId = account?.id
+  const mailboxes = useMailboxes(accountId)
   const params = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
   const navigate = useNavigate()
   const { compose, openCompose } = useUi()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
+  // Depends only on the id, not the account object: switching accounts should
+  // restart the scheduler, but other account field changes (label, caps)
+  // should not.
   useEffect(() => {
-    if (account) startScheduler(account.id)
-  }, [account?.id])
+    if (accountId) startScheduler(accountId)
+  }, [accountId])
 
   // /mail without mailbox → jump to inbox once it is synced. The pathname
   // guard matters: mailboxes arrive asynchronously, and without it a click on
@@ -43,7 +47,7 @@ function MailLayout() {
   }, [params.mailboxId, mailboxes, navigate, pathname])
 
   useMailShortcuts({
-    accountId: account?.id,
+    accountId,
     ownEmail: account?.label,
     mailboxId: params.mailboxId,
     emailId: params.emailId,

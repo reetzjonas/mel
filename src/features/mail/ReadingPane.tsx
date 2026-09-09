@@ -145,6 +145,9 @@ export function ReadingPane({
   const { openCompose, showSnackbar } = useUi()
   const frameTheme = useFrameTheme()
 
+  // Fetching the body is keyed on the message identity alone: a keyword
+  // change elsewhere (flag, read state) must not reset this to 'loading' and
+  // re-fetch, or the reading pane flickers every time the row updates.
   useEffect(() => {
     let alive = true
     setBody('loading')
@@ -152,12 +155,16 @@ export function ReadingPane({
     getEmailBody(accountId, email.id)
       .then((b) => alive && setBody(b))
       .catch(() => alive && setBody(null))
-    // Opening a message marks it read.
-    if (!email.keywords['$seen']) void markRead(accountId, email.id)
     return () => {
       alive = false
     }
   }, [accountId, email.id])
+
+  // Separate from the body fetch above so that a keyword change alone (e.g.
+  // another tab marking it read first) can be picked up without refetching.
+  useEffect(() => {
+    if (!email.keywords['$seen']) void markRead(accountId, email.id)
+  }, [accountId, email.id, email.keywords])
 
   const backToList = () => void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
 

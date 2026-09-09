@@ -89,7 +89,18 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         })
     }, 2500)
     return () => clearTimeout(timer)
-  }, [to, cc, subject, editRevision, identityId, identities, accountId])
+  }, [
+    to,
+    cc,
+    subject,
+    editRevision,
+    identityId,
+    identities,
+    accountId,
+    editor,
+    init.inReplyTo,
+    init.references,
+  ])
 
   async function attach(files: FileList | null) {
     if (!files) return

@@ -28,10 +28,13 @@ export function useEvents(accountId: string | undefined): CalendarEvent[] | unde
  */
 export function useSelfIdentity(account: Account | undefined): { name: string; email: string } {
   const [identity, setIdentity] = useState<{ name: string; email: string } | null>(null)
+  const accountId = account?.id
+  // Depends only on the id, not the account object: re-fetching identities on
+  // every account field change (label, caps) would be wasted work.
   useEffect(() => {
-    if (!account) return
+    if (!accountId) return
     let cancelled = false
-    void getIdentities(account.id)
+    void getIdentities(accountId)
       .then((list) => {
         const primary = list.find((i) => i.email) ?? list[0]
         if (!cancelled && primary) setIdentity({ name: primary.name, email: primary.email })
@@ -40,6 +43,6 @@ export function useSelfIdentity(account: Account | undefined): { name: string; e
     return () => {
       cancelled = true
     }
-  }, [account?.id])
+  }, [accountId])
   return identity ?? { name: '', email: account?.label ?? '' }
 }
