@@ -362,6 +362,13 @@ sidebar layout does not fit.
 **V. Rewrite the compose popup**, including its formatting controls (Tiptap
 toolbar etc.) — current compose UI needs a broader pass, not just a fix.
 
+**W. Drag and drop for folders and mail.** Reorder/move folders in the sidebar
+by dragging, and drag mail rows onto a folder to move them there — both are
+menu-driven only today (folder "…" → "Move to…", row/bulk-toolbar "Move to
+folder"); drag-and-drop would be an additional, faster path onto the same
+`moveMailbox()`/move-to-folder actions, not a replacement for the existing
+target-picker menus (still needed for touch/keyboard).
+
 ### e2e stability (the earlier "flakes" had real causes)
 
 The suite was long regarded as sporadically flaky (~40% red full runs) and that was
