@@ -5,9 +5,16 @@ import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate } from '../../lib/dates'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
 import { imagePolicy } from '../../lib/imagePolicy'
+import { useMailboxes } from './hooks'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
-import { archiveEmail, deleteEmail, markRead, setFlagged } from '../../services/mailActions'
+import {
+  archiveEmail,
+  deleteEmail,
+  markNotSpam,
+  markRead,
+  setFlagged,
+} from '../../services/mailActions'
 import { buildReply } from '../../services/send'
 import { connectionFor } from '../../sync/connections'
 import { Avatar } from '../../ui/Avatar'
@@ -127,7 +134,13 @@ export function ReadingPane({
   // Releasing remote content is per message, never sticky: the next message is
   // a different sender with a different reason to want your IP.
   const [released, setReleased] = useState(false)
-  const allowRemote = released || imagePolicy() === 'always'
+  const mailboxes = useMailboxes(accountId)
+  const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
+  const inJunk = Boolean(junkId && email.mailboxIds[junkId])
+  // Junk keeps blocking even when the account is set to always load: a message
+  // the server already thinks is spam is the last one to hand a confirmed
+  // address to. Only an explicit per-message release opens it.
+  const allowRemote = released || (imagePolicy() === 'always' && !inJunk)
   const navigate = useNavigate()
   const { openCompose, showSnackbar } = useUi()
   const frameTheme = useFrameTheme()
@@ -199,6 +212,26 @@ export function ReadingPane({
           <Icon name="back" size={16} />
         </Link>
         <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+          {inJunk && (
+            <ActionButton
+              icon="inbox"
+              label={t('mail.notSpam')}
+              onClick={() => {
+                void markNotSpam(accountId, email.id).then((undo) => {
+                  backToList()
+                  showSnackbar(
+                    undo
+                      ? {
+                          message: t('mail.movedToInbox'),
+                          actionLabel: t('mail.undo'),
+                          action: () => void undo(),
+                        }
+                      : { message: t('mail.notSpamFailed') },
+                  )
+                })
+              }}
+            />
+          )}
           <ActionButton icon="archive" label={t('mail.archive')} onClick={() => void onArchive()} />
           <ActionButton icon="trash" label={t('mail.delete')} onClick={() => void onDelete()} />
           <ActionButton

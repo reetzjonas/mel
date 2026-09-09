@@ -183,3 +183,72 @@ test('hovering a row leaves the sender avatar alone', async ({ page }) => {
   await expect(checkbox).toHaveCSS('opacity', '1')
   await expect(avatar).toBeVisible()
 })
+
+/** Files an inbox message into Junk over JMAP, returning its id. */
+async function moveToJunk(): Promise<string> {
+  const auth =
+    'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
+  const call = async (methodCalls: unknown[]) => {
+    const res = await fetch('http://localhost:8080/jmap/', {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+        methodCalls,
+      }),
+    })
+    return (await res.json()) as { methodResponses: Array<[string, Record<string, never>, string]> }
+  }
+  const boxes = (await call([['Mailbox/get', { accountId: 'c', ids: null }, 'c0']]))
+    .methodResponses[0]![1] as unknown as { list: Array<{ id: string; role: string | null }> }
+  const junk = boxes.list.find((b) => b.role === 'junk')!
+  const inbox = boxes.list.find((b) => b.role === 'inbox')!
+  const q = (
+    await call([
+      ['Email/query', { accountId: 'c', filter: { inMailbox: inbox.id }, limit: 1 }, 'c0'],
+    ])
+  ).methodResponses[0]![1] as unknown as { ids: string[] }
+  const id = q.ids[0]!
+  await call([
+    ['Email/set', { accountId: 'c', update: { [id]: { mailboxIds: { [junk.id]: true } } } }, 'c0'],
+  ])
+  return id
+}
+
+test('junk blocks remote content regardless of the setting, and "not spam" restores it', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  await moveToJunk()
+
+  await login(page, ...ALICE)
+  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+
+  // Even with the account set to always load — a message the server already
+  // flagged is the last one that should get a confirmed address.
+  await page.evaluate(() => localStorage.setItem('mel:images', 'always'))
+  await page.reload()
+
+  await page.getByRole('link', { name: /^Junk Mail( \d+)?$/ }).click()
+  const row = page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first()
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  await row.click()
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const f = document.querySelector('iframe') as HTMLIFrameElement | null
+        return f?.srcdoc.match(/img-src ([^;"]*)/)?.[1]?.trim()
+      }),
+    )
+    .toBe('data: cid:')
+
+  await page.getByTitle('Not spam').click()
+  await expect(page.getByText('Moved to inbox')).toBeVisible()
+
+  // Back where it started, so the run leaves nothing behind.
+  await page.getByRole('link', { name: /^Inbox( \d+)?$/ }).click()
+  await expect(row).toBeVisible({ timeout: 15_000 })
+  await page.waitForTimeout(2000)
+  await page.evaluate(() => localStorage.removeItem('mel:images'))
+})

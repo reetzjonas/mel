@@ -251,3 +251,16 @@ export async function bulkDelete(accountId: string, emailIds: string[]) {
   // Only the moved half is reversible; a destroy is gone on the server too.
   return move.length && trash ? bulkMove(accountId, move, trash.id) : null
 }
+
+/**
+ * Move a message out of junk and back to the inbox.
+ *
+ * Only the move is done here. Whether the server also learns from it is up to
+ * the server: JMAP has no "report as ham" method, and Stalwart's spam training
+ * hangs off its own Sieve rules, so there is nothing standard to call.
+ */
+export async function markNotSpam(accountId: string, emailId: string) {
+  const inbox = await roleMailbox(accountId, 'inbox')
+  if (!inbox) return null
+  return moveEmail(accountId, emailId, inbox.id)
+}

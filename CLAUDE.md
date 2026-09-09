@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 92 Vitest + 38 Playwright (desktop + mobile; state-mutating specs are
+Tests: 92 Vitest + 39 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -245,11 +245,16 @@ Three things that hang off it:
 - "Everything in this folder" does **not** use the locally loaded ids but asks
   `queryMailboxIds()` server-side, paging through the mailbox.
 
-**F. Treat spam separately** — now mostly "G plus a button": remote content is
-already blocked by default, so what remains is the "not spam" action (move to
-inbox; whether Stalwart additionally triggers learning or Sieve needs checking
-— the spam filter is off in the dev seed, see `seed.sh`). If the image default
-is ever switched to always-load, junk must keep blocking regardless.
+**F. ~~Treat spam separately~~ done.** Two parts, both small once G was in
+place. Junk **always** blocks remote content, even with the account set to
+always load — a message the server already flagged is the last one that should
+get a confirmed address; only an explicit per-message release opens it. And a
+"Not spam" action appears in the reading pane for messages in junk, moving them
+to the inbox with undo.
+Only the move is done: JMAP has no "report as ham" method, and Stalwart's
+training hangs off its own Sieve rules, so there is nothing standard to call —
+`markNotSpam()` says so rather than implying the server learns from it. (The
+dev seed has the spam filter switched off entirely, see `seed.sh`.)
 
 **G. ~~Option "do not load images automatically"~~ done.** Default is to block;
 Settings → Privacy switches to always-loading. Releasing is **per message** and
