@@ -341,14 +341,42 @@ user folders are not nested inside them. The same rule removed "new subfolder"
 from role folders, which leaves them with no menu at all, since every entry was
 already disabled for them.
 
-**Q. Not yet investigated: request storm on first load in a fresh browser.**
-Opening mel in a brand-new browser (empty IndexedDB/cache) fired ~361 requests to
-`jmap/` — all `Email/query` calls per the Network tab payload — totalling 33.3 MB
-over about 8 minutes before `DOMContentLoaded`. Not reproduced/diagnosed yet
-(observed only via a screenshot of DevTools' Network panel); candidates to check
-first: something looping per-page or per-message instead of batching during
-initial full sync, or a cursor/limit mismatch like the one in the "paging" gotcha
-above. Needs a HAR or console trace to pin down before touching code.
+**Q. ~~Request storm on first load in a fresh browser~~ partially diagnosed and
+improved.** Opening mel in a brand-new browser (empty IndexedDB/cache) fired ~361
+requests to `jmap/` — all `Email/query` calls per the Network tab payload —
+totalling 33.3 MB over about 8 minutes before `DOMContentLoaded`.
+
+Not reproduced against a real large mailbox (no fixture that size exists locally
+or in CI, and this was only ever observed via a screenshot of DevTools' Network
+panel from the user's own Fastmail account) — so this is a code-audit diagnosis
+plus a verified improvement, not a confirmed root-cause-and-fix of that exact
+measurement. Found by audit: `listAllEmailHeaders()` (the full-sync path used on
+first login, one page per `Email/query` + `Email/get` pair) paged in fixed steps
+of 200, ignoring `limits.maxObjectsInGet` — the server's own stated batching
+ceiling, already respected everywhere else (`getEmailHeaders`, `setEmails` via
+`chunkIds`). Against a server permitting more per batch (Stalwart and Fastmail
+both default well above 200), that turns a full sync into several times more
+round trips than the server would allow in one call — exactly the "looping
+per-page instead of batching" shape named as a candidate here.
+Fixed: the page size is now `limits.maxObjectsInGet` (500 by default, whatever a
+generous server reports otherwise) instead of a hardcoded constant. Same total
+messages fetched, same pagination and dedup logic — this changes batch size, not
+what gets synced. Regression tests in `providers/jmap/mail.test.ts` pin
+contiguous paging at the fixture's limit and confirm a single request suffices
+when the server's ceiling comfortably covers the whole mailbox.
+What this does **not** rule out: the `Email/query` count is inherent to the
+current design regardless of batch size — a full sync fetches every header in
+the whole account (all mailboxes, not just Inbox) unconditionally on first
+login, so a genuinely huge real-world mailbox will still cost many requests and
+minutes, just fewer of each. If the user reproduces this again with a HAR
+attached, revisit whether the fix above was sufficient or whether the initial
+sync needs to defer non-Inbox mailboxes instead of fetching everything upfront.
+The "8 minutes before `DOMContentLoaded`" detail was not explained and is
+probably a misreading of the DevTools waterfall — nothing in `sw.ts` or the
+bootstrap path blocks on JMAP calls before the page loads (checked: the service
+worker has no `fetch` handler, only precaching plus push/notification
+handlers), so `DOMContentLoaded` should fire immediately regardless of how long
+the background sync runs afterward.
 
 **R. Filter for unread/flagged only.** A view that shows just unread or just
 flagged mail, per folder — possibly with a separator/divider in the list rather

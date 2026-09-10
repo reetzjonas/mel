@@ -24,7 +24,6 @@ import { toEmailBody, toEmailHeader, toMailbox } from './mappers/mail'
 const USING = [Cap.core, Cap.mail]
 const USING_SUBMIT = [Cap.core, Cap.mail, Cap.submission]
 const MAX_CHANGES = 256
-const QUERY_PAGE = 200
 /** Page size when walking a whole mailbox for a bulk selection. */
 const BULK_QUERY_PAGE = 1000
 
@@ -168,6 +167,14 @@ export function createJmapMail(
     },
 
     async listAllEmailHeaders(onPage) {
+      // Page by the server's own Email/get ceiling rather than a fixed guess:
+      // the ids this fetches immediately feed an Email/get for the same page,
+      // so a page smaller than what the server allows only adds request
+      // round-trips without saving anything. A hardcoded 200 here against a
+      // server permitting far more (some report 1000+) was exactly the "many
+      // small requests instead of few large ones" shape behind the reported
+      // request storm on first login with a large mailbox.
+      const pageSize = limits.maxObjectsInGet
       let position = 0
       let state = ''
       for (;;) {
@@ -176,7 +183,7 @@ export function createJmapMail(
           accountId,
           sort: [{ property: 'receivedAt', isAscending: false }],
           position,
-          limit: QUERY_PAGE,
+          limit: pageSize,
         })
         const g = b.call<GetResponse<JmapEmail>>('Email/get', {
           accountId,
@@ -189,9 +196,9 @@ export function createJmapMail(
         state = st.result.state
         const headers = g.result.list.map(toEmailHeader)
         await onPage({ headers, state })
-        if (q.result.ids.length < QUERY_PAGE) return state
+        if (q.result.ids.length < pageSize) return state
         // Must advance by exactly the page size that was requested above.
-        position += QUERY_PAGE
+        position += pageSize
       }
     },
 

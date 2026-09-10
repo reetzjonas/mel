@@ -111,7 +111,7 @@ describe('listAllEmailHeaders', () => {
     // Regression: the cursor advanced by a different page size than the one
     // requested, so four out of every five messages were never fetched and
     // folders looked emptier locally than they were on the server.
-    const { transport, seen } = transportFor(650)
+    const { transport, seen } = transportFor(1100)
     const mail = createJmapMail(transport, 'acc', limits, 'u', 'd')
 
     const fetched: string[] = []
@@ -119,10 +119,25 @@ describe('listAllEmailHeaders', () => {
       fetched.push(...headers.map((h) => h.id))
     })
 
-    expect(fetched).toHaveLength(650)
-    expect(new Set(fetched).size).toBe(650)
-    // Contiguous pages, no gaps.
-    expect(seen).toEqual([0, 200, 400, 600])
+    expect(fetched).toHaveLength(1100)
+    expect(new Set(fetched).size).toBe(1100)
+    // Contiguous pages of the fixture's maxObjectsInGet (500), no gaps.
+    expect(seen).toEqual([0, 500, 1000])
+  })
+
+  it('pages by the server\'s own limit, not a fixed guess', async () => {
+    // Regression: a hardcoded page size of 200 ignored what the server
+    // actually permits (maxObjectsInGet), turning a full sync of a large
+    // mailbox into far more round trips than necessary — reported as a
+    // "request storm" of hundreds of Email/query calls on first login
+    // against a mail provider with a much higher limit.
+    const generous = { ...limits, maxObjectsInGet: 3000 } as CoreCapability
+    const { transport, seen } = transportFor(2999)
+    const mail = createJmapMail(transport, 'acc', generous, 'u', 'd')
+
+    await mail.listAllEmailHeaders(async () => {})
+
+    expect(seen).toEqual([0])
   })
 })
 
