@@ -6,7 +6,7 @@ import type { Account } from '../../domain/account'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
-import { buildConversations, type Conversation } from './conversations'
+import { buildConversations, isHidden, type Conversation } from './conversations'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
@@ -51,6 +51,32 @@ export function useMailboxes(accountId: string | undefined): Mailbox[] | undefin
 
 /** How many messages are materialised at a time. */
 const PAGE = 100
+
+/**
+ * The folders a conversation does not count: trash, junk and drafts.
+ *
+ * A message you deleted should not go on padding the row you deleted it from,
+ * and an unsent draft is not part of the exchange yet — there is nothing in it
+ * the other side has seen. Each is listed again in its own folder, where it is
+ * the thing you came to look at, so the folder being listed is never excluded
+ * from itself.
+ */
+export async function hiddenMailboxIds(
+  accountId: string,
+  mailboxId: string | undefined,
+): Promise<Set<string>> {
+  const roles = await Promise.all(
+    (['trash', 'junk', 'drafts'] as const).map((role) =>
+      db.mailboxes.where('[accountId+role]').equals([accountId, role]).primaryKeys(),
+    ),
+  )
+  return new Set(
+    roles
+      .flat()
+      .map((k) => k[1])
+      .filter((id): id is string => Boolean(id) && id !== mailboxId),
+  )
+}
 
 export interface MailboxList {
   /** Materialised headers, newest first — only the loaded window. Undefined
@@ -184,23 +210,6 @@ export function useMailboxEmails(
       return { members: nextMembers, threadOf: nextThreadOf }
     }
 
-    /**
-     * Trash and junk. A conversation spans folders, but a message you deleted
-     * should not go on padding the row it was deleted from — unless trash or
-     * junk is the folder you are actually looking at.
-     */
-    async function readExcluded(): Promise<Set<string>> {
-      const [trash, junk] = await Promise.all([
-        db.mailboxes.where('[accountId+role]').equals([account, 'trash']).primaryKeys(),
-        db.mailboxes.where('[accountId+role]').equals([account, 'junk']).primaryKeys(),
-      ])
-      return new Set(
-        [...trash, ...junk]
-          .map((k) => k[1])
-          .filter((id): id is string => Boolean(id) && id !== mailbox),
-      )
-    }
-
     /** The ids the current window needs materialised. */
     function windowIds(): string[] {
       if (!grouped) return order.slice(0, windowSize)
@@ -256,7 +265,10 @@ export function useMailboxEmails(
     async function refresh() {
       order = await readOrder()
       if (grouped) {
-        const [index, hidden] = await Promise.all([readThreadIndex(), readExcluded()])
+        const [index, hidden] = await Promise.all([
+          readThreadIndex(),
+          hiddenMailboxIds(account, mailbox),
+        ])
         members = index.members
         threadOf = index.threadOf
         excluded = hidden
@@ -391,17 +403,21 @@ export function useMailboxEmails(
 export function useThread(
   accountId: string | undefined,
   threadId: string | undefined,
+  mailboxId: string | undefined,
 ): EmailHeader[] | undefined {
   return useLiveQuery(async () => {
     if (!accountId || !threadId) return []
-    const rows = await db.emails
-      .where('[accountId+threadId]')
-      .equals([accountId, threadId])
-      .toArray()
+    const [rows, hidden] = await Promise.all([
+      db.emails.where('[accountId+threadId]').equals([accountId, threadId]).toArray(),
+      hiddenMailboxIds(accountId, mailboxId),
+    ])
+    // The same messages the list row counted, or the pane would say "10
+    // messages" over a stack of twelve.
     return rows
       .map((r) => openEnvelope(r.payload))
+      .filter((h) => !isHidden(h, hidden))
       .sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : 0))
-  }, [accountId, threadId])
+  }, [accountId, threadId, mailboxId])
 }
 
 export function useEmail(

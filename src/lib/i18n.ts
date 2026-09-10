@@ -94,6 +94,9 @@ const en = {
   'mail.archiveThread': 'Archive conversation',
   'mail.deleteThread': 'Delete conversation',
   'mail.showMessage': 'Show this message',
+  'mail.expandFolded': 'Show the messages in between',
+  'mail.draft': 'Draft',
+  'mail.arrived': 'New',
 
   'bulk.select': 'Select message',
   'bulk.selected': 'selected',
@@ -440,6 +443,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.archiveThread': 'Unterhaltung archivieren',
   'mail.deleteThread': 'Unterhaltung löschen',
   'mail.showMessage': 'Diese Nachricht anzeigen',
+  'mail.expandFolded': 'Nachrichten dazwischen anzeigen',
+  'mail.draft': 'Entwurf',
+  'mail.arrived': 'Neu',
 
   'bulk.select': 'Nachricht auswählen',
   'bulk.selected': 'ausgewählt',

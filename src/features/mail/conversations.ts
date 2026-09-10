@@ -37,8 +37,8 @@ function byDateAsc(a: EmailHeader, b: EmailHeader): number {
   return a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : 0
 }
 
-/** Messages whose every mailbox is excluded (trash/junk seen from elsewhere). */
-function isHidden(header: EmailHeader, excluded: Set<string>): boolean {
+/** Messages whose every mailbox is excluded (trash/junk/drafts from elsewhere). */
+export function isHidden(header: EmailHeader, excluded: Set<string>): boolean {
   const boxes = Object.keys(header.mailboxIds)
   return boxes.length > 0 && boxes.every((id) => excluded.has(id))
 }
@@ -68,7 +68,7 @@ export function buildConversations({
   headers: Map<string, EmailHeader>
   mailboxId: string
   filter: MailFilter | undefined
-  /** Trash and junk, unless one of them is the mailbox being listed. */
+  /** Trash, junk and drafts, unless one of them is the mailbox being listed. */
   excludedMailboxIds?: Set<string>
 }): Conversation[] {
   const excluded = excludedMailboxIds ?? new Set<string>()
@@ -113,4 +113,57 @@ export function buildConversations({
   }
 
   return out
+}
+
+/** A message of the open thread, or a run of them folded into one band. */
+export type ThreadSlot = { index: number } | { folded: number[] }
+
+/** How many messages at the end of a long thread stay unfolded. */
+const KEEP_TAIL = 2
+/** Below this, folding hides less than the band costs to explain. */
+const MIN_FOLD = 2
+
+/**
+ * Folds the middle out of a long conversation.
+ *
+ * Kept: the first message, the last two, the one you have open, and anything
+ * that arrived while you were reading — that last one is the whole point of
+ * showing it, so it never lands in a band. Everything else collapses into
+ * runs, and a run only becomes a band if it hides at least `MIN_FOLD`
+ * messages; folding one message away is pure loss.
+ *
+ * Ten replies would otherwise push the message you came to read off the
+ * screen, which is what a thread view is supposed to prevent.
+ */
+export function foldThread({
+  count,
+  expandedIndex,
+  arrived,
+  showAll = false,
+}: {
+  count: number
+  expandedIndex: number
+  /** Indices that turned up while the pane was open. */
+  arrived?: Set<number>
+  showAll?: boolean
+}): ThreadSlot[] {
+  const pinned = (i: number) =>
+    i === 0 || i === expandedIndex || i >= count - KEEP_TAIL || Boolean(arrived?.has(i))
+
+  const slots: ThreadSlot[] = []
+  let run: number[] = []
+  const flush = () => {
+    if (!run.length) return
+    if (!showAll && run.length >= MIN_FOLD) slots.push({ folded: run })
+    else for (const i of run) slots.push({ index: i })
+    run = []
+  }
+  for (let i = 0; i < count; i++) {
+    if (pinned(i)) {
+      flush()
+      slots.push({ index: i })
+    } else run.push(i)
+  }
+  flush()
+  return slots
 }

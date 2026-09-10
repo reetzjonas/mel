@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmailHeader } from '../../domain/email'
 import { db, type EmailRow } from '../../storage/db'
 import { sealPlain } from '../../storage/envelope'
-import { useMailboxEmails } from './hooks'
+import { useMailboxEmails, useThread } from './hooks'
 
 const ACC = 'acc-1'
 const OTHER_ACC = 'acc-2'
@@ -358,18 +358,19 @@ describe('useMailboxEmails grouped', () => {
     )
   })
 
-  it('leaves out messages that only live in trash', async () => {
+  /** A role mailbox, which is what the exclusion rules key off. */
+  async function putMailbox(id: string, role: 'trash' | 'drafts') {
     await db.mailboxes.put({
       accountId: ACC,
-      id: 'mb-trash',
+      id,
       parentId: null,
-      role: 'trash',
+      role,
       sortOrder: 0,
       payload: sealPlain({
-        id: 'mb-trash',
-        name: 'Trash',
+        id,
+        name: role,
         parentId: null,
-        role: 'trash',
+        role,
         sortOrder: 0,
         totalEmails: 0,
         unreadEmails: 0,
@@ -383,10 +384,41 @@ describe('useMailboxEmails grouped', () => {
         mayReadItems: true,
       }),
     })
+  }
+
+  it('leaves out messages that only live in trash', async () => {
+    await putMailbox('mb-trash', 'trash')
     await db.emails.put(threadRow('binned', '2026-01-01T13:00:00.000Z', ['mb-trash']))
 
     const { result } = await groupedView()
     const conversation = result.current.conversations?.find((c) => c.threadId === THREAD)
     expect(conversation?.messages.map((m) => m.id)).toEqual(['in-1', 'out-1', 'in-2'])
+  })
+
+  it('leaves out an unsent draft, and lists it again in the drafts folder', async () => {
+    await putMailbox('mb-drafts', 'drafts')
+    await db.emails.put(threadRow('unsent', '2026-01-01T13:00:00.000Z', ['mb-drafts']))
+
+    const { result } = await groupedView()
+    // Nothing in a draft has been seen by the other side, so it is not part of
+    // the exchange the inbox row describes.
+    expect(
+      result.current.conversations?.find((c) => c.threadId === THREAD)?.messages.map((m) => m.id),
+    ).toEqual(['in-1', 'out-1', 'in-2'])
+
+    const drafts = renderHook(() => useMailboxEmails(ACC, 'mb-drafts', undefined, true))
+    await waitFor(() => expect(drafts.result.current.conversations).toBeDefined())
+    expect(drafts.result.current.conversations?.[0]?.ids).toEqual(['unsent'])
+  })
+
+  it('hands the reading pane the same messages the row counted', async () => {
+    await putMailbox('mb-drafts', 'drafts')
+    await db.emails.put(threadRow('unsent', '2026-01-01T13:00:00.000Z', ['mb-drafts']))
+
+    const view = renderHook(() => useThread(ACC, THREAD, MB))
+    // Otherwise the pane says "3 messages" over a stack of four.
+    await waitFor(() =>
+      expect(view.result.current?.map((m) => m.id)).toEqual(['in-1', 'out-1', 'in-2']),
+    )
   })
 })

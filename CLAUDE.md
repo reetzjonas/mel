@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 133 Vitest + 44 Playwright (desktop + mobile; state-mutating specs are
+Tests: 140 Vitest + 44 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -66,6 +66,19 @@ Three things that were not obvious:
   and cheap on a large account. Pinned by `hooks.test.tsx` ("counts the
   messages in other folders…"); if messages ever end up under the wrong thread,
   suspect this pairing first.
+- **Long threads fold in the middle** (`foldThread()`, pure and tested): the
+  first message, the last two, the open one and anything that just arrived
+  stay; runs of two or more in between become a band you click. Ten replies
+  otherwise push the message you came to read off the screen.
+- **Trash, junk and drafts are excluded** (`hiddenMailboxIds()`), unless that
+  is the folder you are in — an unsent draft is not part of the exchange, since
+  nothing in it has been seen by the other side. The reading pane applies the
+  very same rule via `useThread`, or the header would say "10 messages" over a
+  stack of twelve.
+- **A message arriving under the open pane is marked** (`NEW` chip, accent row,
+  scrolled into view once) and never folded away. Which messages count as new
+  is seeded *after* the thread query resolves — seeding from the routed message
+  alone makes the whole thread look like it just turned up.
 - **Exactly one message is expanded in the reading pane.** Not a design
   preference: a body renders in a sandboxed iframe *without*
   `allow-same-origin` (mail scripts must never reach our origin), so its

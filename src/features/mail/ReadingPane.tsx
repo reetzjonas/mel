@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate, formatListDate } from '../../lib/dates'
@@ -7,6 +7,7 @@ import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
 import { imagePolicy } from '../../lib/imagePolicy'
 import { useMailboxes, useThread } from './hooks'
+import { foldThread, type ThreadSlot } from './conversations'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
 import {
@@ -139,16 +140,53 @@ async function downloadAttachment(accountId: string, blobId: string, type: strin
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/** A small caption on a message row: draft, or just arrived. */
+function Tag({ label, tone }: { label: string; tone: 'accent' | 'honey' }) {
+  return (
+    <span
+      className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-wide uppercase ${
+        tone === 'accent' ? 'bg-accent text-accent-ink' : 'bg-honey/15 text-honey'
+      }`}
+    >
+      {label}
+    </span>
+  )
+}
+
 /** One message of a conversation, folded away: enough to recognise it by. */
-function CollapsedMessage({ message, onOpen }: { message: EmailHeader; onOpen: () => void }) {
+function CollapsedMessage({
+  message,
+  arrived,
+  onOpen,
+}: {
+  message: EmailHeader
+  /** Turned up while this conversation was open, rather than being part of it
+   *  when you got here — worth pointing at, since nothing else moved. */
+  arrived: boolean
+  onOpen: () => void
+}) {
   const sender = message.from[0]
   const unread = !message.keywords['$seen']
+  const draft = Boolean(message.keywords['$draft'])
+  const ref = useRef<HTMLButtonElement>(null)
+
+  // A message arriving under a pane you are reading is easy to miss entirely:
+  // bring it into view once, without yanking the message you are reading away.
+  useEffect(() => {
+    if (arrived) ref.current?.scrollIntoView({ block: 'nearest' })
+  }, [arrived])
+
   return (
     <button
+      ref={ref}
       type="button"
       onClick={onOpen}
       aria-label={`${t('mail.showMessage')}: ${sender?.name || sender?.email || t('mail.unknownSender')}`}
-      className="flex w-full shrink-0 items-center gap-3 border-b border-line px-4 py-2 text-left transition-colors hover:bg-surface-2 lg:px-6"
+      className={`flex w-full shrink-0 items-center gap-3 border-b px-4 py-2 text-left transition-colors lg:px-6 ${
+        arrived
+          ? 'animate-rise border-accent bg-accent-wash hover:bg-accent-wash'
+          : 'border-line hover:bg-surface-2'
+      }`}
     >
       <Avatar name={sender?.name ?? sender?.email ?? '?'} email={sender?.email ?? '?'} size={24} />
       <span
@@ -156,12 +194,31 @@ function CollapsedMessage({ message, onOpen }: { message: EmailHeader; onOpen: (
       >
         {sender?.name || sender?.email || t('mail.unknownSender')}
       </span>
+      {draft && <Tag label={t('mail.draft')} tone="honey" />}
+      {arrived && <Tag label={t('mail.arrived')} tone="accent" />}
       <span className="min-w-0 flex-1 truncate text-xs text-ink-subtle">
         {cleanPreview(message.preview)}
       </span>
       <span className="shrink-0 text-[11px] text-ink-subtle">
         {formatListDate(message.receivedAt)}
       </span>
+    </button>
+  )
+}
+
+/** The messages between the ends of a long thread, folded into one band. */
+function FoldedBand({ count, onExpand }: { count: number; onExpand: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onExpand}
+      aria-label={`${t('mail.expandFolded')}: ${count} ${t('mail.messagesCount')}`}
+      className="flex w-full shrink-0 items-center gap-3 border-b border-line px-4 py-2 transition-colors hover:bg-surface-2 lg:px-6"
+    >
+      <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-surface-2 px-2 text-[11px] font-semibold text-ink-muted">
+        {count}
+      </span>
+      <span className="h-px flex-1 bg-line-strong" />
     </button>
   )
 }
@@ -181,7 +238,7 @@ export function ReadingPane({
   const grouped = useUi((s) => s.conversationView)
   // Only asked for while grouping is on, so the ungrouped pane costs no extra
   // query at all.
-  const thread = useThread(accountId, grouped ? focused.threadId : undefined)
+  const thread = useThread(accountId, grouped ? focused.threadId : undefined, mailboxId)
   /*
    * The whole conversation, oldest first — falling back to the routed message
    * alone while the thread query is still in flight, so the pane never blanks
@@ -198,17 +255,62 @@ export function ReadingPane({
    * space that is left.
    */
   const [expandedId, setExpandedId] = useState(focused.id)
+  const [showAll, setShowAll] = useState(false)
+  /**
+   * Which messages were already here when this conversation was opened.
+   * Seeded once the thread has actually loaded — seeding from the routed
+   * message alone would make the rest of the thread look like it just arrived.
+   */
+  const known = useRef<Set<string> | null>(null)
   // Adjusted during render rather than in an effect: opening another message
   // from the list must not paint the previous one's body first.
   const [routed, setRouted] = useState(focused.id)
   if (routed !== focused.id) {
     setRouted(focused.id)
     setExpandedId(focused.id)
+    setShowAll(false)
+    known.current = null
   }
+  if (known.current === null && (!grouped || thread !== undefined)) {
+    known.current = new Set(messages.map((m) => m.id))
+  }
+  const arrived = (id: string) => known.current !== null && !known.current.has(id)
   const expanded = messages.find((m) => m.id === expandedId) ?? focused
   /** What a conversation-wide action applies to: this folder's messages. */
   const threadIds = messages.filter((m) => m.mailboxIds[mailboxId]).map((m) => m.id)
   const isThread = messages.length > 1
+
+  /*
+   * A long thread is folded in the middle (see foldThread); the open message
+   * is always a slot of its own, so the list splits there into what goes above
+   * the body and what goes below.
+   */
+  const expandedIndex = messages.indexOf(expanded)
+  const slots = foldThread({
+    count: messages.length,
+    expandedIndex,
+    arrived: new Set(messages.flatMap((m, i) => (arrived(m.id) ? [i] : []))),
+    showAll,
+  })
+  const splitAt = slots.findIndex((slot) => 'index' in slot && slot.index === expandedIndex)
+
+  const renderSlots = (entries: ThreadSlot[]) =>
+    entries.map((entry) =>
+      'folded' in entry ? (
+        <FoldedBand
+          key={`fold-${entry.folded[0]}`}
+          count={entry.folded.length}
+          onExpand={() => setShowAll(true)}
+        />
+      ) : (
+        <CollapsedMessage
+          key={messages[entry.index]!.id}
+          message={messages[entry.index]!}
+          arrived={arrived(messages[entry.index]!.id)}
+          onOpen={() => setExpandedId(messages[entry.index]!.id)}
+        />
+      ),
+    )
   const [body, setBody] = useState<EmailBody | null | 'loading'>('loading')
   // Releasing remote content is per message, never sticky: the next message is
   // a different sender with a different reason to want your IP.
@@ -401,9 +503,7 @@ export function ReadingPane({
        * reading sits below what it answers.
        */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-line">
-        {messages.slice(0, messages.indexOf(expanded)).map((m) => (
-          <CollapsedMessage key={m.id} message={m} onOpen={() => setExpandedId(m.id)} />
-        ))}
+        {renderSlots(slots.slice(0, splitAt))}
         <div className="flex shrink-0 items-center gap-3 px-4 py-3 lg:px-6">
           {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
           <div className="min-w-0 flex-1">
@@ -413,6 +513,9 @@ export function ReadingPane({
                   {sender?.name || sender?.email || t('mail.unknownSender')}
                 </span>
               </Tooltip>
+              {/* Opened from the Drafts folder: it is yours and unsent, and
+                  nothing else about the pane says so. */}
+              {expanded.keywords['$draft'] && <Tag label={t('mail.draft')} tone="honey" />}
               <span className="shrink-0 text-xs text-ink-subtle">
                 {formatFullDate(expanded.receivedAt)}
               </span>
@@ -506,9 +609,7 @@ export function ReadingPane({
             )}
           </footer>
         )}
-        {messages.slice(messages.indexOf(expanded) + 1).map((m) => (
-          <CollapsedMessage key={m.id} message={m} onOpen={() => setExpandedId(m.id)} />
-        ))}
+        {renderSlots(slots.slice(splitAt + 1))}
       </div>
     </article>
   )

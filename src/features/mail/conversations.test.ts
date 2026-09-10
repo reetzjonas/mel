@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailHeader } from '../../domain/email'
-import { buildConversations } from './conversations'
+import { buildConversations, foldThread } from './conversations'
 
 const INBOX = 'mb-inbox'
 const SENT = 'mb-sent'
@@ -170,5 +170,44 @@ describe('buildConversations', () => {
       filter: undefined,
     })
     expect(built.map((c) => c.threadId)).toEqual(['tb', 'ta'])
+  })
+})
+
+describe('foldThread', () => {
+  const indices = (slots: ReturnType<typeof foldThread>) =>
+    slots.map((s) => ('folded' in s ? `fold:${s.folded.join(',')}` : String(s.index)))
+
+  it('keeps the ends and the open message, folding the runs between', () => {
+    expect(indices(foldThread({ count: 10, expandedIndex: 4 }))).toEqual([
+      '0',
+      'fold:1,2,3',
+      '4',
+      'fold:5,6,7',
+      '8',
+      '9',
+    ])
+  })
+
+  it('leaves a short thread alone', () => {
+    // Nothing to gain: the fold would hide a single message behind a band.
+    expect(indices(foldThread({ count: 4, expandedIndex: 3 }))).toEqual(['0', '1', '2', '3'])
+  })
+
+  it('never folds away a message that just arrived', () => {
+    const slots = foldThread({ count: 10, expandedIndex: 0, arrived: new Set([3]) })
+    expect(indices(slots)).toEqual(['0', 'fold:1,2', '3', 'fold:4,5,6,7', '8', '9'])
+  })
+
+  it('shows everything once the band is expanded', () => {
+    const slots = foldThread({ count: 10, expandedIndex: 4, showAll: true })
+    expect(slots.every((s) => 'index' in s)).toBe(true)
+    expect(slots).toHaveLength(10)
+  })
+
+  it('always gives the open message a slot of its own to split on', () => {
+    for (const expandedIndex of [0, 5, 9]) {
+      const slots = foldThread({ count: 10, expandedIndex })
+      expect(slots.filter((s) => 'index' in s && s.index === expandedIndex)).toHaveLength(1)
+    }
   })
 })
