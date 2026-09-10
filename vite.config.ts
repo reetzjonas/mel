@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import basicSsl from '@vitejs/plugin-basic-ssl'
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -16,6 +17,11 @@ export default defineConfig(({ mode }) => {
       }),
       react(),
       tailwindcss(),
+      // Dev-only, opt-in: MEL_HTTPS=1 npm run dev -- --host
+      // A LAN IP (as opposed to localhost) is not a secure context, so
+      // crypto.subtle/randomUUID are missing and login throws. A self-signed
+      // cert makes the origin secure — browsers still warn once, click through.
+      env.MEL_HTTPS ? basicSsl() : undefined,
       VitePWA({
         strategies: 'injectManifest',
         srcDir: 'src',
