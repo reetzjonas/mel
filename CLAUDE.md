@@ -36,9 +36,54 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 103 Vitest + 42 Playwright (desktop + mobile; state-mutating specs are
+Tests: 133 Vitest + 44 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
+
+## Conversations (#37)
+
+The mail list groups messages into conversations by `threadId` — **a view
+preference** (Settings → Conversations, default on, localStorage
+`mel:conversations`, mirrored into `app/store.ts` so flipping it reaches the
+mounted list). Nothing new is synced: `threadId` was already an index column
+(`[accountId+threadId]`), and the dead `threads` table stays dead.
+
+A conversation **spans folders** (the user's call): the count and the
+participants include your own replies in Sent, so a row can say "4 messages"
+while only two of them are in the inbox. What the row *acts* on is narrower —
+`Conversation.ids` holds only the messages in the listed mailbox, so archiving
+an inbox row cannot reach into Sent. Unread/flagged aggregate over those same
+in-folder messages: an unread copy in Archive must not put a dot on a row that
+holds nothing you could read to clear it. Messages living **only** in trash or
+junk are left out entirely, unless that is the folder you are in.
+
+Three things that were not obvious:
+
+- **The thread index is two scans of the same index range**, `keys()` and
+  `primaryKeys()` over `[accountId+threadId]`. IndexedDB orders an index by key
+  and then by primary key, so position i describes one row in both arrays —
+  the same trick `readOrder()` already used, and it keeps grouping payload-free
+  and cheap on a large account. Pinned by `hooks.test.tsx` ("counts the
+  messages in other folders…"); if messages ever end up under the wrong thread,
+  suspect this pairing first.
+- **Exactly one message is expanded in the reading pane.** Not a design
+  preference: a body renders in a sandboxed iframe *without*
+  `allow-same-origin` (mail scripts must never reach our origin), so its
+  content height cannot be measured from the parent — stacked bodies would each
+  need a guessed height. The folded messages are one-line rows and the open one
+  takes what is left, with a `min-h-96` floor so a long thread scrolls instead
+  of squeezing the body to nothing.
+- **Archive and delete take the conversation, everything else takes the
+  message.** That holds in the reading pane, the list row *and* the `e`/`#`
+  shortcuts (`targetIds()` in `shortcuts.ts`) — a shortcut that archived half of
+  what the button archives would be worse than no shortcut. Flag, unread, reply
+  and not-spam stay on the one message they can sensibly mean.
+
+**Search results are never grouped**: a search answers with the messages that
+matched, not with the threads they sit in. The list row component takes one
+`RowItem` either way, so a message row and a conversation row cannot drift
+apart, and all row actions go through the `bulk*` services with a single id when
+there is only one.
 
 ## Login, setup and signing out
 

@@ -65,7 +65,8 @@ function MailboxView() {
   const accounts = useAccounts()
   const account = accounts?.[0]
   const accountId = account?.id
-  const mailbox = useMailboxEmails(accountId, mailboxId, filter)
+  const grouped = useUi((s) => s.conversationView)
+  const mailbox = useMailboxEmails(accountId, mailboxId, filter, grouped)
   const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
@@ -139,10 +140,16 @@ function MailboxView() {
   // a window that grows as you scroll. The mailbox list is filtered at the
   // index, so only search results need narrowing here.
   const list = useMemo(
-    () => (results ? results.headers.filter((h) => matchesFilter(h, filter)) : mailbox.emails),
-    [results, filter, mailbox.emails],
+    () =>
+      results
+        ? results.headers.filter((h) => matchesFilter(h, filter))
+        : (mailbox.conversations ?? mailbox.emails),
+    [results, filter, mailbox.conversations, mailbox.emails],
   )
   const loadMore = results ? undefined : mailbox.loadMore
+  // Search answers with messages, so its results are never grouped — the hits
+  // are what matched, not the threads they happen to sit in.
+  const searchResults = results ? results.headers.filter((h) => matchesFilter(h, filter)) : null
 
   return (
     <div className="flex h-full gap-0 sm:gap-3">
@@ -244,7 +251,11 @@ function MailboxView() {
             account && (
               <ThreadList
                 accountId={account.id}
-                emails={list}
+                {...(searchResults
+                  ? { emails: searchResults }
+                  : grouped
+                    ? { conversations: mailbox.conversations ?? [] }
+                    : { emails: mailbox.emails ?? [] })}
                 snippets={results?.snippets}
                 mailboxId={mailboxId}
                 selectedId={params.emailId}

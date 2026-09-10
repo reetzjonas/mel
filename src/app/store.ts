@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { EmailAddress } from '../domain/email'
 import type { OutgoingAttachment } from '../domain/identity'
+import { conversationView, setConversationView } from '../lib/conversationView'
 
 export interface ComposeInit {
   to?: EmailAddress[]
@@ -35,6 +36,13 @@ interface UiState {
    */
   folderDrawerOpen: boolean
   setFolderDrawerOpen: (open: boolean) => void
+  /*
+   * Whether the mail list groups messages into conversations. Persisted in
+   * localStorage, but mirrored here so flipping it in settings reaches the
+   * mounted mail list — the two are in different routes.
+   */
+  conversationView: boolean
+  setConversationView: (on: boolean) => void
   /** Bumped after unlocking encrypted accounts so live queries re-read. */
   unlockVersion: number
   bumpUnlock: () => void
@@ -47,7 +55,8 @@ interface UiState {
   selection: string[]
   /** Which mailbox the selection belongs to; leaving it clears the selection. */
   selectionMailboxId: string | null
-  toggleSelected: (mailboxId: string, id: string) => void
+  /** One id, or every message of a conversation row at once. */
+  toggleSelected: (mailboxId: string, ids: string | string[]) => void
   setSelection: (mailboxId: string, ids: string[]) => void
   clearSelection: () => void
 }
@@ -72,15 +81,27 @@ export const useUi = create<UiState>((set) => ({
   setHelpOpen: (helpOpen) => set({ helpOpen }),
   folderDrawerOpen: false,
   setFolderDrawerOpen: (folderDrawerOpen) => set({ folderDrawerOpen }),
+  conversationView: conversationView(),
+  setConversationView: (on) => {
+    setConversationView(on)
+    set({ conversationView: on })
+  },
   unlockVersion: 0,
   bumpUnlock: () => set((s) => ({ unlockVersion: s.unlockVersion + 1 })),
 
   selection: [],
   selectionMailboxId: null,
-  toggleSelected: (mailboxId, id) =>
+  toggleSelected: (mailboxId, ids) =>
     set((s) => {
+      const list = typeof ids === 'string' ? [ids] : ids
       const base = s.selectionMailboxId === mailboxId ? s.selection : []
-      const next = base.includes(id) ? base.filter((x) => x !== id) : [...base, id]
+      // A conversation row is one thing to click, so it selects and deselects
+      // as one: partially selected counts as not selected, and clicking it
+      // takes the whole row in rather than toggling each message apart.
+      const all = list.every((id) => base.includes(id))
+      const next = all
+        ? base.filter((id) => !list.includes(id))
+        : [...base, ...list.filter((id) => !base.includes(id))]
       return { selection: next, selectionMailboxId: next.length ? mailboxId : null }
     }),
   setSelection: (mailboxId, ids) =>

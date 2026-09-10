@@ -266,6 +266,24 @@ function EncryptionSetting({ accountId }: { accountId: string }) {
   )
 }
 
+function ConversationSetting() {
+  const { conversationView, setConversationView } = useUi()
+  return (
+    <div className="space-y-1">
+      <select
+        className={inputClass}
+        aria-label={t('settings.conversations')}
+        value={conversationView ? 'on' : 'off'}
+        onChange={(e) => setConversationView(e.target.value === 'on')}
+      >
+        <option value="on">{t('settings.conversations.on')}</option>
+        <option value="off">{t('settings.conversations.off')}</option>
+      </select>
+      <p className="text-xs text-ink-subtle">{t('settings.conversations.hint')}</p>
+    </div>
+  )
+}
+
 function ImageSetting() {
   const [policy, setPolicy] = useState<ImagePolicy>(() => imagePolicy())
   return (
@@ -336,6 +354,10 @@ function SettingsPage() {
             <option value="light">{t('settings.theme.light')}</option>
             <option value="dark">{t('settings.theme.dark')}</option>
           </select>
+        </Section>
+
+        <Section title={t('settings.conversations')}>
+          <ConversationSetting />
         </Section>
 
         <Section title={t('settings.privacy')}>

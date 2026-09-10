@@ -3,7 +3,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { useUi } from '../../app/store'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
-import { archiveEmail, deleteEmail, markRead, setKeyword } from '../../services/mailActions'
+import { bulkArchive, bulkDelete, markRead, setKeyword } from '../../services/mailActions'
 import { buildReply } from '../../services/send'
 import { db } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
@@ -17,6 +17,30 @@ interface Ctx {
 }
 
 const CHORD_MS = 600
+
+/**
+ * What archive and delete apply to: the whole conversation in the folder you
+ * are looking at, or the single message when conversations are off.
+ *
+ * The same rule the reading pane's buttons follow — a shortcut that quietly
+ * archived half of what the button archives would be worse than no shortcut.
+ * Index columns carry the mailboxes, so no payload is opened here.
+ */
+async function targetIds(
+  accountId: string,
+  emailId: string,
+  mailboxId: string | undefined,
+): Promise<string[]> {
+  if (!useUi.getState().conversationView || !mailboxId) return [emailId]
+  const row = await db.emails.get([accountId, emailId])
+  if (!row) return [emailId]
+  const rows = await db.emails
+    .where('[accountId+threadId]')
+    .equals([accountId, row.threadId])
+    .toArray()
+  const ids = rows.filter((r) => r.mailboxIds.includes(mailboxId)).map((r) => r.id)
+  return ids.length ? ids : [emailId]
+}
 
 export function useMailShortcuts(ctx: Ctx) {
   const navigate = useNavigate()
@@ -63,18 +87,31 @@ export function useMailShortcuts(ctx: Ctx) {
       if (!accountId || !emailId) return
       switch (e.key) {
         case 'e': {
-          const undo = await archiveEmail(accountId, emailId)
+          const undo = await bulkArchive(accountId, await targetIds(accountId, emailId, mailboxId))
           backToList()
-          if (undo)
-            ui.showSnackbar({ message: t('mail.archived'), actionLabel: t('mail.undo'), action: () => void undo() })
+          // null means no Archive mailbox could be created. Staying quiet here
+          // looks exactly like success while nothing has moved at all.
+          ui.showSnackbar(
+            undo
+              ? {
+                  message: t('mail.archived'),
+                  actionLabel: t('mail.undo'),
+                  action: () => void undo(),
+                }
+              : { message: t('mail.archiveFailed') },
+          )
           return
         }
         case '#': {
-          const undo = await deleteEmail(accountId, emailId)
+          const undo = await bulkDelete(accountId, await targetIds(accountId, emailId, mailboxId))
           backToList()
           ui.showSnackbar(
             undo
-              ? { message: t('mail.deleted'), actionLabel: t('mail.undo'), action: () => void undo() }
+              ? {
+                  message: t('mail.deleted'),
+                  actionLabel: t('mail.undo'),
+                  action: () => void undo(),
+                }
               : { message: t('mail.deleted') },
           )
           return

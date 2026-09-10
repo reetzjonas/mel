@@ -4,17 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { useUi } from '../../app/store'
 import type { EmailAddress, EmailHeader } from '../../domain/email'
+import type { Conversation } from './conversations'
 import { dateBucket, formatListDate, type DateBucket } from '../../lib/dates'
 import { t, type MsgKey } from '../../lib/i18n'
 import { cleanPreview } from '../../lib/preview'
 import { useMailboxes } from './hooks'
-import {
-  archiveEmail,
-  deleteEmail,
-  markNotSpam,
-  markRead,
-  setFlagged,
-} from '../../services/mailActions'
+import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
@@ -23,6 +18,49 @@ import { Tooltip } from '../../ui/Tooltip'
 function senderLabel(from: EmailAddress[]): string {
   if (!from.length) return t('mail.unknownSender')
   return from.map((a) => a.name || a.email.split('@')[0]).join(', ')
+}
+
+/**
+ * What a row stands for. A single message and a whole conversation differ only
+ * in how many messages they carry, so both render through one component rather
+ * than two that drift apart — `ids` is what the row's actions apply to, which
+ * for a conversation is its messages *in the listed mailbox* and never the
+ * copies elsewhere.
+ */
+interface RowItem {
+  /** The message shown: the only one, or the newest of the conversation. */
+  email: EmailHeader
+  ids: string[]
+  /** Messages in the conversation across folders; 1 for a lone message. */
+  count: number
+  people: EmailAddress[]
+  unread: boolean
+  flagged: boolean
+  hasAttachment: boolean
+}
+
+function messageItem(email: EmailHeader): RowItem {
+  return {
+    email,
+    ids: [email.id],
+    count: 1,
+    people: email.from,
+    unread: !email.keywords['$seen'],
+    flagged: Boolean(email.keywords['$flagged']),
+    hasAttachment: email.hasAttachment,
+  }
+}
+
+function conversationItem(conversation: Conversation): RowItem {
+  return {
+    email: conversation.latest,
+    ids: conversation.ids,
+    count: conversation.messages.length,
+    people: conversation.participants,
+    unread: conversation.unread,
+    flagged: conversation.flagged,
+    hasAttachment: conversation.hasAttachment,
+  }
 }
 
 const SWIPE_TRIGGER_PX = 90
@@ -86,7 +124,7 @@ function QuickAction({
 
 function Row({
   accountId,
-  email,
+  item,
   snippet,
   selected,
   checked,
@@ -95,7 +133,7 @@ function Row({
   onOpen,
 }: {
   accountId: string
-  email: EmailHeader
+  item: RowItem
   snippet?: { subject: string | null; preview: string | null }
   selected: boolean
   checked: boolean
@@ -104,13 +142,15 @@ function Row({
   onToggleSelect: () => void
   onOpen: () => void
 }) {
-  const unread = !email.keywords['$seen']
-  const flagged = Boolean(email.keywords['$flagged'])
+  const { email, ids, unread, flagged } = item
   const sender = email.from[0]
   const { showSnackbar } = useUi()
 
+  // Every action goes through the bulk variants, with a single id when the row
+  // is a single message: one code path, and a conversation costs one outbox
+  // action carrying its ids rather than one per message.
   const doArchive = () =>
-    void archiveEmail(accountId, email.id).then((undo) => {
+    void bulkArchive(accountId, ids).then((undo) => {
       // null means no Archive mailbox could be created — saying nothing looks
       // exactly like success and leaves the message sitting where it was.
       showSnackbar(
@@ -120,7 +160,7 @@ function Row({
       )
     })
   const doDelete = () =>
-    void deleteEmail(accountId, email.id).then((undo) => {
+    void bulkDelete(accountId, ids).then((undo) => {
       showSnackbar(
         undo
           ? { message: t('mail.deleted'), actionLabel: t('mail.undo'), action: () => void undo() }
@@ -186,20 +226,20 @@ function Row({
           <QuickAction
             icon={unread ? 'mail' : 'mailUnread'}
             label={unread ? t('mail.markRead') : t('mail.markUnread')}
-            onClick={() => void markRead(accountId, email.id, unread)}
+            onClick={() => void bulkSetKeyword(accountId, ids, '$seen', unread)}
           />
           <QuickAction
             icon="flag"
             label={flagged ? t('mail.unflag') : t('mail.flag')}
             active={flagged}
-            onClick={() => void setFlagged(accountId, email.id, !flagged)}
+            onClick={() => void bulkSetKeyword(accountId, ids, '$flagged', !flagged)}
           />
           {inJunk && (
             <QuickAction
               icon="inbox"
               label={t('mail.notSpam')}
               onClick={() =>
-                void markNotSpam(accountId, email.id).then((undo) =>
+                void bulkNotSpam(accountId, ids).then((undo) =>
                   showSnackbar(
                     undo
                       ? {
@@ -218,14 +258,26 @@ function Row({
         </span>
 
         <span className="flex items-baseline justify-between gap-3">
-          <span
-            className={`min-w-0 truncate text-[13px] ${unread ? 'font-semibold text-ink' : 'font-medium text-ink'}`}
-          >
-            {senderLabel(email.from)}
+          <span className="flex min-w-0 items-baseline gap-1.5">
+            <span
+              className={`min-w-0 truncate text-[13px] ${unread ? 'font-semibold text-ink' : 'font-medium text-ink'}`}
+            >
+              {senderLabel(item.people)}
+            </span>
+            {item.count > 1 && (
+              <span
+                // Spelled out for a screen reader: "3" on its own beside a
+                // list of names says nothing about what is being counted.
+                aria-label={`${item.count} ${t('mail.messagesCount')}`}
+                className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted"
+              >
+                {item.count}
+              </span>
+            )}
           </span>
           <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-subtle group-hover:lg:invisible">
             {flagged && <Icon name="flag" size={11} className="text-honey" />}
-            {email.hasAttachment && <Icon name="paperclip" size={11} />}
+            {item.hasAttachment && <Icon name="paperclip" size={11} />}
             {formatListDate(email.receivedAt)}
           </span>
         </span>
@@ -274,11 +326,10 @@ function DateHeader({ bucket }: { bucket: DateBucket }) {
   )
 }
 
-/** A date divider or a message, in list order — one array, so a header can
+/** A date divider or a row, in list order — one array, so a header can
  *  never disagree with the rows beneath it. */
 type ThreadItem =
-  | { type: 'header'; key: string; bucket: DateBucket }
-  | { type: 'email'; key: string; email: EmailHeader }
+  { type: 'header'; key: string; bucket: DateBucket } | { type: 'row'; key: string; item: RowItem }
 
 /**
  * Interleaves date dividers into the rows.
@@ -291,16 +342,16 @@ type ThreadItem =
  * Emails arrive newest-first from both the mailbox and search (both sort by
  * receivedAt desc), so each bucket appears at most once.
  */
-function withDateHeaders(emails: EmailHeader[]): ThreadItem[] {
+function withDateHeaders(rows: RowItem[]): ThreadItem[] {
   const items: ThreadItem[] = []
   let last: DateBucket | undefined
-  for (const email of emails) {
-    const bucket = dateBucket(email.receivedAt)
+  for (const item of rows) {
+    const bucket = dateBucket(item.email.receivedAt)
     if (bucket !== last) {
       items.push({ type: 'header', key: `bucket-${bucket}`, bucket })
       last = bucket
     }
-    items.push({ type: 'email', key: email.id, email })
+    items.push({ type: 'row', key: item.email.id, item })
   }
   return items
 }
@@ -324,13 +375,19 @@ function snippetHtml(s: string): string {
 export function ThreadList({
   accountId,
   emails,
+  conversations,
   snippets,
   mailboxId,
   selectedId,
   onEndReached,
 }: {
   accountId: string
-  emails: EmailHeader[]
+  /** One row per message. Ignored when `conversations` is given. */
+  emails?: EmailHeader[]
+  /** One row per conversation — what the mailbox list passes while grouping
+   *  is on. Search results stay per message either way: a search answers with
+   *  the messages that matched, not with the threads they sit in. */
+  conversations?: Conversation[]
   snippets?: Snippets
   mailboxId: string
   selectedId: string | undefined
@@ -349,7 +406,11 @@ export function ThreadList({
   )
   // Memoised for the same reason as the Set above: this walks every loaded row,
   // and the list re-renders on every selection change and every scroll frame.
-  const items = useMemo(() => withDateHeaders(emails), [emails])
+  const rows = useMemo(
+    () => (conversations ? conversations.map(conversationItem) : (emails ?? []).map(messageItem)),
+    [conversations, emails],
+  )
+  const items = useMemo(() => withDateHeaders(rows), [rows])
   const open = (id: string) =>
     void navigate({ to: '/mail/$mailboxId/$emailId', params: { mailboxId, emailId: id } })
 
@@ -358,19 +419,21 @@ export function ThreadList({
     function onKey(e: KeyboardEvent) {
       if (e.target instanceof HTMLElement && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return
       if (e.key !== 'j' && e.key !== 'k') return
-      const idx = selectedId ? emails.findIndex((m) => m.id === selectedId) : -1
-      const next = e.key === 'j' ? Math.min(idx + 1, emails.length - 1) : Math.max(idx - 1, 0)
+      // Over the rows as rendered: with conversations that is one step per
+      // conversation, not per message, so j/k matches what you see.
+      const idx = selectedId ? rows.findIndex((r) => r.email.id === selectedId) : -1
+      const next = e.key === 'j' ? Math.min(idx + 1, rows.length - 1) : Math.max(idx - 1, 0)
       // Stepping onto the last loaded row pulls in the next page, so keyboard
       // navigation doesn't stop at the window edge.
-      if (e.key === 'j' && next >= emails.length - 1) onEndReached?.()
-      const target = emails[next]
-      if (target && target.id !== selectedId) open(target.id)
+      if (e.key === 'j' && next >= rows.length - 1) onEndReached?.()
+      const target = rows[next]
+      if (target && target.email.id !== selectedId) open(target.email.id)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   })
 
-  if (!emails.length) {
+  if (!rows.length) {
     return <EmptyState icon="inbox" title={t('mail.noMessages')} hint={t('mail.noMessagesHint')} />
   }
 
@@ -387,13 +450,16 @@ export function ThreadList({
         ) : (
           <Row
             accountId={accountId}
-            email={item.email}
-            snippet={snippets?.[item.email.id]}
-            selected={item.email.id === selectedId}
-            checked={selected.has(item.email.id)}
-            inJunk={Boolean(junkId && item.email.mailboxIds[junkId])}
-            onToggleSelect={() => toggleSelected(mailboxId, item.email.id)}
-            onOpen={() => open(item.email.id)}
+            item={item.item}
+            snippet={snippets?.[item.item.email.id]}
+            // The row is the selected one when the message open in the reading
+            // pane is any of its own — a conversation stays highlighted while
+            // you step through the messages inside it.
+            selected={item.item.ids.includes(selectedId ?? '')}
+            checked={item.item.ids.some((id) => selected.has(id))}
+            inJunk={Boolean(junkId && item.item.email.mailboxIds[junkId])}
+            onToggleSelect={() => toggleSelected(mailboxId, item.item.ids)}
+            onOpen={() => open(item.item.email.id)}
           />
         )
       }

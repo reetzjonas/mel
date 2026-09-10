@@ -2,15 +2,16 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useEffect, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { EmailBody, EmailHeader } from '../../domain/email'
-import { formatFullDate } from '../../lib/dates'
+import { formatFullDate, formatListDate } from '../../lib/dates'
+import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
 import { imagePolicy } from '../../lib/imagePolicy'
-import { useMailboxes } from './hooks'
+import { useMailboxes, useThread } from './hooks'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
 import {
-  archiveEmail,
-  deleteEmail,
+  bulkArchive,
+  bulkDelete,
   markNotSpam,
   markRead,
   setFlagged,
@@ -138,24 +139,83 @@ async function downloadAttachment(accountId: string, blobId: string, type: strin
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
+/** One message of a conversation, folded away: enough to recognise it by. */
+function CollapsedMessage({ message, onOpen }: { message: EmailHeader; onOpen: () => void }) {
+  const sender = message.from[0]
+  const unread = !message.keywords['$seen']
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      aria-label={`${t('mail.showMessage')}: ${sender?.name || sender?.email || t('mail.unknownSender')}`}
+      className="flex w-full shrink-0 items-center gap-3 border-b border-line px-4 py-2 text-left transition-colors hover:bg-surface-2 lg:px-6"
+    >
+      <Avatar name={sender?.name ?? sender?.email ?? '?'} email={sender?.email ?? '?'} size={24} />
+      <span
+        className={`shrink-0 truncate text-[13px] ${unread ? 'font-semibold text-ink' : 'text-ink'}`}
+      >
+        {sender?.name || sender?.email || t('mail.unknownSender')}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-xs text-ink-subtle">
+        {cleanPreview(message.preview)}
+      </span>
+      <span className="shrink-0 text-[11px] text-ink-subtle">
+        {formatListDate(message.receivedAt)}
+      </span>
+    </button>
+  )
+}
+
 export function ReadingPane({
   accountId,
-  email,
+  email: focused,
   mailboxId,
   ownEmail,
 }: {
   accountId: string
+  /** The message the URL names — the one that starts out expanded. */
   email: EmailHeader
   mailboxId: string
   ownEmail: string
 }) {
+  const grouped = useUi((s) => s.conversationView)
+  // Only asked for while grouping is on, so the ungrouped pane costs no extra
+  // query at all.
+  const thread = useThread(accountId, grouped ? focused.threadId : undefined)
+  /*
+   * The whole conversation, oldest first — falling back to the routed message
+   * alone while the thread query is still in flight, so the pane never blanks
+   * out between messages.
+   */
+  const messages = grouped && thread?.length ? thread : [focused]
+  /*
+   * Exactly one message is open at a time.
+   *
+   * Not a design preference: a message body renders in a sandboxed iframe
+   * *without* allow-same-origin (mail scripts must not reach our origin), and
+   * that means its content height cannot be measured from here. Stacked bodies
+   * would each need a guessed height. One expanded message can simply take the
+   * space that is left.
+   */
+  const [expandedId, setExpandedId] = useState(focused.id)
+  // Adjusted during render rather than in an effect: opening another message
+  // from the list must not paint the previous one's body first.
+  const [routed, setRouted] = useState(focused.id)
+  if (routed !== focused.id) {
+    setRouted(focused.id)
+    setExpandedId(focused.id)
+  }
+  const expanded = messages.find((m) => m.id === expandedId) ?? focused
+  /** What a conversation-wide action applies to: this folder's messages. */
+  const threadIds = messages.filter((m) => m.mailboxIds[mailboxId]).map((m) => m.id)
+  const isThread = messages.length > 1
   const [body, setBody] = useState<EmailBody | null | 'loading'>('loading')
   // Releasing remote content is per message, never sticky: the next message is
   // a different sender with a different reason to want your IP.
   const [released, setReleased] = useState(false)
   const mailboxes = useMailboxes(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
-  const inJunk = Boolean(junkId && email.mailboxIds[junkId])
+  const inJunk = Boolean(junkId && expanded.mailboxIds[junkId])
   // Junk keeps blocking even when the account is set to always load: a message
   // the server already thinks is spam is the last one to hand a confirmed
   // address to. Only an explicit per-message release opens it.
@@ -171,24 +231,29 @@ export function ReadingPane({
     let alive = true
     setBody('loading')
     setReleased(false)
-    getEmailBody(accountId, email.id)
+    getEmailBody(accountId, expanded.id)
       .then((b) => alive && setBody(b))
       .catch(() => alive && setBody(null))
     return () => {
       alive = false
     }
-  }, [accountId, email.id])
+  }, [accountId, expanded.id])
 
   // Separate from the body fetch above so that a keyword change alone (e.g.
   // another tab marking it read first) can be picked up without refetching.
   useEffect(() => {
-    if (!email.keywords['$seen']) void markRead(accountId, email.id)
-  }, [accountId, email.id, email.keywords])
+    if (!expanded.keywords['$seen']) void markRead(accountId, expanded.id)
+  }, [accountId, expanded.id, expanded.keywords])
 
   const backToList = () => void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
 
+  // Archive and delete take the conversation with them when the pane is
+  // showing one — leaving the other half of an exchange behind in the folder
+  // is not what "archive" means to anyone reading it. Everything else (flag,
+  // unread, reply, not spam) stays on the message you have open, which is the
+  // only one those can sensibly mean.
   async function onArchive() {
-    const undo = await archiveEmail(accountId, email.id)
+    const undo = await bulkArchive(accountId, isThread ? threadIds : [expanded.id])
     backToList()
     // null means no Archive mailbox could be created. Staying silent here is
     // indistinguishable from success and leaves the message where it was.
@@ -200,7 +265,7 @@ export function ReadingPane({
   }
 
   async function onDelete() {
-    const undo = await deleteEmail(accountId, email.id)
+    const undo = await bulkDelete(accountId, isThread ? threadIds : [expanded.id])
     backToList()
     showSnackbar(
       undo
@@ -211,10 +276,10 @@ export function ReadingPane({
 
   const reply = (mode: 'reply' | 'replyAll' | 'forward') => {
     const b = body === 'loading' ? null : body
-    openCompose(buildReply(email, b, mode, ownEmail))
+    openCompose(buildReply(expanded, b, mode, ownEmail))
   }
 
-  const flagged = Boolean(email.keywords['$flagged'])
+  const flagged = Boolean(expanded.keywords['$flagged'])
   const isHtmlMail = body !== 'loading' && body !== null && Boolean(body.html)
   const doc =
     body !== 'loading' && body
@@ -222,7 +287,13 @@ export function ReadingPane({
         ? mailFrameDoc(body.html, allowRemote)
         : textFrameDoc(body.text ?? '', frameTheme)
       : null
-  const sender = email.from[0]
+  const sender = expanded.from[0]
+  // Senders, oldest first, each named once: the same shape the list row uses.
+  const participants = [
+    ...new Map(
+      messages.flatMap((m) => m.from.map((a) => [a.email.toLowerCase(), a.name || a.email])),
+    ).values(),
+  ].join(', ')
   const blocked =
     !allowRemote && body !== 'loading' && body?.html ? hasRemoteContent(body.html) : false
 
@@ -246,7 +317,7 @@ export function ReadingPane({
               label={t('mail.notSpam')}
               labelled
               onClick={() => {
-                void markNotSpam(accountId, email.id).then((undo) => {
+                void markNotSpam(accountId, expanded.id).then((undo) => {
                   backToList()
                   showSnackbar(
                     undo
@@ -263,13 +334,13 @@ export function ReadingPane({
           )}
           <ActionButton
             icon="archive"
-            label={t('mail.archive')}
+            label={isThread ? t('mail.archiveThread') : t('mail.archive')}
             labelled
             onClick={() => void onArchive()}
           />
           <ActionButton
             icon="trash"
-            label={t('mail.delete')}
+            label={isThread ? t('mail.deleteThread') : t('mail.delete')}
             labelled
             onClick={() => void onDelete()}
           />
@@ -282,13 +353,13 @@ export function ReadingPane({
             icon="flag"
             label={flagged ? t('mail.unflag') : t('mail.flag')}
             active={flagged}
-            onClick={() => void setFlagged(accountId, email.id, !flagged)}
+            onClick={() => void setFlagged(accountId, expanded.id, !flagged)}
           />
           <ActionButton
             icon="mailUnread"
             label={t('mail.markUnread')}
             onClick={() => {
-              void markRead(accountId, email.id, false)
+              void markRead(accountId, expanded.id, false)
               backToList()
             }}
           />
@@ -314,11 +385,26 @@ export function ReadingPane({
           />
         </span>
       </div>
-      <header className="px-4 pt-1 pb-4 lg:px-6">
-        <h2 className="mb-3 text-xl leading-snug font-semibold">
-          {email.subject || t('mail.noSubject')}
+      <header className="px-4 pt-1 pb-3 lg:px-6">
+        <h2 className="text-xl leading-snug font-semibold">
+          {expanded.subject || t('mail.noSubject')}
         </h2>
-        <div className="flex items-center gap-3">
+        {isThread && (
+          <p className="truncate text-xs text-ink-subtle">
+            {`${messages.length} ${t('mail.messagesCount')} · ${participants}`}
+          </p>
+        )}
+      </header>
+      {/*
+       * The conversation in order, with the open message taking whatever space
+       * the folded ones leave. Ordered oldest first, so the reply you are
+       * reading sits below what it answers.
+       */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-line">
+        {messages.slice(0, messages.indexOf(expanded)).map((m) => (
+          <CollapsedMessage key={m.id} message={m} onOpen={() => setExpandedId(m.id)} />
+        ))}
+        <div className="flex shrink-0 items-center gap-3 px-4 py-3 lg:px-6">
           {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
@@ -328,91 +414,102 @@ export function ReadingPane({
                 </span>
               </Tooltip>
               <span className="shrink-0 text-xs text-ink-subtle">
-                {formatFullDate(email.receivedAt)}
+                {formatFullDate(expanded.receivedAt)}
               </span>
             </div>
-            <AddressLine label={t('mail.to')} list={email.to} />
-            <AddressLine label={t('mail.cc')} list={email.cc} />
+            <AddressLine label={t('mail.to')} list={expanded.to} />
+            <AddressLine label={t('mail.cc')} list={expanded.cc} />
           </div>
         </div>
-      </header>
-      <div className="min-h-0 flex-1 border-t border-line">
-        {body === 'loading' && (
-          <div className="animate-fade space-y-3 p-5">
-            <Skeleton className="h-3 w-4/5" />
-            <Skeleton className="h-3 w-full" />
-            <Skeleton className="h-3 w-3/5" />
-          </div>
-        )}
-        {body === null && (
-          <div className="flex h-full items-center justify-center text-sm text-danger">
-            {t('mail.loadError')}
-          </div>
-        )}
-        {blocked && (
-          <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2 text-xs text-ink-muted">
-            <Icon name="offline" size={13} className="shrink-0" />
-            <span className="min-w-0 flex-1">{t('mail.imagesBlocked')}</span>
-            <button
-              type="button"
-              onClick={() => setReleased(true)}
-              className="shrink-0 font-medium text-accent hover:underline"
-            >
-              {t('mail.loadImages')}
-            </button>
-          </div>
-        )}
-        {doc && (
-          <iframe
-            title={t('mail.messageFrame')}
-            sandbox="allow-popups allow-popups-to-escape-sandbox"
-            srcDoc={doc}
-            className={`h-full w-full border-0 ${isHtmlMail ? 'bg-white' : 'bg-surface'}`}
-          />
-        )}
-      </div>
-      {body !== 'loading' && body && body.attachments.length > 0 && (
-        <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
-          {body.attachments.map((a, i) =>
-            a.blobId ? (
-              <span
-                key={i}
-                className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs transition-shadow hover:shadow-raised"
-              >
-                {/* No aria-label: the file name is the button's own text, and
-                    a label would replace it with the generic verb. */}
-                <Tooltip label={t('mail.openAttachment')}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      void openAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
-                    }
-                    className="flex items-center gap-1.5 py-1.5 pr-1.5 pl-3 transition-colors hover:text-accent"
-                  >
-                    <Icon name="paperclip" size={11} />
-                    {a.name ?? 'attachment'}
-                    <span className="text-ink-muted">
-                      ({Math.max(1, Math.round(a.size / 1024))} KB)
-                    </span>
-                  </button>
-                </Tooltip>
-                <Tooltip label={t('mail.downloadAttachment')}>
-                  <button
-                    type="button"
-                    aria-label={t('mail.downloadAttachment')}
-                    onClick={() =>
-                      void downloadAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
-                    }
-                    className="border-l border-line px-2 py-1 text-ink-muted hover:text-accent"
-                  >
-                    <Icon name="download" size={12} />
-                  </button>
-                </Tooltip>
-              </span>
-            ) : null,
+        {/* A floor under the open message: a long conversation is a stack of
+            folded rows, and without one they would squeeze the body it belongs
+            to down to nothing instead of letting the column scroll. */}
+        <div className="min-h-96 flex-1 border-t border-line">
+          {body === 'loading' && (
+            <div className="animate-fade space-y-3 p-5">
+              <Skeleton className="h-3 w-4/5" />
+              <Skeleton className="h-3 w-full" />
+              <Skeleton className="h-3 w-3/5" />
+            </div>
           )}
-        </footer>
-      )}
+          {body === null && (
+            <div className="flex h-full items-center justify-center text-sm text-danger">
+              {t('mail.loadError')}
+            </div>
+          )}
+          {blocked && (
+            <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2 text-xs text-ink-muted">
+              <Icon name="offline" size={13} className="shrink-0" />
+              <span className="min-w-0 flex-1">{t('mail.imagesBlocked')}</span>
+              <button
+                type="button"
+                onClick={() => setReleased(true)}
+                className="shrink-0 font-medium text-accent hover:underline"
+              >
+                {t('mail.loadImages')}
+              </button>
+            </div>
+          )}
+          {doc && (
+            <iframe
+              title={t('mail.messageFrame')}
+              sandbox="allow-popups allow-popups-to-escape-sandbox"
+              srcDoc={doc}
+              className={`h-full w-full border-0 ${isHtmlMail ? 'bg-white' : 'bg-surface'}`}
+            />
+          )}
+        </div>
+        {body !== 'loading' && body && body.attachments.length > 0 && (
+          <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
+            {body.attachments.map((a, i) =>
+              a.blobId ? (
+                <span
+                  key={i}
+                  className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs transition-shadow hover:shadow-raised"
+                >
+                  {/* No aria-label: the file name is the button's own text, and
+                    a label would replace it with the generic verb. */}
+                  <Tooltip label={t('mail.openAttachment')}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void openAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
+                      }
+                      className="flex items-center gap-1.5 py-1.5 pr-1.5 pl-3 transition-colors hover:text-accent"
+                    >
+                      <Icon name="paperclip" size={11} />
+                      {a.name ?? 'attachment'}
+                      <span className="text-ink-muted">
+                        ({Math.max(1, Math.round(a.size / 1024))} KB)
+                      </span>
+                    </button>
+                  </Tooltip>
+                  <Tooltip label={t('mail.downloadAttachment')}>
+                    <button
+                      type="button"
+                      aria-label={t('mail.downloadAttachment')}
+                      onClick={() =>
+                        void downloadAttachment(
+                          accountId,
+                          a.blobId!,
+                          a.type,
+                          a.name ?? 'attachment',
+                        )
+                      }
+                      className="border-l border-line px-2 py-1 text-ink-muted hover:text-accent"
+                    >
+                      <Icon name="download" size={12} />
+                    </button>
+                  </Tooltip>
+                </span>
+              ) : null,
+            )}
+          </footer>
+        )}
+        {messages.slice(messages.indexOf(expanded) + 1).map((m) => (
+          <CollapsedMessage key={m.id} message={m} onOpen={() => setExpandedId(m.id)} />
+        ))}
+      </div>
     </article>
   )
 }

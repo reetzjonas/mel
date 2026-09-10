@@ -44,6 +44,7 @@ export default defineConfig({
         '**/encryption.spec.ts',
         '**/offline.spec.ts',
         '**/folders-drafts.spec.ts',
+        '**/threads.spec.ts',
         '**/navigation.spec.ts',
         '**/compose.spec.ts',
       ],

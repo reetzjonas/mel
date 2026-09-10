@@ -173,7 +173,10 @@ describe('useMailboxEmails paging', () => {
     await db.emails.clear()
     await db.emails.bulkPut(
       Array.from({ length: MANY }, (_, i) =>
-        row(`m${String(i).padStart(3, '0')}`, new Date(Date.UTC(2024, 0, 1) + i * 60_000).toISOString()),
+        row(
+          `m${String(i).padStart(3, '0')}`,
+          new Date(Date.UTC(2024, 0, 1) + i * 60_000).toISOString(),
+        ),
       ),
     )
   })
@@ -250,5 +253,140 @@ describe('useMailboxEmails consistency', () => {
     })
 
     await waitFor(() => expect(ids(result.current)).toEqual(['stays']))
+  })
+})
+
+describe('useMailboxEmails grouped', () => {
+  const THREAD = 't-shared'
+
+  /** Like row(), but with an explicit thread and sender. */
+  function threadRow(
+    id: string,
+    iso: string,
+    mailboxIds = [MB],
+    threadId = THREAD,
+    sender = 'anna@example.com',
+  ): EmailRow {
+    const h = header(id, iso, mailboxIds)
+    h.threadId = threadId
+    h.from = [{ name: null, email: sender }]
+    return {
+      accountId: ACC,
+      id,
+      threadId,
+      mailboxIds,
+      receivedAt: Date.parse(iso),
+      unread: 1,
+      flagged: 0,
+      payload: sealPlain(h),
+    }
+  }
+
+  async function groupedView() {
+    const view = renderHook(() => useMailboxEmails(ACC, MB, undefined, true))
+    await waitFor(() => expect(view.result.current.conversations).toBeDefined())
+    return view
+  }
+
+  beforeEach(async () => {
+    vi.restoreAllMocks()
+    await db.emails.clear()
+    await db.mailboxes.clear()
+    await db.emails.bulkPut([
+      threadRow('in-1', '2026-01-01T10:00:00.000Z'),
+      // The reply we sent: another folder, same thread.
+      threadRow('out-1', '2026-01-01T11:00:00.000Z', [OTHER_MB], THREAD, 'me@example.com'),
+      threadRow('in-2', '2026-01-01T12:00:00.000Z'),
+      threadRow('lone', '2026-01-02T10:00:00.000Z', [MB], 't-lone'),
+    ])
+  })
+
+  it('collapses a thread into one row, newest thread first', async () => {
+    const { result } = await groupedView()
+    const rows = result.current.conversations ?? []
+
+    expect(rows.map((c) => c.threadId)).toEqual(['t-lone', THREAD])
+    expect(result.current.total).toBe(2)
+    expect(rows[1]?.latest.id).toBe('in-2')
+  })
+
+  it('counts the messages in other folders but acts only on this one', async () => {
+    const { result } = await groupedView()
+    const conversation = result.current.conversations?.find((c) => c.threadId === THREAD)
+
+    // The pairing of the two index scans behind this (index keys and primary
+    // keys of the same range) is the load-bearing assumption: get it wrong and
+    // messages end up attributed to the wrong thread.
+    expect(conversation?.messages.map((m) => m.id)).toEqual(['in-1', 'out-1', 'in-2'])
+    expect(conversation?.ids).toEqual(['in-1', 'in-2'])
+    expect(conversation?.participants.map((p) => p.email)).toEqual([
+      'anna@example.com',
+      'me@example.com',
+    ])
+  })
+
+  it('picks up a reply arriving in another folder', async () => {
+    const { result } = await groupedView()
+
+    await act(async () => {
+      await db.emails.put(
+        threadRow('out-2', '2026-01-01T13:00:00.000Z', [OTHER_MB], THREAD, 'me@example.com'),
+      )
+    })
+
+    await waitFor(() =>
+      expect(
+        result.current.conversations?.find((c) => c.threadId === THREAD)?.messages,
+      ).toHaveLength(4),
+    )
+    // Still standing on the newest message that is actually in this mailbox.
+    expect(result.current.conversations?.find((c) => c.threadId === THREAD)?.latest.id).toBe('in-2')
+  })
+
+  it('drops the row once its last message leaves the mailbox', async () => {
+    const { result } = await groupedView()
+
+    await act(async () => {
+      await db.emails.bulkPut([
+        threadRow('in-1', '2026-01-01T10:00:00.000Z', [OTHER_MB]),
+        threadRow('in-2', '2026-01-01T12:00:00.000Z', [OTHER_MB]),
+      ])
+    })
+
+    await waitFor(() =>
+      expect(result.current.conversations?.map((c) => c.threadId)).toEqual(['t-lone']),
+    )
+  })
+
+  it('leaves out messages that only live in trash', async () => {
+    await db.mailboxes.put({
+      accountId: ACC,
+      id: 'mb-trash',
+      parentId: null,
+      role: 'trash',
+      sortOrder: 0,
+      payload: sealPlain({
+        id: 'mb-trash',
+        name: 'Trash',
+        parentId: null,
+        role: 'trash',
+        sortOrder: 0,
+        totalEmails: 0,
+        unreadEmails: 0,
+        totalThreads: 0,
+        unreadThreads: 0,
+        mayRename: true,
+        mayDelete: true,
+        mayCreateChild: true,
+        mayAddItems: true,
+        mayRemoveItems: true,
+        mayReadItems: true,
+      }),
+    })
+    await db.emails.put(threadRow('binned', '2026-01-01T13:00:00.000Z', ['mb-trash']))
+
+    const { result } = await groupedView()
+    const conversation = result.current.conversations?.find((c) => c.threadId === THREAD)
+    expect(conversation?.messages.map((m) => m.id)).toEqual(['in-1', 'out-1', 'in-2'])
   })
 })

@@ -6,6 +6,7 @@ import type { Account } from '../../domain/account'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
+import { buildConversations, type Conversation } from './conversations'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
@@ -52,16 +53,21 @@ export function useMailboxes(accountId: string | undefined): Mailbox[] | undefin
 const PAGE = 100
 
 export interface MailboxList {
-  /** Materialised headers, newest first — only the loaded window. */
+  /** Materialised headers, newest first — only the loaded window. Undefined
+   *  while grouping is on; the list renders `conversations` instead. */
   emails: EmailHeader[] | undefined
-  /** How many messages the mailbox holds in total. */
+  /** Conversation rows, newest first — only while grouping is on. */
+  conversations: Conversation[] | undefined
+  /** How many rows the mailbox holds in total: messages, or threads when
+   *  grouped. */
   total: number
   /** Materialise the next page; no-op once everything is loaded. */
   loadMore: () => void
 }
 
 /**
- * The messages of one mailbox, newest first, loaded a page at a time.
+ * The messages of one mailbox, newest first, loaded a page at a time — either
+ * one row per message or one per conversation (`grouped`).
  *
  * Two things this avoids, both of which made a 36k-message folder painful:
  *
@@ -75,22 +81,32 @@ export interface MailboxList {
  *    touching one row — exactly what markRead() does when you open an unread
  *    message — re-read, re-decrypted and re-sorted everything. Updates now
  *    arrive through Dexie's table hooks, which name the row that changed.
+ *
+ * Grouping keeps both properties: the thread index is two more index-only
+ * scans, and only the threads in the window have their messages materialised.
  */
 export function useMailboxEmails(
   accountId: string | undefined,
   mailboxId: string | undefined,
   filter?: MailFilter,
+  grouped = false,
 ): MailboxList {
-  const [state, setState] = useState<{ emails: EmailHeader[] | undefined; total: number }>({
-    emails: undefined,
-    total: 0,
-  })
+  const [state, setState] = useState<{
+    emails: EmailHeader[] | undefined
+    conversations: Conversation[] | undefined
+    total: number
+  }>({ emails: undefined, conversations: undefined, total: 0 })
   const more = useRef<() => void>(() => {})
 
   useEffect(() => {
-    setState({ emails: undefined, total: 0 })
+    const empty = {
+      emails: grouped ? undefined : [],
+      conversations: grouped ? [] : undefined,
+      total: 0,
+    }
+    setState({ emails: undefined, conversations: undefined, total: 0 })
     if (!accountId || !mailboxId) {
-      setState({ emails: [], total: 0 })
+      setState(empty)
       return
     }
 
@@ -101,6 +117,16 @@ export function useMailboxEmails(
 
     /** Ids of the mailbox, newest first. Cheap: strings, no payloads. */
     let order: string[] = []
+    /** Thread ids of the mailbox, newest first — the row order when grouped. */
+    let threadOrder: string[] = []
+    /** threadId → every message of that thread, in any mailbox. */
+    let members = new Map<string, string[]>()
+    /** id → threadId, for the messages of this account. */
+    let threadOf = new Map<string, string>()
+    /** The threads currently rendered — what a changed row is checked against. */
+    let visibleThreads = new Set<string>()
+    /** Trash and junk, unless one of them is the mailbox being listed. */
+    let excluded = new Set<string>()
     /** Headers fetched so far, by id. */
     const cache = new Map<string, EmailHeader>()
     let windowSize = PAGE
@@ -130,8 +156,63 @@ export function useMailboxEmails(
         .filter((id) => members.has(id) && (!matches || matches.has(id)))
     }
 
+    /**
+     * Which messages belong to which thread, account-wide and index-only.
+     *
+     * Two scans of the same index range: `keys()` yields the index keys
+     * (`[accountId, threadId]`), `primaryKeys()` the primary keys of the very
+     * same rows. IndexedDB orders an index by key and then by primary key, so
+     * both cursors walk the rows in identical order and position i describes
+     * one row — the same trick the ordering above uses. No payload is read, so
+     * this stays cheap on a large account and works while sealed.
+     */
+    async function readThreadIndex() {
+      const range = () =>
+        db.emails.where('[accountId+threadId]').between([account, ''], [account, '\uffff'])
+      const [keys, primary] = await Promise.all([range().keys(), range().primaryKeys()])
+      const nextMembers = new Map<string, string[]>()
+      const nextThreadOf = new Map<string, string>()
+      for (let i = 0; i < primary.length; i++) {
+        const threadId = (keys[i] as [string, string] | undefined)?.[1]
+        const id = primary[i]?.[1]
+        if (threadId === undefined || id === undefined) continue
+        nextThreadOf.set(id, threadId)
+        const list = nextMembers.get(threadId)
+        if (list) list.push(id)
+        else nextMembers.set(threadId, [id])
+      }
+      return { members: nextMembers, threadOf: nextThreadOf }
+    }
+
+    /**
+     * Trash and junk. A conversation spans folders, but a message you deleted
+     * should not go on padding the row it was deleted from — unless trash or
+     * junk is the folder you are actually looking at.
+     */
+    async function readExcluded(): Promise<Set<string>> {
+      const [trash, junk] = await Promise.all([
+        db.mailboxes.where('[accountId+role]').equals([account, 'trash']).primaryKeys(),
+        db.mailboxes.where('[accountId+role]').equals([account, 'junk']).primaryKeys(),
+      ])
+      return new Set(
+        [...trash, ...junk]
+          .map((k) => k[1])
+          .filter((id): id is string => Boolean(id) && id !== mailbox),
+      )
+    }
+
+    /** The ids the current window needs materialised. */
+    function windowIds(): string[] {
+      if (!grouped) return order.slice(0, windowSize)
+      const ids: string[] = []
+      for (const threadId of threadOrder.slice(0, windowSize)) {
+        for (const id of members.get(threadId) ?? []) ids.push(id)
+      }
+      return ids
+    }
+
     async function materialise() {
-      const wanted = order.slice(0, windowSize).filter((id) => !cache.has(id))
+      const wanted = windowIds().filter((id) => !cache.has(id))
       if (wanted.length) {
         const rows = await db.emails.bulkGet(wanted.map((id) => [account, id] as AccountScopedKey))
         for (const row of rows) if (row) cache.set(row.id, openEnvelope(row.payload))
@@ -140,6 +221,23 @@ export function useMailboxEmails(
 
     function publish() {
       if (cancelled) return
+      if (grouped) {
+        const threadIds = threadOrder.slice(0, windowSize)
+        visibleThreads = new Set(threadIds)
+        setState({
+          emails: undefined,
+          conversations: buildConversations({
+            threadIds,
+            members,
+            headers: cache,
+            mailboxId: mailbox,
+            filter,
+            excludedMailboxIds: excluded,
+          }),
+          total: threadOrder.length,
+        })
+        return
+      }
       const emails: EmailHeader[] = []
       for (const id of order.slice(0, windowSize)) {
         const header = cache.get(id)
@@ -152,11 +250,25 @@ export function useMailboxEmails(
           emails.push(header)
         }
       }
-      setState({ emails, total: order.length })
+      setState({ emails, conversations: undefined, total: order.length })
     }
 
     async function refresh() {
       order = await readOrder()
+      if (grouped) {
+        const [index, hidden] = await Promise.all([readThreadIndex(), readExcluded()])
+        members = index.members
+        threadOf = index.threadOf
+        excluded = hidden
+        const seen = new Set<string>()
+        threadOrder = []
+        for (const id of order) {
+          const threadId = threadOf.get(id)
+          if (!threadId || seen.has(threadId)) continue
+          seen.add(threadId)
+          threadOrder.push(threadId)
+        }
+      }
       await materialise()
       publish()
     }
@@ -178,22 +290,42 @@ export function useMailboxEmails(
     }
 
     more.current = () => {
-      if (!ready || windowSize >= order.length) return
+      if (!ready || windowSize >= (grouped ? threadOrder.length : order.length)) return
       windowSize += PAGE
       void materialise().then(publish)
     }
 
     function applyRow(row: EmailRow) {
       if (row.accountId !== account) return
-      const known = cache.has(row.id)
-      const position = order.indexOf(row.id)
       // A filtered list is left by changing the flag too, not just the folder:
       // marking a message read under "unread only" has to drop it from the list
       // exactly the way moving it away would.
       const matches =
         filter === 'unread' ? row.unread === 1 : filter === 'flagged' ? row.flagged === 1 : true
       const belongs = row.mailboxIds.includes(mailbox) && matches
+      const known = cache.has(row.id)
 
+      if (grouped) {
+        // A change outside the rendered threads only matters if it puts a
+        // message into this mailbox — that is what can add or reorder a row.
+        if (!visibleThreads.has(row.threadId)) {
+          if (belongs) scheduleRefresh()
+          return
+        }
+        const before = cache.get(row.id)
+        const wasHere = before
+          ? Boolean(before.mailboxIds[mailbox]) && matchesFilter(before, filter)
+          : false
+        cache.set(row.id, openEnvelope(row.payload))
+        // A message joining or leaving the thread, or the mailbox, changes
+        // which rows exist and in what order; anything else (read, flagged) is
+        // a repaint of a row that stays put.
+        if (!known || wasHere !== belongs) scheduleRefresh()
+        else if (ready) publish()
+        return
+      }
+
+      const position = order.indexOf(row.id)
       // Membership or arrival changes the ordering, so it has to be re-derived
       // — index-only, and the cache keeps already-fetched headers.
       if (belongs !== (position !== -1)) {
@@ -222,7 +354,8 @@ export function useMailboxEmails(
     const onDeleting = (_key: AccountScopedKey, row: EmailRow) => {
       if (!row || row.accountId !== account) return
       cache.delete(row.id)
-      if (order.includes(row.id)) scheduleRefresh()
+      const listed = grouped ? visibleThreads.has(row.threadId) : order.includes(row.id)
+      if (listed) scheduleRefresh()
     }
 
     db.emails.hook('creating', onCreating)
@@ -239,9 +372,36 @@ export function useMailboxEmails(
       db.emails.hook('updating').unsubscribe(onUpdating)
       db.emails.hook('deleting').unsubscribe(onDeleting)
     }
-  }, [accountId, mailboxId, filter])
+  }, [accountId, mailboxId, filter, grouped])
 
-  return { emails: state.emails, total: state.total, loadMore: () => more.current() }
+  return {
+    emails: state.emails,
+    conversations: state.conversations,
+    total: state.total,
+    loadMore: () => more.current(),
+  }
+}
+
+/**
+ * Every message of one thread, oldest first — the reading pane's conversation.
+ *
+ * A `useLiveQuery` is fine here where it was not for the mailbox list: a thread
+ * is a handful of rows, and the pane has to notice a reply arriving.
+ */
+export function useThread(
+  accountId: string | undefined,
+  threadId: string | undefined,
+): EmailHeader[] | undefined {
+  return useLiveQuery(async () => {
+    if (!accountId || !threadId) return []
+    const rows = await db.emails
+      .where('[accountId+threadId]')
+      .equals([accountId, threadId])
+      .toArray()
+    return rows
+      .map((r) => openEnvelope(r.payload))
+      .sort((a, b) => (a.receivedAt < b.receivedAt ? -1 : a.receivedAt > b.receivedAt ? 1 : 0))
+  }, [accountId, threadId])
 }
 
 export function useEmail(
