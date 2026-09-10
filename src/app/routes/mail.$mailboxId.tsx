@@ -39,8 +39,16 @@ function FilterToggle({
         aria-pressed={active}
         aria-label={label}
         onClick={onClick}
+        /*
+         * Filled rather than washed when on: this is a persistent mode that
+         * changes what the whole list contains, and a tinted chip beside a grey
+         * one is far too close a call to read at this size. Same treatment the
+         * active app-switcher item uses.
+         */
         className={`shrink-0 rounded-control p-2 transition-colors ${
-          active ? 'bg-accent-wash text-accent' : 'bg-surface-2 text-ink-subtle hover:text-ink'
+          active
+            ? 'bg-accent text-accent-ink hover:bg-accent-hover'
+            : 'bg-surface-2 text-ink-subtle hover:text-ink'
         }`}
       >
         <Icon name={icon} size={14} />
