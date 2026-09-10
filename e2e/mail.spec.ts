@@ -20,6 +20,22 @@ test('login against Stalwart, browse inbox, read a mail', async ({ page }) => {
   await expect(frame.getByText('dies ist die erste Testmail')).toBeVisible()
 })
 
+test('the mail list groups rows under sticky date headings', async ({ page }) => {
+  await login(page)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+
+  // Which bucket the seeded mail falls into depends on how long ago the server
+  // was seeded, so assert on the grouping rather than on a particular label.
+  const headings = page.getByRole('heading', { name: /^(Today|Yesterday|This week|Older)$/ })
+  await expect(headings.first()).toBeVisible()
+
+  // The heading has to precede the rows it labels, which is the whole point of
+  // it — a header rendering below its group would still be "visible".
+  const firstHeadingBox = await headings.first().boundingBox()
+  const firstRowBox = await page.getByTestId('thread-subject').first().boundingBox()
+  expect(firstHeadingBox!.y).toBeLessThan(firstRowBox!.y)
+})
+
 test('attachments open in a new tab (preview) and download', async ({ page, context }) => {
   await login(page)
   await expect(page.getByText('Mit Anhang')).toBeVisible({ timeout: 15_000 })
@@ -34,10 +50,7 @@ test('attachments open in a new tab (preview) and download', async ({ page, cont
 
   // Explicit download button saves the file.
   const download = page.waitForEvent('download', { timeout: 10_000 })
-  await page
-    .locator('footer span', { hasText: 'daten.csv' })
-    .getByTitle('Download')
-    .click()
+  await page.locator('footer span', { hasText: 'daten.csv' }).getByTitle('Download').click()
   expect((await download).suggestedFilename()).toBe('daten.csv')
 })
 

@@ -4,8 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { useUi } from '../../app/store'
 import type { EmailAddress, EmailHeader } from '../../domain/email'
-import { formatListDate } from '../../lib/dates'
-import { t } from '../../lib/i18n'
+import { dateBucket, formatListDate, type DateBucket } from '../../lib/dates'
+import { t, type MsgKey } from '../../lib/i18n'
 import { cleanPreview } from '../../lib/preview'
 import { useMailboxes } from './hooks'
 import {
@@ -247,6 +247,61 @@ function Row({
   )
 }
 
+const BUCKET_LABEL: Record<DateBucket, MsgKey> = {
+  today: 'mail.dateToday',
+  yesterday: 'mail.dateYesterday',
+  thisWeek: 'mail.dateThisWeek',
+  older: 'mail.dateOlder',
+}
+
+function DateHeader({ bucket }: { bucket: DateBucket }) {
+  return (
+    <div className="flex items-center gap-2.5 px-3 pt-3 pb-1.5">
+      {/* A heading, not a separator: separators carry no text for a screen
+          reader, so the buckets would be unreachable and unnamed. */}
+      <span
+        role="heading"
+        aria-level={2}
+        className="text-[11px] font-semibold tracking-wider text-ink-muted uppercase"
+      >
+        {t(BUCKET_LABEL[bucket])}
+      </span>
+      <span className="h-px flex-1 bg-line-strong" />
+    </div>
+  )
+}
+
+/** A date divider or a message, in list order — one array, so a header can
+ *  never disagree with the rows beneath it. */
+type ThreadItem =
+  | { type: 'header'; key: string; bucket: DateBucket }
+  | { type: 'email'; key: string; email: EmailHeader }
+
+/**
+ * Interleaves date dividers into the rows.
+ *
+ * Deliberately one flat array rather than GroupedVirtuoso's `groupCounts` plus
+ * `data`: those are two sources of truth that have to stay in lockstep through
+ * every sync tick, and when they drift Virtuoso silently renders fewer rows
+ * than it was given — mail goes missing from the list with no error anywhere.
+ *
+ * Emails arrive newest-first from both the mailbox and search (both sort by
+ * receivedAt desc), so each bucket appears at most once.
+ */
+function withDateHeaders(emails: EmailHeader[]): ThreadItem[] {
+  const items: ThreadItem[] = []
+  let last: DateBucket | undefined
+  for (const email of emails) {
+    const bucket = dateBucket(email.receivedAt)
+    if (bucket !== last) {
+      items.push({ type: 'header', key: `bucket-${bucket}`, bucket })
+      last = bucket
+    }
+    items.push({ type: 'email', key: email.id, email })
+  }
+  return items
+}
+
 export type Snippets = Record<string, { subject: string | null; preview: string | null }>
 
 /**
@@ -289,6 +344,9 @@ export function ThreadList({
     () => new Set(selectionMailboxId === mailboxId ? selection : []),
     [selection, selectionMailboxId, mailboxId],
   )
+  // Memoised for the same reason as the Set above: this walks every loaded row,
+  // and the list re-renders on every selection change and every scroll frame.
+  const items = useMemo(() => withDateHeaders(emails), [emails])
   const open = (id: string) =>
     void navigate({ to: '/mail/$mailboxId/$emailId', params: { mailboxId, emailId: id } })
 
@@ -315,23 +373,27 @@ export function ThreadList({
 
   return (
     <Virtuoso
-      className="px-1.5 py-1.5"
-      data={emails}
+      className="px-1.5 pb-1.5"
+      data={items}
       endReached={onEndReached}
       increaseViewportBy={600}
-      computeItemKey={(_, e) => e.id}
-      itemContent={(_, email) => (
-        <Row
-          accountId={accountId}
-          email={email}
-          snippet={snippets?.[email.id]}
-          selected={email.id === selectedId}
-          checked={selected.has(email.id)}
-          inJunk={Boolean(junkId && email.mailboxIds[junkId])}
-          onToggleSelect={() => toggleSelected(mailboxId, email.id)}
-          onOpen={() => open(email.id)}
-        />
-      )}
+      computeItemKey={(_, item) => item.key}
+      itemContent={(_, item) =>
+        item.type === 'header' ? (
+          <DateHeader bucket={item.bucket} />
+        ) : (
+          <Row
+            accountId={accountId}
+            email={item.email}
+            snippet={snippets?.[item.email.id]}
+            selected={item.email.id === selectedId}
+            checked={selected.has(item.email.id)}
+            inJunk={Boolean(junkId && item.email.mailboxIds[junkId])}
+            onToggleSelect={() => toggleSelected(mailboxId, item.email.id)}
+            onOpen={() => open(item.email.id)}
+          />
+        )
+      }
     />
   )
 }

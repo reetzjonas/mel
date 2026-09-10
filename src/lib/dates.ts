@@ -1,4 +1,4 @@
-import { isThisYear, isToday } from 'date-fns'
+import { differenceInCalendarDays, isThisYear, isToday, isYesterday } from 'date-fns'
 import { currentLocale } from './i18n'
 
 const time = new Intl.DateTimeFormat(currentLocale, { hour: 'numeric', minute: '2-digit' })
@@ -18,6 +18,21 @@ export function formatListDate(value: number | string): string {
 
 export function formatFullDate(iso: string): string {
   return fullDate.format(new Date(iso))
+}
+
+export type DateBucket = 'today' | 'yesterday' | 'thisWeek' | 'older'
+
+/**
+ * Coarse bucket for grouping a date-sorted list. Returns a key rather than a
+ * label so callers compare identity, not display copy — reworded translations
+ * must not change where the group boundaries fall.
+ */
+export function dateBucket(value: number | string): DateBucket {
+  const d = new Date(value)
+  if (isToday(d)) return 'today'
+  if (isYesterday(d)) return 'yesterday'
+  if (differenceInCalendarDays(new Date(), d) < 7) return 'thisWeek'
+  return 'older'
 }
 
 const relative = new Intl.RelativeTimeFormat(currentLocale, { numeric: 'auto' })
