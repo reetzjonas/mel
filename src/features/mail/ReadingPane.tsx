@@ -39,16 +39,25 @@ function AddressLine({ label, list }: { label: string; list: EmailHeader['to'] }
   )
 }
 
+/**
+ * `labelled` spells the action out next to its icon once the toolbar is wide
+ * enough for it — a container query, not a viewport one: the pane's width comes
+ * from the three-column layout around it, so a wide window can still leave it
+ * narrow. Below that threshold, and for the toggles that stay bare (see the
+ * call sites), the tooltip and `aria-label` carry the name exactly as before.
+ */
 function ActionButton({
   icon,
   label,
   onClick,
   active,
+  labelled,
 }: {
   icon: IconName
   label: string
   onClick: () => void
   active?: boolean
+  labelled?: boolean
 }) {
   return (
     <Tooltip label={label}>
@@ -56,9 +65,14 @@ function ActionButton({
         type="button"
         aria-label={label}
         onClick={onClick}
-        className={`rounded-md p-2 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
+        className={`flex items-center gap-1.5 rounded-md p-2 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
       >
-        <Icon name={icon} size={16} />
+        <Icon name={icon} size={16} className="shrink-0" />
+        {labelled && (
+          <span className="hidden pr-0.5 text-[13px] leading-none font-medium @3xl:inline">
+            {label}
+          </span>
+        )}
       </button>
     </Tooltip>
   )
@@ -214,7 +228,7 @@ export function ReadingPane({
 
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
-      <div className="flex items-center gap-1 px-2 py-1.5">
+      <div className="@container flex items-center gap-1 px-2 py-1.5">
         <Tooltip label={t('mail.back')}>
           <Link
             to="/mail/$mailboxId"
@@ -230,6 +244,7 @@ export function ReadingPane({
             <ActionButton
               icon="inbox"
               label={t('mail.notSpam')}
+              labelled
               onClick={() => {
                 void markNotSpam(accountId, email.id).then((undo) => {
                   backToList()
@@ -246,8 +261,23 @@ export function ReadingPane({
               }}
             />
           )}
-          <ActionButton icon="archive" label={t('mail.archive')} onClick={() => void onArchive()} />
-          <ActionButton icon="trash" label={t('mail.delete')} onClick={() => void onDelete()} />
+          <ActionButton
+            icon="archive"
+            label={t('mail.archive')}
+            labelled
+            onClick={() => void onArchive()}
+          />
+          <ActionButton
+            icon="trash"
+            label={t('mail.delete')}
+            labelled
+            onClick={() => void onDelete()}
+          />
+          {/*
+           * Flag and mark-unread stay icon-only at every width: they are
+           * toggles whose state the icon already carries (the flag fills), and
+           * spelling both out is what tips the row into overflowing.
+           */}
           <ActionButton
             icon="flag"
             label={flagged ? t('mail.unflag') : t('mail.flag')}
@@ -264,13 +294,24 @@ export function ReadingPane({
           />
         </span>
         <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
-          <ActionButton icon="reply" label={t('mail.reply')} onClick={() => reply('reply')} />
+          <ActionButton
+            icon="reply"
+            label={t('mail.reply')}
+            labelled
+            onClick={() => reply('reply')}
+          />
           <ActionButton
             icon="replyAll"
             label={t('mail.replyAll')}
+            labelled
             onClick={() => reply('replyAll')}
           />
-          <ActionButton icon="forward" label={t('mail.forward')} onClick={() => reply('forward')} />
+          <ActionButton
+            icon="forward"
+            label={t('mail.forward')}
+            labelled
+            onClick={() => reply('forward')}
+          />
         </span>
       </div>
       <header className="px-4 pt-1 pb-4 lg:px-6">

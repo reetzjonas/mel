@@ -20,6 +20,36 @@ test('login against Stalwart, browse inbox, read a mail', async ({ page }) => {
   await expect(frame.getByText('dies ist die erste Testmail')).toBeVisible()
 })
 
+test('reading-pane actions spell themselves out when the pane is wide', async ({
+  page,
+  isMobile,
+}) => {
+  // Width here is the reading pane's, not the window's — the labels hang off a
+  // container query, so a wide window with the list and sidebar next to it can
+  // still be too narrow. A phone never has the room, so this is desktop-only.
+  test.skip(isMobile, 'the pane is never wide enough on a phone')
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await login(page)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+  await page.getByText('Willkommen bei mel').click()
+
+  const reply = page.getByRole('button', { name: 'Reply', exact: true })
+  await expect(reply).toBeVisible()
+  await expect(reply.getByText('Reply')).toBeVisible()
+
+  // The row must not overflow once every label is out — that is what keeps the
+  // reply group from being pushed off the edge.
+  const bar = page.locator('article > div').first()
+  const fits = await bar.evaluate((el) => el.scrollWidth <= el.clientWidth)
+  expect(fits).toBe(true)
+
+  // Narrower pane: icon-only again, while the accessible name stays put — the
+  // button is still found by the very same role and name.
+  await page.setViewportSize({ width: 1100, height: 900 })
+  await expect(reply).toBeVisible()
+  await expect(reply.getByText('Reply')).toBeHidden()
+})
+
 test('the mail list groups rows under sticky date headings', async ({ page }) => {
   await login(page)
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
