@@ -1,4 +1,9 @@
-# mel
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/logo-dark.png">
+    <img src="docs/media/logo-light.png" alt="mel" width="420">
+  </picture>
+</p>
 
 A JMAP webmail client — mail, calendar and contacts — that runs entirely in the
 browser. There is no backend of its own: the app talks to your JMAP server

@@ -7,6 +7,7 @@ import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
 import { db } from '../storage/db'
 import { Icon } from '../ui/Icon'
+import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { Snackbar } from '../ui/Snackbar'
@@ -87,8 +88,8 @@ export function AppShell() {
     <div className="flex h-full flex-col bg-canvas">
       <header className="glass sticky top-0 z-30 hidden h-13 shrink-0 items-center gap-5 px-4 sm:flex">
         <span className="flex items-center gap-2 text-[15px] font-semibold">
-          <span className="flex h-6.5 w-6.5 items-center justify-center rounded-lg bg-accent text-accent-ink shadow-raised">
-            <Icon name="mail" size={14} />
+          <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent text-accent-ink shadow-raised">
+            <Logo size={21} />
           </span>
           mel
         </span>
