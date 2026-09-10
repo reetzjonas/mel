@@ -7,6 +7,7 @@ import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/e
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
 import { buildConversations, isHidden, type Conversation } from './conversations'
+import { getThreadIndex } from './threadIndex'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
@@ -108,8 +109,9 @@ export interface MailboxList {
  *    message — re-read, re-decrypted and re-sorted everything. Updates now
  *    arrive through Dexie's table hooks, which name the row that changed.
  *
- * Grouping keeps both properties: the thread index is two more index-only
- * scans, and only the threads in the window have their messages materialised.
+ * Grouping keeps both properties: the account's thread index is read from the
+ * shared cache in threadIndex.ts (scanned once, then patched per changed row),
+ * and only the threads in the window have their messages materialised.
  */
 export function useMailboxEmails(
   accountId: string | undefined,
@@ -182,34 +184,6 @@ export function useMailboxEmails(
         .filter((id) => members.has(id) && (!matches || matches.has(id)))
     }
 
-    /**
-     * Which messages belong to which thread, account-wide and index-only.
-     *
-     * Two scans of the same index range: `keys()` yields the index keys
-     * (`[accountId, threadId]`), `primaryKeys()` the primary keys of the very
-     * same rows. IndexedDB orders an index by key and then by primary key, so
-     * both cursors walk the rows in identical order and position i describes
-     * one row — the same trick the ordering above uses. No payload is read, so
-     * this stays cheap on a large account and works while sealed.
-     */
-    async function readThreadIndex() {
-      const range = () =>
-        db.emails.where('[accountId+threadId]').between([account, ''], [account, '\uffff'])
-      const [keys, primary] = await Promise.all([range().keys(), range().primaryKeys()])
-      const nextMembers = new Map<string, string[]>()
-      const nextThreadOf = new Map<string, string>()
-      for (let i = 0; i < primary.length; i++) {
-        const threadId = (keys[i] as [string, string] | undefined)?.[1]
-        const id = primary[i]?.[1]
-        if (threadId === undefined || id === undefined) continue
-        nextThreadOf.set(id, threadId)
-        const list = nextMembers.get(threadId)
-        if (list) list.push(id)
-        else nextMembers.set(threadId, [id])
-      }
-      return { members: nextMembers, threadOf: nextThreadOf }
-    }
-
     /** The ids the current window needs materialised. */
     function windowIds(): string[] {
       if (!grouped) return order.slice(0, windowSize)
@@ -265,8 +239,12 @@ export function useMailboxEmails(
     async function refresh() {
       order = await readOrder()
       if (grouped) {
+        // The thread index spans the account, not the folder, so it is built
+        // once and kept current by table hooks — see threadIndex.ts. Rebuilding
+        // it here is what made opening any folder, even an empty one, cost
+        // seconds on a large account.
         const [index, hidden] = await Promise.all([
-          readThreadIndex(),
+          getThreadIndex(account),
           hiddenMailboxIds(account, mailbox),
         ])
         members = index.members
