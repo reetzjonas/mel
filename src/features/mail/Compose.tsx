@@ -14,6 +14,7 @@ import {
   stageAttachment,
 } from '../../services/send'
 import { Icon } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 import { primaryButtonClass } from '../../ui/styles'
 import { ComposeToolbar } from './ComposeToolbar'
 import { RecipientInput } from './RecipientInput'
@@ -226,15 +227,16 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
       <div className="animate-rise flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line">
         <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
           <span className="text-sm font-semibold">{t('compose.new')}</span>
-          <button
-            type="button"
-            onClick={closeCompose}
-            title={t('compose.discard')}
-            aria-label={t('compose.discard')}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Icon name="close" size={16} />
-          </button>
+          <Tooltip label={t('compose.discard')}>
+            <button
+              type="button"
+              onClick={closeCompose}
+              aria-label={t('compose.discard')}
+              className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Icon name="close" size={16} />
+            </button>
+          </Tooltip>
         </header>
 
         {/*
@@ -342,15 +344,16 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
                 >
                   <Icon name="paperclip" size={11} />
                   {a.name}
-                  <button
-                    type="button"
-                    title={t('compose.removeAttachment')}
-                    aria-label={`${t('compose.removeAttachment')}: ${a.name}`}
-                    className="text-ink-muted hover:text-danger"
-                    onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
-                  >
-                    <Icon name="close" size={11} />
-                  </button>
+                  <Tooltip label={t('compose.removeAttachment')}>
+                    <button
+                      type="button"
+                      aria-label={`${t('compose.removeAttachment')}: ${a.name}`}
+                      className="text-ink-muted hover:text-danger"
+                      onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
+                    >
+                      <Icon name="close" size={11} />
+                    </button>
+                  </Tooltip>
                 </span>
               ))}
             </div>
@@ -369,15 +372,16 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             <Icon name="send" size={14} />
             {t('compose.send')}
           </button>
-          <button
-            type="button"
-            title={t('compose.attach')}
-            aria-label={t('compose.attach')}
-            onClick={() => fileInput.current?.click()}
-            className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Icon name="paperclip" size={16} />
-          </button>
+          <Tooltip label={t('compose.attach')}>
+            <button
+              type="button"
+              aria-label={t('compose.attach')}
+              onClick={() => fileInput.current?.click()}
+              className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Icon name="paperclip" size={16} />
+            </button>
+          </Tooltip>
           <input
             ref={fileInput}
             type="file"

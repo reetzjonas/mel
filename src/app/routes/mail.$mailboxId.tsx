@@ -10,6 +10,7 @@ import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 import { ThreadListSkeleton } from '../../ui/Skeleton'
 
 export const Route = createFileRoute('/mail/$mailboxId')({
@@ -32,18 +33,19 @@ function FilterToggle({
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
-      aria-pressed={active}
-      aria-label={label}
-      title={active ? t('mail.filter.showAll') : label}
-      onClick={onClick}
-      className={`shrink-0 rounded-control p-2 transition-colors ${
-        active ? 'bg-accent-wash text-accent' : 'bg-surface-2 text-ink-subtle hover:text-ink'
-      }`}
-    >
-      <Icon name={icon} size={14} />
-    </button>
+    <Tooltip label={active ? t('mail.filter.showAll') : label}>
+      <button
+        type="button"
+        aria-pressed={active}
+        aria-label={label}
+        onClick={onClick}
+        className={`shrink-0 rounded-control p-2 transition-colors ${
+          active ? 'bg-accent-wash text-accent' : 'bg-surface-2 text-ink-subtle hover:text-ink'
+        }`}
+      >
+        <Icon name={icon} size={14} />
+      </button>
+    </Tooltip>
   )
 }
 
@@ -184,14 +186,16 @@ function MailboxView() {
                 }}
               />
               {q && (
-                <button
-                  type="button"
-                  title={t('mail.searchClear')}
-                  onClick={() => submitSearch('')}
-                  className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
-                >
-                  ✕
-                </button>
+                <Tooltip label={t('mail.searchClear')}>
+                  <button
+                    type="button"
+                    aria-label={t('mail.searchClear')}
+                    onClick={() => submitSearch('')}
+                    className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
+                  >
+                    ✕
+                  </button>
+                </Tooltip>
               )}
             </div>
             <FilterToggle

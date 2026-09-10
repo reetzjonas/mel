@@ -19,6 +19,7 @@ import { buildReply } from '../../services/send'
 import { connectionFor } from '../../sync/connections'
 import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 import { Skeleton } from '../../ui/Skeleton'
 
 function AddressLine({ label, list }: { label: string; list: EmailHeader['to'] }) {
@@ -27,10 +28,12 @@ function AddressLine({ label, list }: { label: string; list: EmailHeader['to'] }
     <div className="truncate text-xs text-ink-muted">
       <span className="font-medium">{label}:</span>{' '}
       {list.map((a, i) => (
-        <span key={i} title={a.email}>
-          {a.name || a.email}
-          {i < list.length - 1 ? ', ' : ''}
-        </span>
+        <Tooltip key={i} label={a.email}>
+          <span>
+            {a.name || a.email}
+            {i < list.length - 1 ? ', ' : ''}
+          </span>
+        </Tooltip>
       ))}
     </div>
   )
@@ -48,14 +51,16 @@ function ActionButton({
   active?: boolean
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      onClick={onClick}
-      className={`rounded-md p-2 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
-    >
-      <Icon name={icon} size={16} />
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className={`rounded-md p-2 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
+      >
+        <Icon name={icon} size={16} />
+      </button>
+    </Tooltip>
   )
 }
 
@@ -210,14 +215,16 @@ export function ReadingPane({
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
       <div className="flex items-center gap-1 px-2 py-1.5">
-        <Link
-          to="/mail/$mailboxId"
-          params={{ mailboxId }}
-          className="rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 lg:hidden"
-          title={t('mail.back')}
-        >
-          <Icon name="back" size={16} />
-        </Link>
+        <Tooltip label={t('mail.back')}>
+          <Link
+            to="/mail/$mailboxId"
+            params={{ mailboxId }}
+            className="rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 lg:hidden"
+            aria-label={t('mail.back')}
+          >
+            <Icon name="back" size={16} />
+          </Link>
+        </Tooltip>
         <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
           {inJunk && (
             <ActionButton
@@ -274,9 +281,11 @@ export function ReadingPane({
           {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-sm font-semibold" title={sender?.email}>
-                {sender?.name || sender?.email || t('mail.unknownSender')}
-              </span>
+              <Tooltip label={sender?.email ?? t('mail.unknownSender')}>
+                <span className="truncate text-sm font-semibold">
+                  {sender?.name || sender?.email || t('mail.unknownSender')}
+                </span>
+              </Tooltip>
               <span className="shrink-0 text-xs text-ink-subtle">
                 {formatFullDate(email.receivedAt)}
               </span>
@@ -329,30 +338,35 @@ export function ReadingPane({
                 key={i}
                 className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs transition-shadow hover:shadow-raised"
               >
-                <button
-                  type="button"
-                  title={t('mail.openAttachment')}
-                  onClick={() =>
-                    void openAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
-                  }
-                  className="flex items-center gap-1.5 py-1.5 pr-1.5 pl-3 transition-colors hover:text-accent"
-                >
-                  <Icon name="paperclip" size={11} />
-                  {a.name ?? 'attachment'}
-                  <span className="text-ink-muted">
-                    ({Math.max(1, Math.round(a.size / 1024))} KB)
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  title={t('mail.downloadAttachment')}
-                  onClick={() =>
-                    void downloadAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
-                  }
-                  className="border-l border-line px-2 py-1 text-ink-muted hover:text-accent"
-                >
-                  <Icon name="download" size={12} />
-                </button>
+                {/* No aria-label: the file name is the button's own text, and
+                    a label would replace it with the generic verb. */}
+                <Tooltip label={t('mail.openAttachment')}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void openAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
+                    }
+                    className="flex items-center gap-1.5 py-1.5 pr-1.5 pl-3 transition-colors hover:text-accent"
+                  >
+                    <Icon name="paperclip" size={11} />
+                    {a.name ?? 'attachment'}
+                    <span className="text-ink-muted">
+                      ({Math.max(1, Math.round(a.size / 1024))} KB)
+                    </span>
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('mail.downloadAttachment')}>
+                  <button
+                    type="button"
+                    aria-label={t('mail.downloadAttachment')}
+                    onClick={() =>
+                      void downloadAttachment(accountId, a.blobId!, a.type, a.name ?? 'attachment')
+                    }
+                    className="border-l border-line px-2 py-1 text-ink-muted hover:text-accent"
+                  >
+                    <Icon name="download" size={12} />
+                  </button>
+                </Tooltip>
               </span>
             ) : null,
           )}

@@ -12,6 +12,7 @@ import {
 } from '../../services/mailActions'
 import { connectionFor } from '../../sync/connections'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 
 /** Ceiling for "select everything in this folder"; anything beyond is reported, not hidden. */
 const SELECT_ALL_LIMIT = 50_000
@@ -28,16 +29,17 @@ function ToolbarButton({
   disabled?: boolean
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      disabled={disabled}
-      onClick={onClick}
-      className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40"
-    >
-      <Icon name={icon} size={15} />
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        disabled={disabled}
+        onClick={onClick}
+        className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+      >
+        <Icon name={icon} size={15} />
+      </button>
+    </Tooltip>
   )
 }
 
@@ -108,15 +110,16 @@ export function SelectionToolbar({
   return (
     <div className="px-2.5 pt-2.5 pb-1.5" data-testid="selection-toolbar">
       <div className="flex items-center gap-1">
-        <button
-          type="button"
-          title={t('bulk.clear')}
-          aria-label={t('bulk.clear')}
-          onClick={clearSelection}
-          className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          <Icon name="close" size={15} />
-        </button>
+        <Tooltip label={t('bulk.clear')}>
+          <button
+            type="button"
+            aria-label={t('bulk.clear')}
+            onClick={clearSelection}
+            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <Icon name="close" size={15} />
+          </button>
+        </Tooltip>
         <span className="text-[13px] font-medium whitespace-nowrap">
           {count} {t('bulk.selected')}
         </span>

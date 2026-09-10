@@ -1,6 +1,7 @@
 import type { Editor } from '@tiptap/react'
 import { t } from '../../lib/i18n'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 
 function ToolbarButton({
   icon,
@@ -16,22 +17,21 @@ function ToolbarButton({
   onClick: () => void
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      aria-pressed={active}
-      disabled={disabled}
-      onMouseDown={(e) => e.preventDefault()} // keep the editor selection while clicking
-      onClick={onClick}
-      className={`rounded-control p-1.5 transition-colors disabled:pointer-events-none disabled:opacity-40 ${
-        active
-          ? 'bg-accent-wash text-accent'
-          : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
-      }`}
-    >
-      <Icon name={icon} size={15} />
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        aria-pressed={active}
+        disabled={disabled}
+        onMouseDown={(e) => e.preventDefault()} // keep the editor selection while clicking
+        onClick={onClick}
+        className={`rounded-control p-1.5 transition-colors disabled:pointer-events-none disabled:opacity-40 ${
+          active ? 'bg-accent-wash text-accent' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
+        }`}
+      >
+        <Icon name={icon} size={15} />
+      </button>
+    </Tooltip>
   )
 }
 
@@ -113,7 +113,11 @@ export function ComposeToolbar({ editor }: { editor: Editor | null }) {
           onClick={() => editor.chain().focus().extendMarkRange('link').unsetLink().run()}
         />
       ) : (
-        <ToolbarButton icon="link" label={t('compose.link')} onClick={() => promptForLink(editor)} />
+        <ToolbarButton
+          icon="link"
+          label={t('compose.link')}
+          onClick={() => promptForLink(editor)}
+        />
       )}
     </div>
   )

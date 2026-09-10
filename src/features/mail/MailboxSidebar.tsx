@@ -14,6 +14,7 @@ import {
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { Tooltip } from '../../ui/Tooltip'
 import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
 import { mailboxTree, moveTargets } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
@@ -68,18 +69,20 @@ function FolderMenu({
 
   return (
     <span ref={ref} className="relative">
-      <button
-        type="button"
-        title={t('folder.menu')}
-        onClick={(e) => {
-          e.preventDefault()
-          e.stopPropagation()
-          setOpen((o) => !o)
-        }}
-        className="hidden h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-muted group-hover:inline-flex hover:bg-surface-2 hover:text-ink"
-      >
-        <Icon name="more" size={13} />
-      </button>
+      <Tooltip label={t('folder.menu')}>
+        <button
+          type="button"
+          aria-label={t('folder.menu')}
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            setOpen((o) => !o)
+          }}
+          className="hidden h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-muted group-hover:inline-flex hover:bg-surface-2 hover:text-ink"
+        >
+          <Icon name="more" size={13} />
+        </button>
+      </Tooltip>
       {open && (
         <span className="animate-rise absolute top-full right-0 z-20 mt-1 w-40 overflow-hidden rounded-control bg-raised py-1 shadow-overlay ring-1 ring-line">
           {items
@@ -220,29 +223,36 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           {t('compose.new')}
         </button>
         <div className="mb-1.5 flex items-center justify-between pr-1 pl-2.5">
-          <span
-            className="truncate text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase"
-            title={account.label}
-          >
-            {account.label}
-          </span>
+          <Tooltip label={account.label}>
+            <span className="truncate text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+              {account.label}
+            </span>
+          </Tooltip>
           <span className="flex items-center">
-            <button
-              type="button"
-              title={t('folder.new')}
-              onClick={() => setDialog({ kind: 'create', parentId: null })}
-              className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
-            >
-              <Icon name="folderPlus" size={14} />
-            </button>
-            <button
-              type="button"
-              title={t('mail.refresh')}
-              onClick={refresh}
-              className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
-            >
-              <Icon name="refresh" size={14} className={refreshing ? 'animate-spin' : undefined} />
-            </button>
+            <Tooltip label={t('folder.new')}>
+              <button
+                type="button"
+                aria-label={t('folder.new')}
+                onClick={() => setDialog({ kind: 'create', parentId: null })}
+                className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+              >
+                <Icon name="folderPlus" size={14} />
+              </button>
+            </Tooltip>
+            <Tooltip label={t('mail.refresh')}>
+              <button
+                type="button"
+                aria-label={t('mail.refresh')}
+                onClick={refresh}
+                className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+              >
+                <Icon
+                  name="refresh"
+                  size={14}
+                  className={refreshing ? 'animate-spin' : undefined}
+                />
+              </button>
+            </Tooltip>
           </span>
         </div>
         <div className="space-y-px">
@@ -251,6 +261,14 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
               key={m.id}
               to="/mail/$mailboxId"
               params={{ mailboxId: m.id }}
+              /*
+               * Spelled out rather than computed from the contents: the row
+               * holds an action button, and a labelled button folds its own
+               * name into the link's. The link would then be called something
+               * different while the pointer is over it, since that button only
+               * appears on hover.
+               */
+              aria-label={m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name}
               className="group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
               style={depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined}
             >

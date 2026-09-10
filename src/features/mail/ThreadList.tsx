@@ -18,6 +18,7 @@ import {
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 
 function senderLabel(from: EmailAddress[]): string {
   if (!from.length) return t('mail.unknownSender')
@@ -67,17 +68,19 @@ function QuickAction({
   active?: boolean
 }) {
   return (
-    <button
-      type="button"
-      title={label}
-      onClick={(e) => {
-        e.stopPropagation()
-        onClick()
-      }}
-      className={`rounded-md p-1.5 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
-    >
-      <Icon name={icon} size={14} />
-    </button>
+    <Tooltip label={label}>
+      <button
+        type="button"
+        aria-label={label}
+        onClick={(e) => {
+          e.stopPropagation()
+          onClick()
+        }}
+        className={`rounded-md p-1.5 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
+      >
+        <Icon name={icon} size={14} />
+      </button>
+    </Tooltip>
   )
 }
 

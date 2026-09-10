@@ -50,7 +50,10 @@ test('attachments open in a new tab (preview) and download', async ({ page, cont
 
   // Explicit download button saves the file.
   const download = page.waitForEvent('download', { timeout: 10_000 })
-  await page.locator('footer span', { hasText: 'daten.csv' }).getByTitle('Download').click()
+  await page
+    .locator('footer span', { hasText: 'daten.csv' })
+    .getByRole('button', { name: 'Download' })
+    .click()
   expect((await download).suggestedFilename()).toBe('daten.csv')
 })
 

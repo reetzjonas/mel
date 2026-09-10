@@ -18,7 +18,7 @@ test('create a contact, see details, use it in compose autocomplete', async ({ p
   await login(page)
   await page.getByRole('link', { name: 'Contacts' }).first().click()
 
-  await page.getByTitle('New contact').click()
+  await page.getByRole('button', { name: 'New contact' }).click()
   await page.getByLabel('First name').fill('Erika')
   await page.getByLabel('Last name').fill(surname)
   await page.locator('input[type="email"]').first().fill(email)
@@ -41,7 +41,7 @@ test('create a contact, see details, use it in compose autocomplete', async ({ p
   // Clean up — otherwise every run leaves another contact behind, and
   // suggestRecipients caps at 8 results, so old ones eventually crowd out
   // the one this test just created and looks for.
-  await page.getByTitle('Discard').click()
+  await page.getByRole('button', { name: 'Discard' }).click()
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
@@ -52,10 +52,13 @@ test('contact "send email" opens compose prefilled', async ({ page }) => {
   const surname = `SendMailTest${Date.now() % 100000}`
   await login(page)
   await page.getByRole('link', { name: 'Contacts' }).first().click()
-  await page.getByTitle('New contact').click()
+  await page.getByRole('button', { name: 'New contact' }).click()
   await page.getByLabel('First name').fill('Erika')
   await page.getByLabel('Last name').fill(surname)
-  await page.locator('input[type="email"]').first().fill(`erika.${surname.toLowerCase()}@example.org`)
+  await page
+    .locator('input[type="email"]')
+    .first()
+    .fill(`erika.${surname.toLowerCase()}@example.org`)
   await page.getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
 
@@ -63,7 +66,7 @@ test('contact "send email" opens compose prefilled', async ({ page }) => {
   await expect(page.getByPlaceholder('To', { exact: true })).not.toHaveValue('')
 
   // Clean up.
-  await page.getByTitle('Discard').click()
+  await page.getByRole('button', { name: 'Discard' }).click()
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()

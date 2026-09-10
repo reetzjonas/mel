@@ -191,12 +191,36 @@ test('an action that never reached the server is reported, not dropped quietly',
   })
 
   await rows.first().hover()
-  await rows.first().getByTitle('Flag', { exact: true }).click()
+  await rows.first().getByRole('button', { name: 'Flag', exact: true }).click()
 
   await expect(page.getByTestId('sync-status')).toContainText('could not be sent', {
     timeout: 30_000,
   })
   expect(warnings.some((w) => w.includes('failed permanently'))).toBe(true)
+})
+
+test('icon controls are labelled by the app tooltip, not the browser one', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  const control = page.getByRole('button', { name: 'New folder', exact: true })
+  // A leftover `title` would put the OS bubble back alongside this one, which
+  // is the whole thing being replaced.
+  await expect(control).not.toHaveAttribute('title')
+
+  // The short timeout is the point: the native tooltip takes about a second.
+  await control.hover()
+  const tip = page.getByTestId('tooltip')
+  await expect(tip).toHaveText('New folder', { timeout: 1000 })
+
+  // Moving away dismisses it rather than leaving it over the page.
+  await page.mouse.move(0, 0)
+  await expect(tip).toHaveCount(0)
 })
 
 test('controls show a pointer, disabled ones do not', async ({ page }) => {
@@ -212,7 +236,7 @@ test('controls show a pointer, disabled ones do not', async ({ page }) => {
   })
 
   for (const control of [
-    page.getByTitle('Theme'),
+    page.getByRole('button', { name: /^Theme:/ }),
     page.getByRole('button', { name: 'Sign out' }),
     page.getByRole('button', { name: 'New message' }),
   ]) {

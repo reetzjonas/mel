@@ -7,6 +7,7 @@ import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
 import { db } from '../storage/db'
 import { Icon } from '../ui/Icon'
+import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { Snackbar } from '../ui/Snackbar'
 import { useTheme } from './ThemeProvider'
@@ -35,32 +36,35 @@ function ThemeToggle() {
   const next = preference === 'dark' ? 'light' : preference === 'light' ? 'system' : 'dark'
   const icon = preference === 'dark' ? 'moon' : preference === 'light' ? 'sun' : 'monitor'
   return (
-    <button
-      type="button"
-      onClick={() => setPreference(next)}
-      title={`${t('theme.title')}: ${preference}`}
-      className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-    >
-      <Icon name={icon} />
-    </button>
+    <Tooltip label={`${t('theme.title')}: ${preference}`}>
+      <button
+        type="button"
+        onClick={() => setPreference(next)}
+        aria-label={`${t('theme.title')}: ${preference}`}
+        className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+      >
+        <Icon name={icon} />
+      </button>
+    </Tooltip>
   )
 }
 
 function SignOutButton({ accountId }: { accountId: string }) {
   const navigate = useNavigate()
   return (
-    <button
-      type="button"
-      title={t('settings.signOut')}
-      aria-label={t('settings.signOut')}
-      onClick={() => {
-        if (!confirm(t('settings.signOut.confirm'))) return
-        void signOut(accountId).then(() => navigate({ to: '/mail' }))
-      }}
-      className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-    >
-      <Icon name="signOut" />
-    </button>
+    <Tooltip label={t('settings.signOut')}>
+      <button
+        type="button"
+        aria-label={t('settings.signOut')}
+        onClick={() => {
+          if (!confirm(t('settings.signOut.confirm'))) return
+          void signOut(accountId).then(() => navigate({ to: '/mail' }))
+        }}
+        className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+      >
+        <Icon name="signOut" />
+      </button>
+    </Tooltip>
   )
 }
 
@@ -96,13 +100,15 @@ export function AppShell() {
         <div className="ml-auto flex items-center gap-1">
           <ThemeToggle />
           {account && <SignOutButton accountId={account.id} />}
-          <Link
-            to="/settings"
-            title={t('settings.title')}
-            className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink [&.active]:text-accent"
-          >
-            <Icon name="settings" />
-          </Link>
+          <Tooltip label={t('settings.title')}>
+            <Link
+              to="/settings"
+              aria-label={t('settings.title')}
+              className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink [&.active]:text-accent"
+            >
+              <Icon name="settings" />
+            </Link>
+          </Tooltip>
         </div>
       </header>
       <main className="min-h-0 flex-1">
@@ -113,9 +119,10 @@ export function AppShell() {
         {apps.map((a) => (
           <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
         ))}
+        {/* Bottom bar is touch-only, where a hover tooltip never appears. */}
         <Link
           to="/settings"
-          title={t('settings.title')}
+          aria-label={t('settings.title')}
           className="rounded-full px-3.5 py-1 text-ink-muted [&.active]:bg-accent [&.active]:text-accent-ink"
         >
           <Icon name="settings" size={18} />

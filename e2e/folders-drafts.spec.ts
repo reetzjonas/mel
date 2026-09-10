@@ -15,14 +15,14 @@ test('create, rename and delete a folder', async ({ page }) => {
   const name = `Folder-${Date.now() % 100000}`
   await login(page)
 
-  await page.getByTitle('New folder').click()
+  await page.getByRole('button', { name: 'New folder', exact: true }).click()
   await page.locator('form input').fill(name)
   await page.getByRole('button', { name: 'Create' }).click()
   const folder = page.getByRole('link', { name })
   await expect(folder).toBeVisible({ timeout: 10_000 })
 
   await folder.hover()
-  await folder.getByTitle('Folder actions').click()
+  await folder.getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Rename' }).click()
   await page.locator('form input').fill(`${name}-neu`)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -31,7 +31,7 @@ test('create, rename and delete a folder', async ({ page }) => {
 
   page.on('dialog', (d) => void d.accept())
   await renamed.hover()
-  await renamed.getByTitle('Folder actions').click()
+  await renamed.getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Delete folder' }).click()
   await expect(page.getByRole('link', { name: `${name}-neu` })).toHaveCount(0, {
     timeout: 10_000,
@@ -50,7 +50,7 @@ test('compose autosaves a draft into the Drafts folder', async ({ page }) => {
 
   await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
   // Close without sending; the draft stays on the server.
-  await page.getByTitle('Discard').click()
+  await page.getByRole('button', { name: 'Discard' }).click()
 
   await page.getByRole('link', { name: 'Drafts' }).click()
   await expect(page.getByText(subject)).toBeVisible({ timeout: 10_000 })
@@ -77,9 +77,8 @@ async function alsoFileInto(mailboxName: string): Promise<void> {
     return (await res.json()) as { methodResponses: Array<[string, Record<string, never>, string]> }
   }
 
-  const boxes = (
-    await call([['Mailbox/get', { accountId: 'c', ids: null }, 'c0']])
-  ).methodResponses[0]![1] as unknown as { list: Array<{ id: string; name: string }> }
+  const boxes = (await call([['Mailbox/get', { accountId: 'c', ids: null }, 'c0']]))
+    .methodResponses[0]![1] as unknown as { list: Array<{ id: string; name: string }> }
   const target = boxes.list.find((b) => b.name === mailboxName)!
   const inbox = boxes.list.find((b) => b.name === 'Inbox')!
 
@@ -89,7 +88,11 @@ async function alsoFileInto(mailboxName: string): Promise<void> {
     ])
   ).methodResponses[0]![1] as unknown as { ids: string[] }
   await call([
-    ['Email/set', { accountId: 'c', update: { [q.ids[0]!]: { [`mailboxIds/${target.id}`]: true } } }, 'c0'],
+    [
+      'Email/set',
+      { accountId: 'c', update: { [q.ids[0]!]: { [`mailboxIds/${target.id}`]: true } } },
+      'c0',
+    ],
   ])
 }
 
@@ -100,7 +103,7 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
 
   await login(page)
 
-  await page.getByTitle('New folder').click()
+  await page.getByRole('button', { name: 'New folder', exact: true }).click()
   await page.locator('form input').fill(parent)
   await page.getByRole('button', { name: 'Create' }).click()
   // Not `exact`: a folder row's accessible name gains the unread counter as
@@ -114,7 +117,7 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
   // A subfolder alone already makes the server refuse the delete
   // (mailboxHasChild), and mail inside refuses again (mailboxHasEmail).
   await parentRow.hover()
-  await parentRow.getByTitle('Folder actions').click()
+  await parentRow.getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'New subfolder' }).click()
   await page.locator('form input').fill(child)
   await page.getByRole('button', { name: 'Create' }).click()
@@ -131,7 +134,7 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
     void d.accept()
   })
   await parentRow.hover()
-  await parentRow.getByTitle('Folder actions').click()
+  await parentRow.getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Delete folder' }).click()
 
   await expect(folderRow(parent)).toHaveCount(0, { timeout: 15_000 })
@@ -150,7 +153,7 @@ test('move a folder under another one, and back to the top level', async ({ page
 
   await login(page)
   for (const name of [outer, inner]) {
-    await page.getByTitle('New folder').click()
+    await page.getByRole('button', { name: 'New folder', exact: true }).click()
     await page.locator('form input').fill(name)
     await page.getByRole('button', { name: 'Create' }).click()
     await expect(page.getByRole('link', { name: new RegExp(`^${name}( \\d+)?$`) })).toBeVisible({
@@ -165,7 +168,7 @@ test('move a folder under another one, and back to the top level', async ({ page
   const flat = await indentOf(inner)
 
   await row(inner).hover()
-  await row(inner).getByTitle('Folder actions').click()
+  await row(inner).getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Move to…' }).click()
   // Not itself, and not a role folder: Inbox and friends mean something to the
   // server and to other clients, so user folders do not get nested inside them.
@@ -179,7 +182,7 @@ test('move a folder under another one, and back to the top level', async ({ page
   await expect.poll(() => indentOf(inner), { timeout: 15_000 }).toBeGreaterThan(flat)
 
   await row(inner).hover()
-  await row(inner).getByTitle('Folder actions').click()
+  await row(inner).getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Move to…' }).click()
   await page.getByRole('button', { name: 'Top level' }).click()
   await expect.poll(() => indentOf(inner), { timeout: 15_000 }).toBe(flat)
@@ -188,7 +191,7 @@ test('move a folder under another one, and back to the top level', async ({ page
   for (const name of [inner, outer]) {
     page.once('dialog', (d) => void d.accept())
     await row(name).hover()
-    await row(name).getByTitle('Folder actions').click()
+    await row(name).getByRole('button', { name: 'Folder actions' }).click()
     await page.getByRole('button', { name: 'Delete folder' }).click()
     await expect(row(name)).toHaveCount(0, { timeout: 15_000 })
   }

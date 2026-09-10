@@ -8,6 +8,7 @@ import { db } from '../../storage/db'
 import { isSubscribed } from '../../services/webPush'
 import { getSyncStatus, subscribeSyncStatus, type SyncMode } from '../../sync/scheduler'
 import { Icon, type IconName } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 
 function useSyncStatus(accountId: string) {
   return useSyncExternalStore(
@@ -129,9 +130,7 @@ export function SyncStatus({ account }: { account: Account }) {
   let detailTone = ''
   if (outbox.failed > 0) {
     detail =
-      outbox.failed === 1
-        ? t('sync.failed.one')
-        : `${outbox.failed} ${t('sync.failed.many')}`
+      outbox.failed === 1 ? t('sync.failed.one') : `${outbox.failed} ${t('sync.failed.many')}`
     detailTone = 'text-danger'
   } else if (queued > 0) {
     detail = queued === 1 ? t('sync.queued.one') : `${queued} ${t('sync.queued.many')}`
@@ -152,12 +151,11 @@ export function SyncStatus({ account }: { account: Account }) {
 
   // Links into the capability list: this bar is where people look first when
   // something seems off, and "why is the calendar missing" is answered there.
-  return (
+  const bar = (
     <Link
       to="/settings"
       className="block shrink-0 border-t border-line px-3 py-2 text-[11px] text-ink-subtle transition-colors hover:bg-surface-2"
       data-testid="sync-status"
-      title={tooltip || undefined}
     >
       <span className="flex items-center gap-1.5">
         <Icon
@@ -174,4 +172,6 @@ export function SyncStatus({ account }: { account: Account }) {
       </span>
     </Link>
   )
+
+  return tooltip ? <Tooltip label={tooltip}>{bar}</Tooltip> : bar
 }

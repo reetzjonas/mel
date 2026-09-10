@@ -163,8 +163,7 @@ function CalendarApp() {
 
   const eventById = new Map((events ?? []).map((e) => [e.id, e]))
   const eventColor = (e: CalendarEvent) => colorFor(calendars ?? [], Object.keys(e.calendarIds)[0])
-  const defaultCalendarId =
-    calendars?.find((c) => c.isDefault)?.id ?? calendars?.[0]?.id ?? null
+  const defaultCalendarId = calendars?.find((c) => c.isDefault)?.id ?? calendars?.[0]?.id ?? null
 
   function openNew(day: Date, minutes?: number) {
     if (!defaultCalendarId) return
@@ -179,7 +178,10 @@ function CalendarApp() {
         title: '',
         description: '',
         location: '',
-        start: minutes === undefined ? `${dayKey(day)}T10:00:00` : `${dayKey(start)}T${start.toTimeString().slice(0, 8)}`,
+        start:
+          minutes === undefined
+            ? `${dayKey(day)}T10:00:00`
+            : `${dayKey(start)}T${start.toTimeString().slice(0, 8)}`,
         timeZone: VIEWER_ZONE,
         duration: 'PT1H',
         showWithoutTime: false,
@@ -224,7 +226,9 @@ function CalendarApp() {
   }
 
   const today = dayKey(new Date())
-  const weekdays = monthGrid(anchor).slice(0, 7).map((d) => weekdayFmt.format(d))
+  const weekdays = monthGrid(anchor)
+    .slice(0, 7)
+    .map((d) => weekdayFmt.format(d))
 
   const heading =
     view === 'month'
@@ -307,6 +311,8 @@ function CalendarApp() {
           {/* Without a calendar there is nothing to create an event in, and
               openNew() would return silently — a button that does nothing when
               pressed. Disabled until the calendar list has actually arrived. */}
+          {/* Stays a native title rather than <Tooltip>: a disabled control
+              fires no mouse events, so nothing would ever open the bubble. */}
           <button
             type="button"
             disabled={!defaultCalendarId}

@@ -53,7 +53,7 @@ test('offline: cached mail readable, queued flag syncs on reconnect', async ({ p
   const frame = page.frameLocator('iframe[title="Message content"]')
   await expect(frame.getByText('dies ist die erste Testmail')).toBeVisible()
   if ((await serverKeywords(page, SUBJECT)).includes('$flagged')) {
-    await page.getByRole('article').getByTitle('Remove flag').click()
+    await page.getByRole('article').getByRole('button', { name: 'Remove flag' }).click()
     await expect
       .poll(() => serverKeywords(page, SUBJECT), { timeout: 15_000 })
       .not.toContain('$flagged')
@@ -71,12 +71,10 @@ test('offline: cached mail readable, queued flag syncs on reconnect', async ({ p
   await expect(frame.getByText('dies ist die erste Testmail')).toBeVisible()
 
   // Flag it while offline — optimistic UI, action queued in the outbox.
-  await page.getByRole('article').getByTitle('Flag', { exact: true }).click()
+  await page.getByRole('article').getByRole('button', { name: 'Flag', exact: true }).click()
 
   await context.setOffline(false)
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
 
-  await expect
-    .poll(() => serverKeywords(page, SUBJECT), { timeout: 20_000 })
-    .toContain('$flagged')
+  await expect.poll(() => serverKeywords(page, SUBJECT), { timeout: 20_000 }).toContain('$flagged')
 })

@@ -8,6 +8,7 @@ import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { Tooltip } from '../../ui/Tooltip'
 
 export const Route = createFileRoute('/contacts')({
   component: ContactsLayout,
@@ -62,14 +63,16 @@ function ContactsLayout() {
               onChange={(e) => setFilter(e.target.value)}
             />
           </div>
-          <button
-            type="button"
-            title={t('contacts.new')}
-            onClick={() => void navigate({ to: '/contacts/new' })}
-            className="rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95"
-          >
-            <Icon name="compose" size={15} />
-          </button>
+          <Tooltip label={t('contacts.new')}>
+            <button
+              type="button"
+              aria-label={t('contacts.new')}
+              onClick={() => void navigate({ to: '/contacts/new' })}
+              className="rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95"
+            >
+              <Icon name="compose" size={15} />
+            </button>
+          </Tooltip>
         </div>
         <div className="min-h-0 flex-1">
           {filtered === undefined ? null : filtered.length === 0 ? (

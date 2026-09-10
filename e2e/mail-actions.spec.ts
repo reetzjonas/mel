@@ -20,7 +20,7 @@ test('archive a mail and undo it', async ({ page }) => {
   const subject = (await firstRow.getByTestId('thread-subject').innerText()).trim()
 
   await firstRow.click()
-  await page.getByRole('article').getByTitle('Archive').click()
+  await page.getByRole('article').getByRole('button', { name: 'Archive', exact: true }).click()
 
   // The first archive on a fresh server also has to create the Archive mailbox,
   // which Stalwart does not provision — more than the default 5s allows for on
@@ -73,10 +73,10 @@ test('filter the folder to flagged only, in the URL and across a reload', async 
   // Idempotent: a previous failed run may have left the flag set, and the
   // shared account carries that over.
   await target.hover()
-  const flag = target.getByTitle('Flag', { exact: true })
+  const flag = target.getByRole('button', { name: 'Flag', exact: true })
   if (await flag.isVisible()) await flag.click()
   await target.hover()
-  await expect(target.getByTitle('Remove flag')).toBeVisible()
+  await expect(target.getByRole('button', { name: 'Remove flag' })).toBeVisible()
 
   const flaggedOnly = page.getByRole('button', { name: 'Flagged only' })
   await flaggedOnly.click()
@@ -96,7 +96,7 @@ test('filter the folder to flagged only, in the URL and across a reload', async 
   // Clearing the flag has to drop the row from a flagged-only list the same way
   // moving it to another folder would — this is also the cleanup.
   await rowFor('HTML-Test').hover()
-  await rowFor('HTML-Test').getByTitle('Remove flag').click()
+  await rowFor('HTML-Test').getByRole('button', { name: 'Remove flag' }).click()
   await expect(page.getByText('HTML-Test')).toBeHidden({ timeout: 10_000 })
 
   // Toggling the filter off restores the whole folder and the clean URL.
@@ -114,17 +114,17 @@ test('quick actions on list rows: flag and mark unread without opening', async (
   await expect(row).toBeVisible({ timeout: 15_000 })
 
   await row.hover()
-  await row.getByTitle('Flag', { exact: true }).click()
+  await row.getByRole('button', { name: 'Flag', exact: true }).click()
   await row.hover()
-  await expect(row.getByTitle('Remove flag')).toBeVisible()
-  await row.getByTitle('Remove flag').click()
+  await expect(row.getByRole('button', { name: 'Remove flag' })).toBeVisible()
+  await row.getByRole('button', { name: 'Remove flag' }).click()
   await row.hover()
-  await expect(row.getByTitle('Flag', { exact: true })).toBeVisible()
+  await expect(row.getByRole('button', { name: 'Flag', exact: true })).toBeVisible()
 
   // Mark read/unread toggle from the list.
   await row.hover()
-  const markUnread = row.getByTitle('Mark unread')
-  const markRead = row.getByTitle('Mark read')
+  const markUnread = row.getByRole('button', { name: 'Mark unread' })
+  const markRead = row.getByRole('button', { name: 'Mark read' })
   if (await markUnread.isVisible()) {
     await markUnread.click()
     await row.hover()
@@ -291,10 +291,10 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
 
   // Reachable three ways: reading pane, row hover, and the bulk toolbar.
   // Scoped, because all three are on screen at once and share the label.
-  await expect(page.getByRole('article').getByTitle('Not spam')).toBeVisible()
+  await expect(page.getByRole('article').getByRole('button', { name: 'Not spam' })).toBeVisible()
   await page.getByRole('link', { name: /^Junk Mail( \d+)?$/ }).click()
   await row.hover()
-  await expect(row.getByTitle('Not spam')).toBeVisible()
+  await expect(row.getByRole('button', { name: 'Not spam' })).toBeVisible()
   await row.getByRole('checkbox').click()
   const toolbar = page.getByTestId('selection-toolbar')
   await expect(toolbar.getByLabel('Not spam')).toBeVisible()
@@ -307,7 +307,7 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
   await expect(row).toBeVisible({ timeout: 15_000 })
   // Nothing to un-junk here, so the shortcut must not clutter the row.
   await row.hover()
-  await expect(row.getByTitle('Not spam')).toHaveCount(0)
+  await expect(row.getByRole('button', { name: 'Not spam' })).toHaveCount(0)
   await page.waitForTimeout(2000)
   await page.evaluate(() => localStorage.removeItem('mel:images'))
 })
