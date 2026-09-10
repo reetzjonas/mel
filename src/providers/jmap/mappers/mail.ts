@@ -71,10 +71,27 @@ function partText(e: JmapEmail, parts: JmapEmailBodyPart[] | undefined): string 
   return chunks.length ? chunks.join('\n') : null
 }
 
+/**
+ * Per RFC 8621 §4.1.4, a message with no real HTML part still gets a
+ * `htmlBody` — the server is allowed to point it at the same plain-text part
+ * as `textBody` rather than leave it empty. Stalwart does exactly that, so
+ * `htmlBody` alone cannot tell "real HTML" from "plain text mirrored in both
+ * lists" apart; only the part's own `type` can. Without this check every
+ * plain-text message was treated as HTML mail, which always renders on a
+ * fixed white background (see mailFrameDoc) — so plain text never picked up
+ * the app's dark theme in the reading pane.
+ */
+function htmlPartText(e: JmapEmail, parts: JmapEmailBodyPart[] | undefined): string | null {
+  if (!parts?.length || !parts.every((p) => p.type?.toLowerCase().startsWith('text/html'))) {
+    return null
+  }
+  return partText(e, parts)
+}
+
 export function toEmailBody(e: JmapEmail): EmailBody {
   return {
     emailId: e.id,
-    html: partText(e, e.htmlBody),
+    html: htmlPartText(e, e.htmlBody),
     text: partText(e, e.textBody),
     messageId: e.messageId ?? null,
     references: e.references ?? null,
