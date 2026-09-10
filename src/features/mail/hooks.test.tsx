@@ -4,7 +4,7 @@ import type { EmailHeader } from '../../domain/email'
 import { db, type EmailRow } from '../../storage/db'
 import { sealPlain } from '../../storage/envelope'
 import { useMailboxEmails, useThread } from './hooks'
-import { resetThreadIndex } from './threadIndex'
+import { resetListIndexes } from './listIndex'
 
 const ACC = 'acc-1'
 const OTHER_ACC = 'acc-2'
@@ -66,7 +66,7 @@ async function mounted() {
 describe('useMailboxEmails', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
-    resetThreadIndex()
+    resetListIndexes()
     await db.emails.clear()
     // Inserted oldest-first so primary-key order is not date order.
     await db.emails.bulkPut([
@@ -172,7 +172,7 @@ describe('useMailboxEmails paging', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks()
-    resetThreadIndex()
+    resetListIndexes()
     await db.emails.clear()
     await db.emails.bulkPut(
       Array.from({ length: MANY }, (_, i) =>
@@ -293,7 +293,7 @@ describe('useMailboxEmails grouped', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks()
-    resetThreadIndex()
+    resetListIndexes()
     await db.emails.clear()
     await db.mailboxes.clear()
     await db.emails.bulkPut([

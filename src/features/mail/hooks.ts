@@ -7,7 +7,7 @@ import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/e
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
 import { buildConversations, isHidden, type Conversation } from './conversations'
-import { getThreadIndex } from './threadIndex'
+import { getDateOrder, getThreadIndex } from './listIndex'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
@@ -99,18 +99,18 @@ export interface MailboxList {
  * Two things this avoids, both of which made a 36k-message folder painful:
  *
  * 1. It never materialises the whole mailbox. Ordering comes from index-only
- *    reads (`primaryKeys()` over `[accountId+receivedAt]` intersected with the
- *    `*mailboxIds` index), which never touch a payload, and only the visible
- *    window is fetched with `bulkGet`. Measured on 20k messages: 1180ms to load
- *    the mailbox the old way, ~190ms for ordering plus the first hundred rows.
+ *    reads (the account's date order intersected with the `*mailboxIds` index),
+ *    which never touch a payload, and only the visible window is fetched with
+ *    `bulkGet`. Measured on 20k messages: 1180ms to load the mailbox the old
+ *    way, ~190ms for ordering plus the first hundred rows.
  *
  * 2. It is not a `useLiveQuery`. That observes the entire result set, so
  *    touching one row — exactly what markRead() does when you open an unread
  *    message — re-read, re-decrypted and re-sorted everything. Updates now
  *    arrive through Dexie's table hooks, which name the row that changed.
  *
- * Grouping keeps both properties: the account's thread index is read from the
- * shared cache in threadIndex.ts (scanned once, then patched per changed row),
+ * Grouping keeps both properties: the account's thread index comes from the
+ * same shared cache (`listIndex.ts`, scanned once and patched per changed row),
  * and only the threads in the window have their messages materialised.
  */
 export function useMailboxEmails(
@@ -166,12 +166,11 @@ export function useMailboxEmails(
       // handful unread, and filtering after paging would fill a page with
       // almost nothing while the rest of the folder never loads.
       const matchingIndex = filter === 'unread' ? '[accountId+unread]' : '[accountId+flagged]'
+      // The date order covers the account, not the folder, so it is cached and
+      // reused across folders — see listIndex.ts. Only the folder's own ids
+      // (and the flag index, when filtering) are read per refresh.
       const [byDate, inMailbox, matching] = await Promise.all([
-        db.emails
-          .where('[accountId+receivedAt]')
-          .between([account, -Infinity], [account, Infinity])
-          .reverse()
-          .primaryKeys(),
+        getDateOrder(account),
         db.emails.where('mailboxIds').equals(mailbox).primaryKeys(),
         filter
           ? db.emails.where(matchingIndex).equals([account, 1]).primaryKeys()
@@ -179,9 +178,8 @@ export function useMailboxEmails(
       ])
       const members = new Set(inMailbox.map((k) => k[1]))
       const matches = matching && new Set(matching.map((k) => k[1]))
-      return byDate
-        .map((k) => k[1])
-        .filter((id) => members.has(id) && (!matches || matches.has(id)))
+      // `filter` copies: byDate is the cache and must not be touched.
+      return byDate.filter((id) => members.has(id) && (!matches || matches.has(id)))
     }
 
     /** The ids the current window needs materialised. */
@@ -239,10 +237,9 @@ export function useMailboxEmails(
     async function refresh() {
       order = await readOrder()
       if (grouped) {
-        // The thread index spans the account, not the folder, so it is built
-        // once and kept current by table hooks — see threadIndex.ts. Rebuilding
-        // it here is what made opening any folder, even an empty one, cost
-        // seconds on a large account.
+        // The thread index spans the account too, and is likewise built once
+        // and kept current by table hooks. Rebuilding these per folder open is
+        // what made opening any folder, even an empty one, cost seconds.
         const [index, hidden] = await Promise.all([
           getThreadIndex(account),
           hiddenMailboxIds(account, mailbox),

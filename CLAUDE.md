@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 151 Vitest + 44 Playwright (desktop + mobile; state-mutating specs are
+Tests: 157 Vitest + 44 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -59,24 +59,35 @@ junk are left out entirely, unless that is the folder you are in.
 
 Three things that were not obvious:
 
-- **The thread index lives in `threadIndex.ts`, is account-wide and is built
-  exactly once** (then patched per changed row from the same Dexie table hooks
-  the list uses). It is *not* folder-dependent, and rebuilding it per folder
-  open was what made opening a folder take ~1.5s on a 36k-message account —
-  including an empty folder, since the scan covers the account. See the gotcha
-  on `keys()` below for the measurements. `resetThreadIndex()` is needed
-  wherever rows vanish without the hooks seeing it (`removeAccount`, test
-  setup): a range delete reports no rows.
-  The scan itself is `getAllKeys` over `[accountId+threadId]` (ids ordered by
+- **Two account-wide index reads are cached in `listIndex.ts`**: the thread
+  membership (`getThreadIndex`) and the order every folder is listed in
+  (`getDateOrder`). Neither depends on the folder, and recomputing them per
+  folder open was what made opening a folder cost ~1.5s on a 36k-message
+  account — an *empty* folder just as much, since the work covered the account.
+  Now: ~0.8s for the first folder of a session (both scans), then ~0.2s for a
+  36k folder and **~20ms for a small or empty one**. See the `keys()` gotcha
+  below for the measurements. `resetListIndexes()` is needed wherever rows
+  vanish without the table hooks seeing it (`removeAccount`, test setup): a
+  range delete reports no rows.
+  The thread index is **patched** per changed row; the date order is
+  **invalidated**, because an id array cannot be spliced without knowing the
+  dates around the new entry and those are not in the primary keys the scan
+  reads. Read, flag, move, archive and delete leave the order alone, so only an
+  arriving or destroyed message drops it — pinned by a test that counts the
+  scans.
+  The thread scan is `getAllKeys` over `[accountId+threadId]` (ids ordered by
   thread, then id) plus **one cursor step per distinct thread** (`nextunique`,
-  which also reports that thread's *first* primary key) — `splitThreads()` cuts
+  which also reports that thread's *first* primary key); `splitThreads()` cuts
   the id array at those firsts. Both reads share **one** transaction, or the two
   snapshots could disagree and messages would land under the wrong thread; the
   old pairing did not, which was a latent bug during sync. `splitThreads()`
   returns null rather than guessing if they do not line up, and the caller falls
-  back to the old key-cursor pairing. Pinned by `threadIndex.test.ts` (including
-  a test that fails if the cursor fallback starts running) and by
-  `hooks.test.tsx` ("counts the messages in other folders…").
+  back to the old key-cursor pairing. Pinned by `listIndex.test.ts` (including a
+  test that fails if the cursor fallback starts running) and by `hooks.test.tsx`
+  ("counts the messages in other folders…").
+  What is left scales with the **folder**, not the account: enumerating a 36k
+  folder's own ids costs ~130ms, an empty one ~3ms (issues #46/#47 track the
+  rest).
 - **Long threads fold in the middle** (`foldThread()`, pure and tested): the
   first message, the last two, the open one and anything that just arrived
   stay; runs of two or more in between become a band you click. Ten replies
@@ -685,6 +696,10 @@ full runs ever since. **If something flickers again, check these classes first
   (`readOrder`/`materialise`/`publish` are easy to instrument in `refresh()`).
   Note this class of bug shows **no network activity at all** and is flat in the
   size of the folder — that is the fingerprint of an account-wide scan.
+  The same trap sits in `.reverse()`: Dexie's `getAllKeys` fast path only covers
+  ascending ranges unless the browser has the newer `getAllRecords` API, so a
+  reversed `primaryKeys()` walks a cursor on Firefox and Safari. Read forwards
+  and reverse the array in memory.
 - **`useLiveQuery` observes the whole result set.** `useMailboxEmails` used it,
   so touching one row — which is exactly what `markRead()` does when you open an
   unread message — invalidated the query and re-read, re-decrypted and re-sorted

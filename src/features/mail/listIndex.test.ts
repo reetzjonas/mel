@@ -2,12 +2,17 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmailHeader } from '../../domain/email'
 import { db, type EmailRow } from '../../storage/db'
 import { sealPlain } from '../../storage/envelope'
-import { getThreadIndex, resetThreadIndex, splitThreads } from './threadIndex'
+import { getDateOrder, getThreadIndex, resetListIndexes, splitThreads } from './listIndex'
 
 const ACC = 'acc-1'
 const MB = 'mb-inbox'
 
-function row(id: string, threadId: string, accountId = ACC): EmailRow {
+function row(
+  id: string,
+  threadId: string,
+  accountId = ACC,
+  iso = '2026-01-01T00:00:00.000Z',
+): EmailRow {
   const header: EmailHeader = {
     id,
     threadId,
@@ -17,7 +22,7 @@ function row(id: string, threadId: string, accountId = ACC): EmailRow {
     to: [],
     cc: [],
     subject: id,
-    receivedAt: '2026-01-01T00:00:00.000Z',
+    receivedAt: iso,
     sentAt: null,
     preview: '',
     hasAttachment: false,
@@ -70,7 +75,7 @@ describe('splitThreads', () => {
 
 describe('getThreadIndex', () => {
   beforeEach(async () => {
-    resetThreadIndex()
+    resetListIndexes()
     await db.emails.clear()
     await db.emails.bulkPut([
       row('a', 't-1'),
@@ -121,9 +126,77 @@ describe('getThreadIndex', () => {
   })
 
   it('keeps rows written while the scan was still running', async () => {
-    resetThreadIndex()
+    resetListIndexes()
     const pending = getThreadIndex(ACC)
     await db.emails.put(row('late', 't-1'))
     expect(members(await pending)['t-1']).toEqual(['a', 'b', 'late'])
+  })
+})
+
+/** Counts the scans of the date index — the read this cache exists to avoid. */
+function countDateScans() {
+  const original = db.emails.where.bind(db.emails)
+  const counter = { n: 0 }
+  vi.spyOn(db.emails, 'where').mockImplementation(((...args: unknown[]) => {
+    if (args[0] === '[accountId+receivedAt]') counter.n++
+    return (original as (...a: unknown[]) => unknown)(...args)
+  }) as never)
+  return counter
+}
+
+describe('getDateOrder', () => {
+  beforeEach(async () => {
+    vi.restoreAllMocks()
+    resetListIndexes()
+    await db.emails.clear()
+    // Inserted oldest-first so primary-key order is not date order.
+    await db.emails.bulkPut([
+      row('a', 't-1', ACC, '2020-01-01T00:00:00.000Z'),
+      row('b', 't-1', ACC, '2023-01-01T00:00:00.000Z'),
+      row('c', 't-2', ACC, '2026-01-01T00:00:00.000Z'),
+      row('x', 't-9', 'acc-2', '2025-01-01T00:00:00.000Z'),
+    ])
+  })
+
+  it('lists the account newest first, and only this account', async () => {
+    expect(await getDateOrder(ACC)).toEqual(['c', 'b', 'a'])
+  })
+
+  it('scans once and reuses it across folders', async () => {
+    const scans = countDateScans()
+    await getDateOrder(ACC)
+    await getDateOrder(ACC)
+    expect(scans.n).toBe(1)
+  })
+
+  it('survives a read or flag change — those do not move a row', async () => {
+    // The refresh after marking a message read is the frequent case; rescanning
+    // the account for it is exactly what made every list update expensive.
+    await getDateOrder(ACC)
+    const scans = countDateScans()
+    await db.emails.put({ ...row('a', 't-1', ACC, '2020-01-01T00:00:00.000Z'), unread: 0 })
+    expect(await getDateOrder(ACC)).toEqual(['c', 'b', 'a'])
+    expect(scans.n).toBe(0)
+  })
+
+  it('is dropped by an arriving message and rebuilt in date position', async () => {
+    await getDateOrder(ACC)
+    await db.emails.put(row('mid', 't-3', ACC, '2024-06-01T00:00:00.000Z'))
+    expect(await getDateOrder(ACC)).toEqual(['c', 'mid', 'b', 'a'])
+  })
+
+  it('is dropped by a deleted message', async () => {
+    await getDateOrder(ACC)
+    await db.emails.delete([ACC, 'c'])
+    expect(await getDateOrder(ACC)).toEqual(['b', 'a'])
+  })
+
+  it('does not cache a scan a write raced', async () => {
+    const pending = getDateOrder(ACC)
+    await db.emails.put(row('late', 't-4', ACC, '2027-01-01T00:00:00.000Z'))
+    await pending
+    // Whether the racing row made it into that result is up to IndexedDB; the
+    // next read must not be answered from it either way.
+    expect(await getDateOrder(ACC)).toEqual(['late', 'c', 'b', 'a'])
   })
 })

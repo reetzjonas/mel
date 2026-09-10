@@ -1,5 +1,5 @@
 import type { Credentials } from '../domain/account'
-import { resetThreadIndex } from '../features/mail/threadIndex'
+import { resetListIndexes } from '../features/mail/listIndex'
 import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { JmapError } from '../providers/jmap/client/transport'
 import { providerFor } from '../providers/registry'
@@ -94,9 +94,9 @@ export async function removeAccount(accountId: string): Promise<void> {
       await table.where('accountId').equals(accountId).delete()
     }
   })
-  // A range delete reports no rows, so the thread index cannot notice this one
-  // and would describe the mail of the account that just left.
-  resetThreadIndex()
+  // A range delete reports no rows, so the cached list indexes cannot notice
+  // this one and would describe the mail of the account that just left.
+  resetListIndexes()
 }
 
 /**
