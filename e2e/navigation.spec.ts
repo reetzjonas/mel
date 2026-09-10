@@ -75,7 +75,9 @@ test('folder rows keep their height on hover', async ({ page }) => {
   await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
-  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
 
   const rows = page.locator('nav a[href^="/mail/"]')
   await expect(rows.first()).toBeVisible()
@@ -205,7 +207,9 @@ test('controls show a pointer, disabled ones do not', async ({ page }) => {
   await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
-  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
 
   for (const control of [
     page.getByTitle('Theme'),

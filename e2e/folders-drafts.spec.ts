@@ -6,7 +6,9 @@ async function login(page: Page) {
   await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
-  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 test('create, rename and delete a folder', async ({ page }) => {

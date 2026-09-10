@@ -6,7 +6,9 @@ async function login(page: Page) {
   await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
-  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
 }
 
 function randomNextMonthDate(maxDay: number): string {
@@ -186,7 +188,9 @@ test('invite the other account, accept there, and see the reply on the organizer
   await bobPage.getByPlaceholder('you@example.com').fill('bob@localhost')
   await bobPage.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-bob')
   await bobPage.getByRole('button', { name: 'Connect' }).click()
-  await expect(bobPage.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await expect(bobPage.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
   await bobPage.getByRole('link', { name: 'Calendar' }).first().click()
   await bobPage.getByRole('button', { name: 'next' }).click()
 

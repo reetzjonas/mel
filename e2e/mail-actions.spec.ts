@@ -222,7 +222,9 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
   await moveToJunk()
 
   await login(page, ...ALICE)
-  await expect(page.getByText('Inbox')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
+    timeout: 15_000,
+  })
 
   // Even with the account set to always load — a message the server already
   // flagged is the last one that should get a confirmed address.
