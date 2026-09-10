@@ -75,7 +75,9 @@ describe('keyring', () => {
 
     // Data ciphertext unchanged (no re-encryption), still decryptable.
     const row = await db.mailboxes.get([ACC, 'm1'])
-    expect((row?.payload as { plain?: { name: string } }).plain?.name).toBe('Geheim')
+    expect(row).toBeDefined()
+    const payload = row?.payload as { plain?: { name: string } } | undefined
+    expect(payload?.plain?.name).toBe('Geheim')
     const rawAfter = await new Promise<unknown>((resolve) => {
       const req = indexedDB.open('mel')
       req.onsuccess = () => {
@@ -133,12 +135,16 @@ describe('crypto middleware', () => {
 
     // Through Dexie the row comes back decrypted.
     const row = await db.emails.get([ACC, 'e1'])
-    expect((row?.payload as { plain?: { subject: string } }).plain?.subject).toBe('Streng geheim')
+    expect(row).toBeDefined()
+    const payload = row?.payload as { plain?: { subject: string } } | undefined
+    expect(payload?.plain?.subject).toBe('Streng geheim')
 
     // Locked → sealed.
     lock(ACC)
     const sealed = await db.emails.get([ACC, 'e1'])
-    expect((sealed?.payload as { enc?: unknown }).enc).toBeDefined()
+    expect(sealed).toBeDefined()
+    const sealedPayload = sealed?.payload as { enc?: unknown } | undefined
+    expect(sealedPayload?.enc).toBeDefined()
   })
 
   it('rejects ciphertext moved between tables (AAD binding)', async () => {
@@ -184,7 +190,10 @@ describe('crypto middleware', () => {
       }
     })
     const row = await db.mailboxes.get([ACC, 'evil'])
+    expect(row).toBeDefined()
     // Decryption must fail → payload stays sealed.
-    expect((row?.payload as { plain?: unknown }).plain).toBeUndefined()
+    const payload = row?.payload as { plain?: unknown; enc?: unknown } | undefined
+    expect(payload?.plain).toBeUndefined()
+    expect(payload?.enc).toBeDefined()
   })
 })
