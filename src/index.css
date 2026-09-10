@@ -183,6 +183,61 @@ summary {
   border-radius: 0.4rem;
 }
 
+/*
+ * Compose editor content (Tiptap/ProseMirror) — the only rich-text surface in
+ * the app, so scoped rules here rather than pulling in @tailwindcss/typography
+ * for one editor. Preflight resets list-style and margin on ul/ol app-wide,
+ * which otherwise left a bulleted or numbered list the toolbar just inserted
+ * rendering with no bullet, no number and no indent — formatting the sender
+ * can't see while typing it, even though it survives to the recipient (the
+ * reading pane is a bare iframe outside Tailwind's reset).
+ */
+.ProseMirror {
+  outline: none;
+  /*
+   * Fills whatever height the compose body area has instead of stopping at
+   * its own content — the wrapper EditorContent renders around it is a flex
+   * column (`flex h-full flex-col` in Compose.tsx), so this is the flex child
+   * that actually grows into the remaining space. Without it, a short message
+   * left a lot of visibly empty space below the text that wasn't part of the
+   * editor at all — clicking there did nothing.
+   */
+  flex: 1 1 auto;
+  min-height: 100%;
+}
+.ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--mel-ink-muted);
+  opacity: 0.6;
+}
+.ProseMirror ul,
+.ProseMirror ol {
+  margin: 0.4em 0;
+  padding-left: 1.4em;
+}
+.ProseMirror ul {
+  list-style: disc;
+}
+.ProseMirror ol {
+  list-style: decimal;
+}
+.ProseMirror li p {
+  margin: 0;
+}
+.ProseMirror blockquote {
+  border-left: 3px solid var(--mel-line-strong);
+  margin: 0.4em 0;
+  padding-left: 0.75em;
+  color: var(--mel-ink-muted);
+}
+.ProseMirror a {
+  color: var(--mel-accent);
+  text-decoration: underline;
+}
+
 /* Panels float on the canvas instead of being divided by hairlines. */
 @utility panel {
   background-color: var(--mel-surface);

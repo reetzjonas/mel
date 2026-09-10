@@ -45,6 +45,7 @@ export default defineConfig({
         '**/offline.spec.ts',
         '**/folders-drafts.spec.ts',
         '**/navigation.spec.ts',
+        '**/compose.spec.ts',
       ],
     },
   ],

@@ -98,6 +98,7 @@ export async function saveDraft(
   fields: {
     to: EmailAddress[]
     cc: EmailAddress[]
+    bcc: EmailAddress[]
     subject: string
     html: string
     text: string
@@ -116,7 +117,7 @@ export async function saveDraft(
     from: { name: identity.name || null, email: identity.email },
     to: fields.to,
     cc: fields.cc,
-    bcc: [],
+    bcc: fields.bcc,
     subject: fields.subject,
     html: fields.html,
     text: fields.text,

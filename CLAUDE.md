@@ -179,7 +179,7 @@ no longer materialises every header. See the note on mailbox listing below.
 ### Newly raised (order NOT yet agreed with the user)
 
 Prioritisation is pending, so ask which comes first before starting.
-**A is settled; B, C, E, G, F, J, L, M, P and T are done**, the rest is open. A is not a bug (see there).
+**A is settled; B, C, E, G, F, J, L, M, P, T and V are done**, the rest is open. A is not a bug (see there).
 
 **A. ~~Scrollbar width changes~~ settled.** Not a bug: measured together with the
 user, `offsetWidth - clientWidth` is **0px** on their machine, so Chrome is
@@ -406,8 +406,36 @@ only (`test.skip(!isMobile)`).
 **U. Mail metadata detail view.** A way to inspect a message's full metadata
 (headers, routing, etc.) beyond what the reading pane shows today.
 
-**V. Rewrite the compose popup**, including its formatting controls (Tiptap
-toolbar etc.) — current compose UI needs a broader pass, not just a fix.
+**V. ~~Rewrite the compose popup~~ done** (#26). There was no formatting toolbar
+at all before this — StarterKit already bundled bold/italic/underline/strike/
+lists/blockquote/link, but nothing in the UI exposed them, so the only way in
+was a markdown-shortcut a user would have to already know. `ComposeToolbar.tsx`
+adds one, wired to `editor.isActive(...)` for pressed state; it has to re-render
+on `onSelectionUpdate` too, not just `onUpdate` — moving the cursor into already-
+bold text flips the button with no content change at all.
+Found and fixed along the way, not scope creep: a duplicate `Link` extension
+(StarterKit already registers one; the separate import was warning on every
+mount — configuring the bundled one via `StarterKit.configure({ link: {...} })`
+replaced it) and a latent styling bug where Preflight's `list-style: none` on
+`ul`/`ol` meant a bulleted or numbered list rendered with no bullet, no number
+and no indent inside the editor — invisible to the sender, though the HTML sent
+was always correct (the reading pane is a bare iframe outside Tailwind's reset,
+so the recipient never saw the bug). Fixed with scoped `.ProseMirror` rules in
+`index.css` rather than pulling in `@tailwindcss/typography` for the one rich-
+text surface in the app; the `prose`/`prose-sm` classes on `EditorContent` had
+been dead weight all along since that plugin was never installed.
+Layout: recipient rows gained a persistent label (`To`/`Cc`/`Bcc`) rather than
+placeholder-only, and a `Bcc` field now exists — `compose.bcc` was already a
+translated string wired to nothing before this, and `saveDraft`'s `fields` type
+hardcoded `bcc: []`, dropping it silently even from autosaved drafts.
+Everything the issue asked to preserve is unchanged in its own service/hook:
+autosave (`saveDraft`), attachments (`stageAttachment`), reply/forward
+threading (`ComposeInit`/`buildReply`), offline staging, undo-send (`sendMail`)
+— none of those files were touched, only their call sites in `Compose.tsx`.
+Regression coverage in `e2e/compose.spec.ts` (desktop-only, real Stalwart send:
+bold/italic/list/link round-trip to the recipient's reading pane, plus Cc/Bcc
+field independence) — kept to two tests/one send given the 25-mail/hour
+Stalwart rate limit noted below.
 
 **W. Drag and drop for folders and mail.** Reorder/move folders in the sidebar
 by dragging, and drag mail rows onto a folder to move them there — both are

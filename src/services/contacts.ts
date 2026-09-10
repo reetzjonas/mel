@@ -74,7 +74,15 @@ export async function suggestRecipients(accountId: string, input: string): Promi
     const name = [c.given, c.surname].filter(Boolean).join(' ') || c.fullName
     const hay = `${name} ${c.nickname} ${c.emails.map((e) => e.value).join(' ')}`.toLowerCase()
     if (!hay.includes(needle)) continue
-    for (const e of c.emails) out.push({ name, email: e.value })
+    for (const e of c.emails) {
+      // A synced contact's "email" is occasionally something else entirely —
+      // an Exchange legacyExchangeDN (`/o=.../ou=.../cn=...`), for one, seen
+      // from a real CardDAV sync. parseAddresses() already drops anything
+      // without an '@' at send time, so offering it as a suggestion could
+      // only end in picking something that silently does nothing.
+      if (!e.value.includes('@')) continue
+      out.push({ name, email: e.value })
+    }
   }
   return out.slice(0, 8)
 }

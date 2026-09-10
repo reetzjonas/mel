@@ -65,6 +65,16 @@ export function RecipientInput({
         placeholder={placeholder}
         value={value}
         autoFocus={autoFocus}
+        // The app already offers its own suggestions (suggestRecipients,
+        // below); the browser's native autofill runs independently of that
+        // and surfaces whatever it has, unstyled and occasionally raw — an
+        // OS contact synced from Exchange shows up as its literal legacy DN
+        // (`/o=.../ou=.../cn=...`) rather than an address. Two suggestion
+        // lists stacked, one of them broken-looking, is worse than one.
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="off"
+        spellCheck={false}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (!suggestions.length) return
@@ -94,8 +104,17 @@ export function RecipientInput({
                 onClick={() => pick(s)}
                 className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 data-active:bg-surface-2"
               >
-                <span className="font-medium">{s.name || s.email}</span>
-                {s.name && <span className="truncate text-xs text-ink-muted">{s.email}</span>}
+                {/*
+                 * Both `min-w-0`: a flex child's default `min-width: auto`
+                 * refuses to shrink below its own content, so `truncate`
+                 * silently does nothing without it — a long name wrapped onto
+                 * a second line instead of eliding, and a long address just
+                 * pushed the row wider rather than cutting off.
+                 */}
+                <span className="min-w-0 shrink truncate font-medium">{s.name || s.email}</span>
+                {s.name && (
+                  <span className="min-w-0 flex-1 truncate text-xs text-ink-muted">{s.email}</span>
+                )}
               </button>
             </li>
           ))}
