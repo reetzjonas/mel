@@ -1,4 +1,4 @@
-import type { EmailHeader } from '../../domain/email'
+import { Keyword, type EmailHeader } from '../../domain/email'
 import type { Identity } from '../../domain/identity'
 import type { Mailbox } from '../../domain/mailbox'
 import { isGroup, type SearchQuery } from '../../domain/search'
@@ -11,7 +11,15 @@ import {
 } from '../types'
 import { Batch, chunkIds } from './client/request'
 import type { Transport } from './client/transport'
-import { Cap, type ChangesResponse, type CoreCapability, type GetResponse, type QueryResponse, type SetError, type SetResponse } from './client/types/core'
+import {
+  Cap,
+  type ChangesResponse,
+  type CoreCapability,
+  type GetResponse,
+  type QueryResponse,
+  type SetError,
+  type SetResponse,
+} from './client/types/core'
 import {
   EMAIL_BODY_PROPS,
   EMAIL_HEADER_PROPS,
@@ -63,9 +71,7 @@ function mapQuery(q: SearchQuery): EmailFilter {
   if (q.subject) conds.push({ subject: q.subject })
   if (q.hasAttachment !== undefined) conds.push({ hasAttachment: q.hasAttachment })
   if (q.isUnread !== undefined)
-    conds.push(
-      q.isUnread ? { notKeyword: '$seen' } : { hasKeyword: '$seen' },
-    )
+    conds.push(q.isUnread ? { notKeyword: '$seen' } : { hasKeyword: '$seen' })
   if (q.isFlagged) conds.push({ hasKeyword: '$flagged' })
   if (q.before) conds.push({ before: `${q.before}T00:00:00Z` })
   if (q.after) conds.push({ after: `${q.after}T00:00:00Z` })
@@ -277,8 +283,14 @@ export function createJmapMail(
      * exhausted or `limit` is reached, and reports the server's own total so
      * the caller can say when it stopped short instead of silently truncating.
      */
-    async queryMailboxIds(mailboxId, limit) {
-      const filter = { inMailbox: mailboxId }
+    async queryMailboxIds(mailboxId, limit, view) {
+      // Server-side, so "everything in this folder" under a filter cannot
+      // select messages the filtered list is not showing.
+      const filter = {
+        inMailbox: mailboxId,
+        ...(view === 'unread' ? { notKeyword: Keyword.seen } : {}),
+        ...(view === 'flagged' ? { hasKeyword: Keyword.flagged } : {}),
+      }
       const sort = [{ property: 'receivedAt', isAscending: false }]
       const ids: string[] = []
       let total = 0
@@ -325,10 +337,9 @@ export function createJmapMail(
 
     async identities() {
       const b = new Batch(transport, USING_SUBMIT)
-      const g = b.call<GetResponse<{ id: string; name: string; email: string; replyTo: Identity['replyTo'] }>>(
-        'Identity/get',
-        { accountId, ids: null },
-      )
+      const g = b.call<
+        GetResponse<{ id: string; name: string; email: string; replyTo: Identity['replyTo'] }>
+      >('Identity/get', { accountId, ids: null })
       await b.send()
       return g.result.list.map((i) => ({
         id: i.id,
@@ -423,10 +434,9 @@ export function createJmapMail(
         sort: [{ property: 'receivedAt', isAscending: false }],
         limit: opts.limit ?? 50,
       })
-      const sn = b.call<{ list: Array<{ emailId: string; subject: string | null; preview: string | null }> }>(
-        'SearchSnippet/get',
-        { accountId, filter, '#emailIds': q.ref('/ids') },
-      )
+      const sn = b.call<{
+        list: Array<{ emailId: string; subject: string | null; preview: string | null }>
+      }>('SearchSnippet/get', { accountId, filter, '#emailIds': q.ref('/ids') })
       await b.send()
       const snippets: Record<string, { subject: string | null; preview: string | null }> = {}
       if (!sn.error) {
@@ -438,10 +448,9 @@ export function createJmapMail(
 
     async getVacation() {
       const b = new Batch(transport, [Cap.core, Cap.mail, Cap.vacation])
-      const g = b.call<GetResponse<{ isEnabled: boolean; subject: string | null; textBody: string | null }>>(
-        'VacationResponse/get',
-        { accountId },
-      )
+      const g = b.call<
+        GetResponse<{ isEnabled: boolean; subject: string | null; textBody: string | null }>
+      >('VacationResponse/get', { accountId })
       await b.send()
       const v = g.result.list[0]
       return {

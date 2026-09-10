@@ -1,6 +1,6 @@
 import type { Account, AccountCapabilities, Credentials } from '../domain/account'
 import type { AddressBook, Contact } from '../domain/contact'
-import type { EmailBody, EmailHeader } from '../domain/email'
+import type { EmailBody, EmailHeader, MailFilter } from '../domain/email'
 import type { Identity, OutgoingEmail } from '../domain/identity'
 import type { Mailbox } from '../domain/mailbox'
 
@@ -69,9 +69,16 @@ export interface MailProvider {
   getEmailBody(id: string): Promise<EmailBody | null>
 
   /** JSON-patch style updates ({"keywords/$seen": true}) and destroys. */
-  setEmails(updates: Record<string, Record<string, unknown>>, destroy: string[]): Promise<SetOutcome>
+  setEmails(
+    updates: Record<string, Record<string, unknown>>,
+    destroy: string[],
+  ): Promise<SetOutcome>
   /** Ids in a mailbox, newest first, plus the server's total for that mailbox. */
-  queryMailboxIds(mailboxId: string, limit: number): Promise<{ ids: string[]; total: number }>
+  queryMailboxIds(
+    mailboxId: string,
+    limit: number,
+    view?: MailFilter,
+  ): Promise<{ ids: string[]; total: number }>
   editMailbox(edit: MailboxEdit): Promise<{ id: string | null; failure: SetFailure | null }>
   identities(): Promise<Identity[]>
   uploadBlob(data: Blob | ArrayBuffer, type: string): Promise<{ blobId: string; size: number }>
@@ -87,7 +94,10 @@ export interface MailProvider {
   searchEmails(
     filter: import('../domain/search').SearchQuery,
     opts: QueryOptions,
-  ): Promise<{ ids: string[]; snippets: Record<string, { subject: string | null; preview: string | null }> }>
+  ): Promise<{
+    ids: string[]
+    snippets: Record<string, { subject: string | null; preview: string | null }>
+  }>
   getVacation(): Promise<VacationSettings>
   setVacation(v: VacationSettings): Promise<void>
   downloadBlob(blobId: string, type: string, name: string): Promise<Blob>

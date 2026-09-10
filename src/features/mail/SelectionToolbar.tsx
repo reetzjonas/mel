@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useUi } from '../../app/store'
+import type { MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
 import {
@@ -48,10 +49,13 @@ export function SelectionToolbar({
   accountId,
   mailboxId,
   mailboxes,
+  filter,
 }: {
   accountId: string
   mailboxId: string
   mailboxes: Mailbox[]
+  /** The list's active filter, so "select everything" means what is on screen. */
+  filter?: MailFilter
 }) {
   const { selection, setSelection, clearSelection, showSnackbar } = useUi()
   const [busy, setBusy] = useState(false)
@@ -83,7 +87,7 @@ export function SelectionToolbar({
     setBusy(true)
     try {
       const conn = await connectionFor(accountId)
-      const r = await conn.mail?.queryMailboxIds(mailboxId, SELECT_ALL_LIMIT)
+      const r = await conn.mail?.queryMailboxIds(mailboxId, SELECT_ALL_LIMIT, filter)
       if (!r?.ids.length) return
       setSelection(mailboxId, r.ids)
       // Say so when the folder is larger than the ceiling, rather than quietly

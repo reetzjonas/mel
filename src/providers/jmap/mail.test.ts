@@ -74,6 +74,47 @@ describe('queryMailboxIds', () => {
     expect(r).toEqual({ ids: [], total: 0 })
     expect(calls).toHaveLength(1)
   })
+
+  /*
+   * "Select everything in this folder" runs server-side, so the filter has to
+   * travel with it. Without this the toolbar would select mail the filtered
+   * list is not showing — and then act on it.
+   */
+  describe('narrows the query to the active filter', () => {
+    function filterFor() {
+      const filters: unknown[] = []
+      const transport: Transport = {
+        fetchRaw: vi.fn(),
+        request: async (req) => {
+          const [, args, id] = req.methodCalls[0]!
+          filters.push(args['filter'])
+          return {
+            methodResponses: [['Email/query', { ids: [], position: 0, total: 0 }, id]],
+            sessionState: 's',
+          } as never
+        },
+      }
+      return { mail: createJmapMail(transport, 'acc', limits, 'u', 'd'), filters }
+    }
+
+    it('asks for messages without $seen when filtering unread', async () => {
+      const { mail, filters } = filterFor()
+      await mail.queryMailboxIds('mb', 10, 'unread')
+      expect(filters[0]).toEqual({ inMailbox: 'mb', notKeyword: '$seen' })
+    })
+
+    it('asks for messages with $flagged when filtering flagged', async () => {
+      const { mail, filters } = filterFor()
+      await mail.queryMailboxIds('mb', 10, 'flagged')
+      expect(filters[0]).toEqual({ inMailbox: 'mb', hasKeyword: '$flagged' })
+    })
+
+    it('leaves the query alone with no filter', async () => {
+      const { mail, filters } = filterFor()
+      await mail.queryMailboxIds('mb', 10)
+      expect(filters[0]).toEqual({ inMailbox: 'mb' })
+    })
+  })
 })
 
 describe('listAllEmailHeaders', () => {
@@ -125,7 +166,7 @@ describe('listAllEmailHeaders', () => {
     expect(seen).toEqual([0, 500, 1000])
   })
 
-  it('pages by the server\'s own limit, not a fixed guess', async () => {
+  it("pages by the server's own limit, not a fixed guess", async () => {
     // Regression: a hardcoded page size of 200 ignored what the server
     // actually permits (maxObjectsInGet), turning a full sync of a large
     // mailbox into far more round trips than necessary — reported as a

@@ -59,3 +59,12 @@ export const Keyword = {
   answered: '$answered',
   forwarded: '$forwarded',
 } as const
+
+/** Narrows a folder to part of its contents; undefined shows everything. */
+export type MailFilter = 'unread' | 'flagged'
+
+export function matchesFilter(header: EmailHeader, filter: MailFilter | undefined): boolean {
+  if (filter === 'unread') return !header.keywords[Keyword.seen]
+  if (filter === 'flagged') return Boolean(header.keywords[Keyword.flagged])
+  return true
+}

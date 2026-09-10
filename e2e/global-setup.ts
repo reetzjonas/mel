@@ -71,9 +71,7 @@ async function resetAccount(user: string, pass: string) {
 
   if (mailAcc) {
     const boxes = (
-      await jmap(auth, [CORE, MAIL], [
-        ['Mailbox/get', { accountId: mailAcc, ids: null }, 'c0'],
-      ])
+      await jmap(auth, [CORE, MAIL], [['Mailbox/get', { accountId: mailAcc, ids: null }, 'c0']])
     ).methodResponses[0]![1] as { list: Array<{ id: string; role: string | null; name: string }> }
 
     // Mail in Drafts/Sent, plus anything in folders the tests created.
@@ -86,14 +84,18 @@ async function resetAccount(user: string, pass: string) {
 
     for (const boxId of purgeBoxIds) {
       const q = (
-        await jmap(auth, [CORE, MAIL], [
-          ['Email/query', { accountId: mailAcc, filter: { inMailbox: boxId } }, 'c0'],
-        ])
+        await jmap(
+          auth,
+          [CORE, MAIL],
+          [['Email/query', { accountId: mailAcc, filter: { inMailbox: boxId } }, 'c0']],
+        )
       ).methodResponses[0]![1] as { ids: string[] }
       if (q.ids.length) {
-        await jmap(auth, [CORE, MAIL], [
-          ['Email/set', { accountId: mailAcc, destroy: q.ids }, 'c0'],
-        ])
+        await jmap(
+          auth,
+          [CORE, MAIL],
+          [['Email/set', { accountId: mailAcc, destroy: q.ids }, 'c0']],
+        )
         removed.push(`${q.ids.length} mail`)
       }
     }
@@ -104,23 +106,29 @@ async function resetAccount(user: string, pass: string) {
     const inboxBox = boxes.list.find((b) => b.role === 'inbox')
     if (junk && inboxBox) {
       const stuck = (
-        await jmap(auth, [CORE, MAIL], [
-          ['Email/query', { accountId: mailAcc, filter: { inMailbox: junk.id } }, 'c0'],
-        ])
+        await jmap(
+          auth,
+          [CORE, MAIL],
+          [['Email/query', { accountId: mailAcc, filter: { inMailbox: junk.id } }, 'c0']],
+        )
       ).methodResponses[0]![1] as { ids: string[] }
       if (stuck.ids.length) {
-        await jmap(auth, [CORE, MAIL], [
+        await jmap(
+          auth,
+          [CORE, MAIL],
           [
-            'Email/set',
-            {
-              accountId: mailAcc,
-              update: Object.fromEntries(
-                stuck.ids.map((id) => [id, { mailboxIds: { [inboxBox.id]: true } }]),
-              ),
-            },
-            'c0',
+            [
+              'Email/set',
+              {
+                accountId: mailAcc,
+                update: Object.fromEntries(
+                  stuck.ids.map((id) => [id, { mailboxIds: { [inboxBox.id]: true } }]),
+                ),
+              },
+              'c0',
+            ],
           ],
-        ])
+        )
         removed.push(`${stuck.ids.length} mail out of junk`)
       }
     }
@@ -128,18 +136,22 @@ async function resetAccount(user: string, pass: string) {
     const inbox = boxes.list.find((b) => b.role === 'inbox')
     if (inbox) {
       const found = (
-        await jmap(auth, [CORE, MAIL], [
-          ['Email/query', { accountId: mailAcc, filter: { inMailbox: inbox.id } }, 'c0'],
+        await jmap(
+          auth,
+          [CORE, MAIL],
           [
-            'Email/get',
-            {
-              accountId: mailAcc,
-              '#ids': { resultOf: 'c0', name: 'Email/query', path: '/ids' },
-              properties: ['subject'],
-            },
-            'c1',
+            ['Email/query', { accountId: mailAcc, filter: { inMailbox: inbox.id } }, 'c0'],
+            [
+              'Email/get',
+              {
+                accountId: mailAcc,
+                '#ids': { resultOf: 'c0', name: 'Email/query', path: '/ids' },
+                properties: ['subject'],
+              },
+              'c1',
+            ],
           ],
-        ])
+        )
       ).methodResponses[1]![1] as { list: Array<{ id: string; subject: string | null }> }
       const subjects = found.list.map((m) => (m.subject ?? '').trim())
       const missing = (EXPECTED_INBOX[user] ?? []).filter((s) => !subjects.includes(s))
@@ -156,45 +168,95 @@ async function resetAccount(user: string, pass: string) {
         .filter((m) => !SEEDED_INBOX.has((m.subject ?? '').trim()))
         .map((m) => m.id)
       if (strays.length) {
-        await jmap(auth, [CORE, MAIL], [
-          ['Email/set', { accountId: mailAcc, destroy: strays }, 'c0'],
-        ])
+        await jmap(
+          auth,
+          [CORE, MAIL],
+          [['Email/set', { accountId: mailAcc, destroy: strays }, 'c0']],
+        )
         removed.push(`${strays.length} stray inbox mail`)
+      }
+
+      /*
+       * A flag left behind by an earlier run is invisible debris: nothing looks
+       * wrong, but any spec asserting "only this message is flagged" then sees
+       * someone else's leftovers and fails somewhere unrelated.
+       */
+      const flagged = (
+        await jmap(
+          auth,
+          [CORE, MAIL],
+          [
+            [
+              'Email/query',
+              { accountId: mailAcc, filter: { inMailbox: inbox.id, hasKeyword: '$flagged' } },
+              'c0',
+            ],
+          ],
+        )
+      ).methodResponses[0]![1] as { ids: string[] }
+      if (flagged.ids.length) {
+        await jmap(
+          auth,
+          [CORE, MAIL],
+          [
+            [
+              'Email/set',
+              {
+                accountId: mailAcc,
+                update: Object.fromEntries(
+                  flagged.ids.map((id) => [id, { 'keywords/$flagged': null }]),
+                ),
+              },
+              'c0',
+            ],
+          ],
+        )
+        removed.push(`${flagged.ids.length} stale flag(s)`)
       }
     }
 
     if (custom.length) {
-      await jmap(auth, [CORE, MAIL], [
-        ['Mailbox/set', { accountId: mailAcc, destroy: custom.map((b) => b.id) }, 'c0'],
-      ])
+      await jmap(
+        auth,
+        [CORE, MAIL],
+        [['Mailbox/set', { accountId: mailAcc, destroy: custom.map((b) => b.id) }, 'c0']],
+      )
       removed.push(`${custom.length} folder(s)`)
     }
   }
 
   if (calAcc) {
     const events = (
-      await jmap(auth, [CORE, CALENDARS], [
-        ['CalendarEvent/get', { accountId: calAcc, ids: null, properties: ['id'] }, 'c0'],
-      ])
+      await jmap(
+        auth,
+        [CORE, CALENDARS],
+        [['CalendarEvent/get', { accountId: calAcc, ids: null, properties: ['id'] }, 'c0']],
+      )
     ).methodResponses[0]![1] as { list: Array<{ id: string }> }
     if (events.list.length) {
-      await jmap(auth, [CORE, CALENDARS], [
-        ['CalendarEvent/set', { accountId: calAcc, destroy: events.list.map((e) => e.id) }, 'c0'],
-      ])
+      await jmap(
+        auth,
+        [CORE, CALENDARS],
+        [['CalendarEvent/set', { accountId: calAcc, destroy: events.list.map((e) => e.id) }, 'c0']],
+      )
       removed.push(`${events.list.length} event(s)`)
     }
   }
 
   if (conAcc) {
     const cards = (
-      await jmap(auth, [CORE, CONTACTS], [
-        ['ContactCard/get', { accountId: conAcc, ids: null, properties: ['id'] }, 'c0'],
-      ])
+      await jmap(
+        auth,
+        [CORE, CONTACTS],
+        [['ContactCard/get', { accountId: conAcc, ids: null, properties: ['id'] }, 'c0']],
+      )
     ).methodResponses[0]![1] as { list: Array<{ id: string }> }
     if (cards.list.length) {
-      await jmap(auth, [CORE, CONTACTS], [
-        ['ContactCard/set', { accountId: conAcc, destroy: cards.list.map((c) => c.id) }, 'c0'],
-      ])
+      await jmap(
+        auth,
+        [CORE, CONTACTS],
+        [['ContactCard/set', { accountId: conAcc, destroy: cards.list.map((c) => c.id) }, 'c0']],
+      )
       removed.push(`${cards.list.length} contact(s)`)
     }
   }

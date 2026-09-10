@@ -62,6 +62,50 @@ test('compose, send, and receive on the other account', async ({ page, browser }
   await bobCtx.close()
 })
 
+test('filter the folder to flagged only, in the URL and across a reload', async ({ page }) => {
+  await login(page, ...ALICE)
+  const rowFor = (subject: string) =>
+    page.locator('[data-testid="virtuoso-item-list"] [role="button"]', { hasText: subject }).first()
+
+  const target = rowFor('HTML-Test')
+  await expect(target).toBeVisible({ timeout: 15_000 })
+
+  // Idempotent: a previous failed run may have left the flag set, and the
+  // shared account carries that over.
+  await target.hover()
+  const flag = target.getByTitle('Flag', { exact: true })
+  if (await flag.isVisible()) await flag.click()
+  await target.hover()
+  await expect(target.getByTitle('Remove flag')).toBeVisible()
+
+  const flaggedOnly = page.getByRole('button', { name: 'Flagged only' })
+  await flaggedOnly.click()
+
+  // The filter is URL state, not component state: it has to survive a reload
+  // and stay shareable, and the folder context stays visible throughout.
+  await expect(page).toHaveURL(/[?&]filter=flagged/)
+  await expect(flaggedOnly).toHaveAttribute('aria-pressed', 'true')
+  await expect(rowFor('HTML-Test')).toBeVisible()
+  await expect(page.getByText('Willkommen bei mel')).toBeHidden()
+
+  await page.reload()
+  await expect(flaggedOnly).toHaveAttribute('aria-pressed', 'true', { timeout: 15_000 })
+  await expect(rowFor('HTML-Test')).toBeVisible()
+  await expect(page.getByText('Willkommen bei mel')).toBeHidden()
+
+  // Clearing the flag has to drop the row from a flagged-only list the same way
+  // moving it to another folder would — this is also the cleanup.
+  await rowFor('HTML-Test').hover()
+  await rowFor('HTML-Test').getByTitle('Remove flag').click()
+  await expect(page.getByText('HTML-Test')).toBeHidden({ timeout: 10_000 })
+
+  // Toggling the filter off restores the whole folder and the clean URL.
+  await flaggedOnly.click()
+  await expect(page).not.toHaveURL(/filter=/)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible()
+  await expect(page.getByText('HTML-Test')).toBeVisible()
+})
+
 test('quick actions on list rows: flag and mark unread without opening', async ({ page }) => {
   await login(page, ...ALICE)
   const row = page

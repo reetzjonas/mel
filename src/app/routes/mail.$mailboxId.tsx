@@ -1,5 +1,6 @@
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { matchesFilter, type MailFilter } from '../../domain/email'
 import { SelectionToolbar } from '../../features/mail/SelectionToolbar'
 import { ThreadList } from '../../features/mail/ThreadList'
 import { useAccounts, useMailboxEmails, useMailboxes } from '../../features/mail/hooks'
@@ -8,25 +9,53 @@ import { t } from '../../lib/i18n'
 import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
-import { Icon } from '../../ui/Icon'
+import { Icon, type IconName } from '../../ui/Icon'
 import { ThreadListSkeleton } from '../../ui/Skeleton'
 
 export const Route = createFileRoute('/mail/$mailboxId')({
   component: MailboxView,
-  validateSearch: (s: Record<string, unknown>): { q?: string } => ({
+  validateSearch: (s: Record<string, unknown>): { q?: string; filter?: MailFilter } => ({
     q: typeof s['q'] === 'string' && s['q'] ? s['q'] : undefined,
+    filter: s['filter'] === 'unread' || s['filter'] === 'flagged' ? s['filter'] : undefined,
   }),
 })
 
+function FilterToggle({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: IconName
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      aria-label={label}
+      title={active ? t('mail.filter.showAll') : label}
+      onClick={onClick}
+      className={`shrink-0 rounded-control p-2 transition-colors ${
+        active ? 'bg-accent-wash text-accent' : 'bg-surface-2 text-ink-subtle hover:text-ink'
+      }`}
+    >
+      <Icon name={icon} size={14} />
+    </button>
+  )
+}
+
 function MailboxView() {
   const { mailboxId } = Route.useParams()
-  const { q } = Route.useSearch()
+  const { q, filter } = Route.useSearch()
   const params = useParams({ strict: false }) as { emailId?: string }
   const navigate = useNavigate()
   const accounts = useAccounts()
   const account = accounts?.[0]
   const accountId = account?.id
-  const mailbox = useMailboxEmails(accountId, mailboxId)
+  const mailbox = useMailboxEmails(accountId, mailboxId, filter)
   const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
@@ -34,11 +63,11 @@ function MailboxView() {
   const { selection, selectionMailboxId, clearSelection, setFolderDrawerOpen } = useUi()
   const hasSelection = selectionMailboxId === mailboxId && selection.length > 0
 
-  // A selection belongs to one folder; leaving drops it rather than silently
-  // carrying ids into a list where they aren't visible.
+  // A selection belongs to one folder *and* one filter; leaving either drops it
+  // rather than silently carrying ids into a list where they aren't visible.
   useEffect(() => {
     clearSelection()
-  }, [mailboxId, clearSelection])
+  }, [mailboxId, filter, clearSelection])
 
   // Depends only on the id, not the account object: only switching accounts
   // (or the query) should re-run the search.
@@ -78,18 +107,31 @@ function MailboxView() {
     }
   }
 
+  // Both live in the URL, so each has to carry the other through: searching
+  // must not silently drop the filter, nor filtering the search.
   const submitSearch = (value: string) =>
     void navigate({
       to: '/mail/$mailboxId',
       params: { mailboxId },
-      search: value ? { q: value } : {},
+      search: { ...(value ? { q: value } : {}), ...(filter ? { filter } : {}) },
+    })
+
+  const toggleFilter = (next: MailFilter) =>
+    void navigate({
+      to: '/mail/$mailboxId',
+      params: { mailboxId },
+      search: { ...(q ? { q } : {}), ...(filter === next ? {} : { filter: next }) },
     })
 
   const inDetail = Boolean(params.emailId)
   const mailboxName = mailboxes?.find((m) => m.id === mailboxId)?.name ?? t('folder.list')
   // Search results are a complete answer from the server; the mailbox list is
-  // a window that grows as you scroll.
-  const list = results?.headers ?? mailbox.emails
+  // a window that grows as you scroll. The mailbox list is filtered at the
+  // index, so only search results need narrowing here.
+  const list = useMemo(
+    () => (results ? results.headers.filter((h) => matchesFilter(h, filter)) : mailbox.emails),
+    [results, filter, mailbox.emails],
+  )
   const loadMore = results ? undefined : mailbox.loadMore
 
   return (
@@ -104,6 +146,7 @@ function MailboxView() {
             accountId={account.id}
             mailboxId={mailboxId}
             mailboxes={mailboxes ?? []}
+            filter={filter}
           />
         ) : (
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
@@ -151,6 +194,18 @@ function MailboxView() {
                 </button>
               )}
             </div>
+            <FilterToggle
+              icon="mailUnread"
+              label={t('mail.filter.unread')}
+              active={filter === 'unread'}
+              onClick={() => toggleFilter('unread')}
+            />
+            <FilterToggle
+              icon="flag"
+              label={t('mail.filter.flagged')}
+              active={filter === 'flagged'}
+              onClick={() => toggleFilter('flagged')}
+            />
           </div>
         )}
         {refreshing && (
@@ -163,6 +218,16 @@ function MailboxView() {
             <ThreadListSkeleton />
           ) : list.length === 0 && q ? (
             <EmptyState icon="search" title={t('mail.searchNoResults')} />
+          ) : list.length === 0 && filter ? (
+            // Distinct from "No messages": the folder is not empty, the filter
+            // is. Saying otherwise sends people looking for missing mail.
+            <EmptyState
+              icon={filter === 'unread' ? 'mailUnread' : 'flag'}
+              title={filter === 'unread' ? t('mail.filter.noUnread') : t('mail.filter.noFlagged')}
+              hint={
+                filter === 'unread' ? t('mail.filter.noUnreadHint') : t('mail.filter.noFlaggedHint')
+              }
+            />
           ) : (
             account && (
               <ThreadList

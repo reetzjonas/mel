@@ -3,7 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
-import type { EmailHeader } from '../../domain/email'
+import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
@@ -79,6 +79,7 @@ export interface MailboxList {
 export function useMailboxEmails(
   accountId: string | undefined,
   mailboxId: string | undefined,
+  filter?: MailFilter,
 ): MailboxList {
   const [state, setState] = useState<{ emails: EmailHeader[] | undefined; total: number }>({
     emails: undefined,
@@ -106,16 +107,27 @@ export function useMailboxEmails(
 
     /** Ordering straight from the indexes — no record bodies are read. */
     async function readOrder(): Promise<string[]> {
-      const [byDate, inMailbox] = await Promise.all([
+      // The filter is a third index scan rather than a predicate over the
+      // materialised window: a folder can hold thousands of messages with a
+      // handful unread, and filtering after paging would fill a page with
+      // almost nothing while the rest of the folder never loads.
+      const matchingIndex = filter === 'unread' ? '[accountId+unread]' : '[accountId+flagged]'
+      const [byDate, inMailbox, matching] = await Promise.all([
         db.emails
           .where('[accountId+receivedAt]')
           .between([account, -Infinity], [account, Infinity])
           .reverse()
           .primaryKeys(),
         db.emails.where('mailboxIds').equals(mailbox).primaryKeys(),
+        filter
+          ? db.emails.where(matchingIndex).equals([account, 1]).primaryKeys()
+          : Promise.resolve(null),
       ])
       const members = new Set(inMailbox.map((k) => k[1]))
-      return byDate.map((k) => k[1]).filter((id) => members.has(id))
+      const matches = matching && new Set(matching.map((k) => k[1]))
+      return byDate
+        .map((k) => k[1])
+        .filter((id) => members.has(id) && (!matches || matches.has(id)))
     }
 
     async function materialise() {
@@ -136,7 +148,9 @@ export function useMailboxEmails(
         // list a message that its own row says has moved away — it looks like
         // a move that did nothing, since everything about the row updates
         // except its presence.
-        if (header && header.mailboxIds[mailbox]) emails.push(header)
+        if (header && header.mailboxIds[mailbox] && matchesFilter(header, filter)) {
+          emails.push(header)
+        }
       }
       setState({ emails, total: order.length })
     }
@@ -173,7 +187,12 @@ export function useMailboxEmails(
       if (row.accountId !== account) return
       const known = cache.has(row.id)
       const position = order.indexOf(row.id)
-      const belongs = row.mailboxIds.includes(mailbox)
+      // A filtered list is left by changing the flag too, not just the folder:
+      // marking a message read under "unread only" has to drop it from the list
+      // exactly the way moving it away would.
+      const matches =
+        filter === 'unread' ? row.unread === 1 : filter === 'flagged' ? row.flagged === 1 : true
+      const belongs = row.mailboxIds.includes(mailbox) && matches
 
       // Membership or arrival changes the ordering, so it has to be re-derived
       // — index-only, and the cache keeps already-fetched headers.
@@ -220,7 +239,7 @@ export function useMailboxEmails(
       db.emails.hook('updating').unsubscribe(onUpdating)
       db.emails.hook('deleting').unsubscribe(onDeleting)
     }
-  }, [accountId, mailboxId])
+  }, [accountId, mailboxId, filter])
 
   return { emails: state.emails, total: state.total, loadMore: () => more.current() }
 }
