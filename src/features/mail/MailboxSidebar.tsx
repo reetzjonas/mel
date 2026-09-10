@@ -78,7 +78,11 @@ function FolderMenu({
             e.stopPropagation()
             setOpen((o) => !o)
           }}
-          className="hidden h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-muted group-hover:inline-flex hover:bg-surface-2 hover:text-ink"
+          // `invisible`, not `hidden`: the button keeps its space in the row at
+          // all times, so revealing it on hover cannot shove the unread count
+          // or the folder name around. visibility:hidden also keeps it
+          // unclickable and out of the accessibility tree until it is shown.
+          className="invisible inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-muted group-hover:visible hover:bg-surface-2 hover:text-ink"
         >
           <Icon name="more" size={13} />
         </button>
@@ -275,7 +279,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
               <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
               <span className="min-w-0 flex-1 truncate">{m.name}</span>
               {m.unreadEmails > 0 && (
-                <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted group-hover:hidden">
+                <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted">
                   {m.unreadEmails}
                 </span>
               )}

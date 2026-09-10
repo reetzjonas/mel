@@ -69,8 +69,10 @@ test('signing out clears the account and its cached data from the device', async
 })
 
 test('folder rows keep their height on hover', async ({ page }) => {
-  // The unread badge is swapped for the "…" menu button on hover. The button
-  // used to be taller than the badge, so every row below the pointer shifted.
+  // The "…" menu button appears on hover. It used to replace the unread badge
+  // — which hid the count exactly while the pointer was on the row — and being
+  // taller than the badge it shifted every row below it. Both now share the
+  // row: the button reserves its space permanently (`invisible`, not `hidden`).
   await page.goto('/mail')
   await page.getByPlaceholder('you@example.com').fill('alice@localhost')
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
@@ -86,6 +88,12 @@ test('folder rows keep their height on hover', async ({ page }) => {
     const before = (await row.boundingBox())?.height
     await row.hover()
     expect((await row.boundingBox())?.height).toBe(before)
+
+    // And the count stays readable underneath the pointer. Which folders carry
+    // one is not fixed — earlier specs read mail and nothing resets $seen — so
+    // this asserts per row that has a badge rather than naming the Inbox.
+    const badge = row.locator('span', { hasText: /^\d+$/ })
+    if (await badge.count()) await expect(badge).toBeVisible()
   }
 })
 
