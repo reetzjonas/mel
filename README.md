@@ -12,6 +12,13 @@ behind a passphrase. Installable as a PWA and usable offline.
 
 React 19 + TypeScript + Vite, Tailwind, TanStack Router, Dexie.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-dark.png">
+    <img src="docs/media/screenshot-light.png" alt="mel's mail view, showing a conversation open next to the inbox list" width="800">
+  </picture>
+</p>
+
 ## What it does
 
 - **Mail** — delta sync, offline outbox with undo, compose with attachments and
