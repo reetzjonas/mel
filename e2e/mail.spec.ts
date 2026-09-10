@@ -84,3 +84,35 @@ test('remote images are blocked by the frame policy, and load once released', as
   await render(doc('http: https: data: cid:'))
   expect(hits.length).toBeGreaterThan(0)
 })
+
+test('the folder list is reachable on mobile, where the sidebar is off-screen', async ({
+  page,
+  isMobile,
+}) => {
+  // Desktop keeps the permanent sidebar, so the drawer and its trigger do not
+  // exist there at all.
+  test.skip(!isMobile, 'the drawer only exists on the narrow layout')
+  await login(page)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+
+  // The trigger names the current folder — on a phone it is the only thing
+  // that does, since the sidebar that would show it is hidden.
+  const trigger = page.getByRole('button', { name: /^Inbox — / })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+
+  const drawer = page.getByRole('dialog', { name: 'Folders' })
+  await expect(drawer).toBeVisible()
+  await drawer.getByRole('link', { name: /^Drafts( \d+)?$/ }).click()
+
+  // Picking a folder navigates and closes the drawer behind itself.
+  await expect(drawer).toBeHidden()
+  await expect(page).toHaveURL(/\/mail\/[^/]+$/)
+  await expect(page.getByRole('button', { name: /^Drafts — / })).toBeVisible()
+
+  // Escape closes it without navigating.
+  await page.getByRole('button', { name: /^Drafts — / }).click()
+  await expect(page.getByRole('dialog', { name: 'Folders' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Folders' })).toBeHidden()
+})

@@ -31,7 +31,7 @@ function MailboxView() {
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
   const mailboxes = useMailboxes(accountId)
-  const { selection, selectionMailboxId, clearSelection } = useUi()
+  const { selection, selectionMailboxId, clearSelection, setFolderDrawerOpen } = useUi()
   const hasSelection = selectionMailboxId === mailboxId && selection.length > 0
 
   // A selection belongs to one folder; leaving drops it rather than silently
@@ -86,6 +86,7 @@ function MailboxView() {
     })
 
   const inDetail = Boolean(params.emailId)
+  const mailboxName = mailboxes?.find((m) => m.id === mailboxId)?.name ?? t('folder.list')
   // Search results are a complete answer from the server; the mailbox list is
   // a window that grows as you scroll.
   const list = results?.headers ?? mailbox.emails
@@ -106,7 +107,23 @@ function MailboxView() {
           />
         ) : (
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
-            <div className="relative flex-1">
+            {/*
+             * Mobile entry point to the folder list, which is off-screen here.
+             * It doubles as the only place that names the current folder on a
+             * phone — the sidebar that would otherwise show it is hidden.
+             */}
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-label={`${mailboxName} — ${t('folder.switch')}`}
+              onClick={() => setFolderDrawerOpen(true)}
+              className="flex max-w-[45%] shrink-0 items-center gap-1.5 rounded-control bg-surface-2 py-2 pr-1.5 pl-2.5 text-[13px] text-ink-muted transition-colors hover:text-ink lg:hidden"
+            >
+              <Icon name="folder" size={14} className="shrink-0" />
+              <span className="truncate">{mailboxName}</span>
+              <Icon name="chevronDown" size={13} className="shrink-0" />
+            </button>
+            <div className="relative min-w-0 flex-1">
               <Icon
                 name="search"
                 size={14}

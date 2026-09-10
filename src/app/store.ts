@@ -28,6 +28,13 @@ interface UiState {
   hideSnackbar: () => void
   helpOpen: boolean
   setHelpOpen: (open: boolean) => void
+  /*
+   * Mobile folder drawer. It lives here because the trigger sits in the
+   * mailbox route while the drawer itself is rendered by the mail layout
+   * above it — the two are siblings, not parent and child.
+   */
+  folderDrawerOpen: boolean
+  setFolderDrawerOpen: (open: boolean) => void
   /** Bumped after unlocking encrypted accounts so live queries re-read. */
   unlockVersion: number
   bumpUnlock: () => void
@@ -63,6 +70,8 @@ export const useUi = create<UiState>((set) => ({
   },
   helpOpen: false,
   setHelpOpen: (helpOpen) => set({ helpOpen }),
+  folderDrawerOpen: false,
+  setFolderDrawerOpen: (folderDrawerOpen) => set({ folderDrawerOpen }),
   unlockVersion: 0,
   bumpUnlock: () => set((s) => ({ unlockVersion: s.unlockVersion + 1 })),
 

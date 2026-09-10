@@ -7,6 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
 import { AddAccountForm } from '../../features/auth/AddAccountForm'
+import { MailboxDrawer } from '../../features/mail/MailboxDrawer'
 import { MailboxSidebar } from '../../features/mail/MailboxSidebar'
 import { useAccounts, useMailboxes } from '../../features/mail/hooks'
 import { useMailShortcuts } from '../../features/mail/shortcuts'
@@ -26,7 +27,7 @@ function MailLayout() {
   const mailboxes = useMailboxes(accountId)
   const params = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
   const navigate = useNavigate()
-  const { compose, openCompose } = useUi()
+  const { compose, openCompose, setFolderDrawerOpen } = useUi()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   // Depends only on the id, not the account object: switching accounts should
@@ -45,6 +46,10 @@ function MailLayout() {
     const inbox = mailboxes.find((m) => m.role === 'inbox') ?? mailboxes[0]!
     void navigate({ to: '/mail/$mailboxId', params: { mailboxId: inbox.id }, replace: true })
   }, [params.mailboxId, mailboxes, navigate, pathname])
+
+  // Leaving mail altogether closes the drawer: it is bound to this layout, and
+  // coming back from Calendar to a drawer left standing open is a surprise.
+  useEffect(() => () => setFolderDrawerOpen(false), [setFolderDrawerOpen])
 
   useMailShortcuts({
     accountId,
@@ -71,6 +76,7 @@ function MailLayout() {
       <div className={`min-w-0 flex-1 lg:block ${inList ? '' : 'hidden'}`}>
         <Outlet />
       </div>
+      <MailboxDrawer account={account} mailboxes={mailboxes ?? []} />
 
       {/* Mobile compose FAB */}
       {!inDetail && !compose && (

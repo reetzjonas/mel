@@ -179,7 +179,7 @@ no longer materialises every header. See the note on mailbox listing below.
 ### Newly raised (order NOT yet agreed with the user)
 
 Prioritisation is pending, so ask which comes first before starting.
-**A is settled; B, C, E, G, F, J, L, M and P are done**, the rest is open. A is not a bug (see there).
+**A is settled; B, C, E, G, F, J, L, M, P and T are done**, the rest is open. A is not a bug (see there).
 
 **A. ~~Scrollbar width changes~~ settled.** Not a bug: measured together with the
 user, `offsetWidth - clientWidth` is **0px** on their machine, so Chrome is
@@ -358,10 +358,22 @@ than a separate route, so context (which folder) stays visible.
 Yesterday, this week, older, or similar) for orientation in a long list —
 currently it is one continuous virtualised list with no date grouping.
 
-**T. Bug: folder switcher unreachable on mobile.** The user cannot see or reach
-the folder list on the mobile layout, so they are stuck in whatever mailbox they
-opened — needs its own mobile entry point (drawer/sheet) since the desktop
-sidebar layout does not fit.
+**T. ~~Bug: folder switcher unreachable on mobile~~ done.** The sidebar is
+hidden as soon as a mailbox is open on a narrow layout, so a phone was stuck in
+whatever folder it entered. `features/mail/MailboxDrawer.tsx` shows the same
+`MailboxSidebar` as a left drawer; the trigger sits in the mail list header and
+names the current folder, which on mobile is the only thing that does (the
+sidebar that would show it is off-screen). Open state lives in `app/store.ts`
+because trigger and drawer are siblings — the trigger is in the `$mailboxId`
+route, the drawer in the `/mail` layout above it.
+Three details: the drawer closes on clicks that reach an `<a>`, which is what
+keeps the folder "…" menu usable inside it (that menu stops its own clicks from
+bubbling); it closes when the mail layout unmounts, so returning from Calendar
+does not find it standing open; and it carries `env(safe-area-inset-bottom)`
+because it covers the mobile bottom bar and the sync status was clipped
+otherwise. The reading pane keeps its existing back button — one tap to the
+list, which has the trigger. Regression: `e2e/mail.spec.ts`, mobile project
+only (`test.skip(!isMobile)`).
 
 **U. Mail metadata detail view.** A way to inspect a message's full metadata
 (headers, routing, etc.) beyond what the reading pane shows today.
