@@ -187,6 +187,19 @@ body back into a `ComposeInit`. Four things that are easy to miss:
   `saveDraft()` returns `{id, ok}` rather than an id: replacing answers with
   the id it was handed, so failure and success are indistinguishable from
   outside — the autosave may ignore that, the button may not.
+- **A saved draft has a new id, so the reading pane has to follow it**
+  (`followDraft()`). An RFC 8621 Email is immutable apart from `mailboxIds`
+  and `keywords`, so "saving" is create + destroy and the id necessarily
+  changes; the pane behind the compose window stayed routed to the old one and
+  emptied out mid-edit when the sync deleted it. It navigates (`replace`,
+  since the previous entry names a message that no longer exists) — but only
+  after `syncAccount()`, or the route renders "message not found" until the
+  push-driven sync catches up. Sending is exempt: leaving the message there is
+  fine, and the user said so.
+  **Testing this needs the URL, not the pane.** Asserting that the pane is
+  still there passes with or without the fix — it just beats the sync. The
+  regression in `e2e/folders-drafts.spec.ts` polls `page.url()` instead, and
+  was checked to fail when `followDraft` is removed.
 
 The compose window also has a **Delete draft** button once a draft exists (the
 close button only closes), and `AppShell` keys `<Compose>` on `draftId` so

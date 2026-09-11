@@ -2,6 +2,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate, useParams } from '@tanstack/react-router'
 import { useUi, type ComposeInit } from '../../app/store'
 import type { Identity, OutgoingAttachment } from '../../domain/identity'
 import { t } from '../../lib/i18n'
@@ -13,6 +14,7 @@ import {
   sendMail,
   stageAttachment,
 } from '../../services/send'
+import { syncAccount } from '../../sync/engine'
 import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
@@ -76,6 +78,12 @@ function RecipientRow({
 
 export function Compose({ accountId, init }: { accountId: string; init: ComposeInit }) {
   const { closeCompose, showSnackbar } = useUi()
+  const navigate = useNavigate()
+  // Whatever the app is showing behind this window; `strict: false` because
+  // compose is mounted by the shell and knows nothing about the route.
+  const routeParams = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
+  const routeRef = useRef(routeParams)
+  routeRef.current = routeParams
   const [identities, setIdentities] = useState<Identity[]>([])
   const [identityId, setIdentityId] = useState<string>('')
   const [to, setTo] = useState(addressesToString(init.to))
@@ -154,6 +162,30 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   })
 
   /**
+   * Keeps the reading pane on the draft after a save.
+   *
+   * Saving a draft is create-plus-destroy, not an update: RFC 8621 Emails are
+   * immutable apart from `mailboxIds` and `keywords`, so the message gets a
+   * **new id** every time. The pane behind this window is routed to the old
+   * one, which the next sync deletes — so it emptied out mid-edit instead of
+   * following along.
+   *
+   * The sync is awaited first: routing to an id no row carries yet renders
+   * "message not found" until the push-driven sync happens to catch up.
+   * `replace`, because the message the previous entry names no longer exists.
+   */
+  async function followDraft(oldId: string, newId: string) {
+    const { mailboxId, emailId } = routeRef.current
+    if (!mailboxId || emailId !== oldId) return
+    await syncAccount(accountId).catch(() => {})
+    await navigate({
+      to: '/mail/$mailboxId/$emailId',
+      params: { mailboxId, emailId: newId },
+      replace: true,
+    })
+  }
+
+  /**
    * Writes the current fields into the draft this window owns — the one thing
    * both the 2.5 s autosave and the Save button do, so they cannot drift into
    * saving different halves of the form.
@@ -181,8 +213,10 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         },
         draftId.current,
       )
+      const previous = draftId.current
       draftId.current = id
       if (ok) {
+        if (id && previous && id !== previous) await followDraft(previous, id)
         setHasDraft(true)
         setDraftSaved(true)
         // Anything typed while this was in flight is still unsaved, and the

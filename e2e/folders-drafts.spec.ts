@@ -129,13 +129,26 @@ test('save a draft on demand, into the same message', async ({ page }) => {
 
   // Reopen, edit, save again: still one draft, carrying the newer text.
   await rows.first().click()
+  const openedAt = page.url()
   await page.getByRole('button', { name: 'Edit draft' }).click()
   await page.locator('.ProseMirror').click()
   await page.keyboard.press('End')
   await page.keyboard.type(' Zweiter Satz.')
   await page.getByRole('button', { name: 'Save draft' }).click()
   await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
+
+  /*
+   * Saving is create-plus-destroy (an Email is immutable), so the draft comes
+   * back under a new id and the pane behind this window is routed to one the
+   * next sync deletes — it emptied out mid-edit. The URL following along is
+   * the race-free way to see that it did not: waiting for the pane to go blank
+   * only ever proves the assertion beat the sync.
+   */
+  await expect.poll(() => page.url(), { timeout: 15_000 }).not.toBe(openedAt)
   await page.getByRole('button', { name: 'Discard' }).click()
+  await page.getByRole('button', { name: 'Refresh' }).click()
+  await expect(page.getByText('Message not found')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: subject })).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('link', { name: 'Inbox' }).click()
   await drafts.click()
