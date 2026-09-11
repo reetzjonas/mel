@@ -76,6 +76,40 @@ test('formatting toolbar output — bold, italic, a list and a link — survives
   await bobCtx.close()
 })
 
+/*
+ * Issue #49: the Reply buttons are live while the reading pane is still
+ * fetching the body, and the composer used to quote whatever it had — which,
+ * in that window, was nothing. Delaying the body fetch makes the window wide
+ * enough to click in reliably; the quote has to turn up afterwards.
+ */
+test('a reply opened before the body arrives still gets its quote', async ({ page }) => {
+  test.setTimeout(60_000)
+  await login(page, ...ALICE)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+
+  await page.route('http://localhost:8080/jmap/**', async (route) => {
+    const body = route.request().postData() ?? ''
+    // Only the body fetch: the header set the list is built from has no
+    // bodyValues, so this leaves the rest of the app at full speed.
+    if (body.includes('bodyValues')) await new Promise((r) => setTimeout(r, 4000))
+    return route.continue()
+  })
+
+  await page.getByTestId('thread-subject').filter({ hasText: 'Willkommen bei mel' }).first().click()
+  // Straight into the reply, without waiting for the pane to finish loading.
+  await page.getByRole('button', { name: 'Reply', exact: true }).click()
+
+  const editor = page.locator('.ProseMirror')
+  await expect(editor).toBeVisible({ timeout: 10_000 })
+  // Typing first, because the quote must land underneath what is being
+  // written rather than on top of the cursor.
+  await editor.click()
+  await page.keyboard.type('meine antwort')
+
+  await expect(editor.locator('blockquote')).toContainText('erste Testmail', { timeout: 20_000 })
+  await expect(editor).toContainText('meine antwort')
+})
+
 test('Cc and Bcc reveal a recipient field each, independently', async ({ page }) => {
   await login(page, ...ALICE)
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })

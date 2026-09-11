@@ -231,7 +231,25 @@ export function buildDraftInit(header: EmailHeader, body: EmailBody | null): Com
   }
 }
 
+/**
+ * The quoted original, header line and all.
+ *
+ * Exported because it is built twice: here when the body is already cached,
+ * and again by the composer when it had to fetch it (see `quoteSource`).
+ */
+export function quoteBlock(
+  header: EmailHeader,
+  body: EmailBody,
+  mode: 'reply' | 'replyAll' | 'forward',
+): string {
+  const quoted = `<blockquote>${bodyAsHtml(body)}</blockquote>`
+  return mode === 'forward'
+    ? `<p>---------- Forwarded message ----------<br>${quoteHeaderLine(header)}</p>${quoted}`
+    : `<p>${quoteHeaderLine(header)}</p>${quoted}`
+}
+
 export function buildReply(
+  accountId: string,
   header: EmailHeader,
   body: EmailBody | null,
   mode: 'reply' | 'replyAll' | 'forward',
@@ -239,7 +257,14 @@ export function buildReply(
 ): ComposeInit {
   const subjectPrefix = mode === 'forward' ? 'Fwd: ' : 'Re: '
   const baseSubject = header.subject?.replace(/^(re|fwd?):\s*/i, '') ?? ''
-  const quoted = `<blockquote>${bodyAsHtml(body)}</blockquote>`
+  /*
+   * No body yet means the quote is not lost, only late: the composer opens
+   * now and appends it when the fetch lands. Waiting here instead would stall
+   * the window, and quoting nothing — which is what this used to do — silently
+   * drops the message being answered.
+   */
+  const quotedHtml = body ? quoteBlock(header, body, mode) : undefined
+  const quoteSource = body ? undefined : { accountId, header, mode }
   /*
    * The header first, because it is always in the local store; the body only
    * for messages whose header was cached before it carried these. Taking them
@@ -254,7 +279,8 @@ export function buildReply(
   if (mode === 'forward') {
     return {
       subject: subjectPrefix + baseSubject,
-      quotedHtml: `<p>---------- Forwarded message ----------<br>${quoteHeaderLine(header)}</p>${quoted}`,
+      quotedHtml,
+      quoteSource,
       references: references.length ? references : undefined,
       attachments: [],
     }
@@ -272,7 +298,8 @@ export function buildReply(
     to,
     cc,
     subject: subjectPrefix + baseSubject,
-    quotedHtml: `<p>${quoteHeaderLine(header)}</p>${quoted}`,
+    quotedHtml,
+    quoteSource,
     inReplyTo: messageId ?? undefined,
     references: references.length ? references : undefined,
   }

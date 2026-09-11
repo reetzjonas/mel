@@ -6,10 +6,12 @@ import { useNavigate, useParams } from '@tanstack/react-router'
 import { useUi, type ComposeInit } from '../../app/store'
 import type { Identity, OutgoingAttachment } from '../../domain/identity'
 import { t } from '../../lib/i18n'
+import { getEmailBody } from '../../services/mail'
 import {
   discardDraft,
   getIdentities,
   parseAddresses,
+  quoteBlock,
   saveDraft,
   sendMail,
   stageAttachment,
@@ -160,6 +162,38 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     },
     onSelectionUpdate: () => setEditRevision((r) => r + 1),
   })
+
+  /*
+   * The quote, when the message being answered had no body cached yet.
+   *
+   * Appended at the end of the document with the selection left alone, so it
+   * arrives *below* whatever has been typed in the meantime and does not move
+   * the cursor out from under the writer. Without this, replying to a message
+   * that had just arrived quoted nothing at all — the composer read a body
+   * that was still on its way and got null.
+   */
+  const source = init.quoteSource
+  useEffect(() => {
+    if (!source || !editor) return
+    let alive = true
+    void getEmailBody(source.accountId, source.header.id)
+      .then((body) => {
+        if (!alive || !body || editor.isDestroyed) return
+        editor.commands.insertContentAt(
+          editor.state.doc.content.size,
+          quoteBlock(source.header, body, source.mode),
+          { updateSelection: false },
+        )
+      })
+      .catch(() => {
+        // Offline, or the server no longer has it: the reply still goes out,
+        // just without the quote. Saying so would be noise in a window the
+        // user is already writing in.
+      })
+    return () => {
+      alive = false
+    }
+  }, [editor, source])
 
   /**
    * Keeps the reading pane on the draft after a save.

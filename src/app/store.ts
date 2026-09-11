@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { EmailAddress } from '../domain/email'
+import type { EmailAddress, EmailHeader } from '../domain/email'
 import type { OutgoingAttachment } from '../domain/identity'
 import { conversationView, setConversationView } from '../lib/conversationView'
 
@@ -10,6 +10,17 @@ export interface ComposeInit {
   subject?: string
   /** Quoted original, appended below the cursor. */
   quotedHtml?: string
+  /**
+   * Set instead of `quotedHtml` when the message being answered had no body
+   * cached yet. The composer opens at once and fetches it, then appends the
+   * quote — replying to a message that has just arrived used to quote nothing
+   * at all, because the body was still on its way.
+   */
+  quoteSource?: {
+    accountId: string
+    header: EmailHeader
+    mode: 'reply' | 'replyAll' | 'forward'
+  }
   /**
    * The editor's whole starting content — a draft being picked up again,
    * rather than a quote written underneath a fresh message. Kept apart from

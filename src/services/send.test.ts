@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailBody, EmailHeader } from '../domain/email'
-import { buildDraftInit, buildReply } from './send'
+import { buildDraftInit, buildReply, quoteBlock } from './send'
 
 const header = (over: Partial<EmailHeader> = {}): EmailHeader =>
   ({
@@ -114,6 +114,8 @@ describe('buildDraftInit', () => {
   })
 })
 
+const ACC = 'a1'
+
 describe('buildReply', () => {
   const incoming = (over: Partial<EmailHeader> = {}) =>
     header({
@@ -135,13 +137,14 @@ describe('buildReply', () => {
    * skeleton — went out with nothing for the server to thread on.
    */
   it('threads a reply composed before the body is cached', () => {
-    const init = buildReply(incoming(), null, 'reply', 'alice@localhost')
+    const init = buildReply(ACC, incoming(), null, 'reply', 'alice@localhost')
     expect(init.inReplyTo).toEqual(['<m1@localhost>'])
     expect(init.references).toEqual(['<m1@localhost>'])
   })
 
   it('keeps the existing chain and appends what is being answered', () => {
     const init = buildReply(
+      ACC,
       incoming({ references: ['<root@localhost>'] }),
       null,
       'reply',
@@ -153,6 +156,7 @@ describe('buildReply', () => {
   it('falls back to the body for headers cached before they carried this', () => {
     const stale = incoming({ messageId: undefined, references: undefined })
     const init = buildReply(
+      ACC,
       stale,
       body({ messageId: ['<m9@localhost>'] }),
       'reply',
@@ -163,15 +167,39 @@ describe('buildReply', () => {
 
   it('leaves the fields off entirely when neither side knows the id', () => {
     const unknown = incoming({ messageId: null, references: null })
-    const init = buildReply(unknown, null, 'reply', 'alice@localhost')
+    const init = buildReply(ACC, unknown, null, 'reply', 'alice@localhost')
     expect(init.inReplyTo).toBeUndefined()
     expect(init.references).toBeUndefined()
+  })
+
+  /*
+   * Issue #49: the composer used to be handed a null body and quote it, which
+   * produced an empty blockquote and silently dropped the message being
+   * answered. It now gets the source instead and fetches it itself.
+   */
+  it('defers the quote instead of quoting nothing when the body is not cached', () => {
+    const init = buildReply(ACC, incoming(), null, 'reply', 'alice@localhost')
+    expect(init.quotedHtml).toBeUndefined()
+    expect(init.quoteSource).toEqual({ accountId: ACC, header: incoming(), mode: 'reply' })
+  })
+
+  it('quotes straight away when the body is already there', () => {
+    const init = buildReply(ACC, incoming(), body(), 'reply', 'alice@localhost')
+    expect(init.quoteSource).toBeUndefined()
+    expect(init.quotedHtml).toContain('so far')
+  })
+
+  it('defers a forward the same way, keeping its own header line', () => {
+    const init = buildReply(ACC, incoming(), null, 'forward', 'alice@localhost')
+    expect(init.quotedHtml).toBeUndefined()
+    expect(init.quoteSource?.mode).toBe('forward')
+    expect(quoteBlock(incoming(), body(), 'forward')).toContain('Forwarded message')
   })
 
   // A forward is not an answer to anything, so it carries the chain but must
   // not claim to reply to the message it quotes.
   it('carries references but no In-Reply-To on a forward', () => {
-    const init = buildReply(incoming(), null, 'forward', 'alice@localhost')
+    const init = buildReply(ACC, incoming(), null, 'forward', 'alice@localhost')
     expect(init.references).toEqual(['<m1@localhost>'])
     expect(init.inReplyTo).toBeUndefined()
   })

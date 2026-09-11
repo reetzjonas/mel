@@ -64,3 +64,22 @@ instead of handing the old one an `init` it never reads again.
 Covered by `src/services/send.test.ts` and three desktop e2e specs in
 `e2e/folders-drafts.spec.ts` (reopen → finish → send; save on demand, which
 also pins that no second copy appears; delete from the editor).
+
+## The quote can arrive after the composer does
+
+Reply, Reply all and Forward are live while the reading pane is still fetching
+the body, and the keyboard shortcuts (`r`, `a`, `f`) reply straight from the
+list, where there is usually no cached body at all. `buildReply` used to quote
+whatever it had, so in that window it produced an empty blockquote and the
+message being answered was silently dropped (#49).
+
+It now returns `quoteSource` instead of `quotedHtml` when the body is missing:
+the account, the header and the mode. The composer opens at once, fetches the
+body itself, and appends the quote at the *end* of the document with
+`updateSelection: false` — below whatever has been typed in the meantime, and
+without moving the cursor out from under the writer. If the fetch fails there
+is no message: the reply still goes out, just unquoted, and an error in a
+window someone is already writing in would be noise.
+
+Threading does not depend on this. `In-Reply-To` and `References` come from the
+header (#48), so they are right from the first keystroke.

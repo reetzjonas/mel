@@ -119,7 +119,7 @@ export function useMailShortcuts(ctx: Ctx) {
           const bodyRow = await db.bodyCache.get([accountId, emailId])
           const body = bodyRow ? openEnvelope(bodyRow.payload) : null
           const mode = e.key === 'r' ? 'reply' : e.key === 'a' ? 'replyAll' : 'forward'
-          ui.openCompose(buildReply(header, body, mode, ownEmail ?? ''))
+          ui.openCompose(buildReply(accountId, header, body, mode, ownEmail ?? ''))
           return
         }
       }

@@ -483,8 +483,11 @@ export function ReadingPane({
   }
 
   const reply = (mode: 'reply' | 'replyAll' | 'forward') => {
+    // A body still on its way is handed over as null on purpose: buildReply
+    // turns that into a quote the composer fetches, rather than a quote of
+    // nothing.
     const b = body === 'loading' ? null : body
-    openCompose(buildReply(expanded, b, mode, ownEmail))
+    openCompose(buildReply(accountId, expanded, b, mode, ownEmail))
   }
 
   // Your own unsent message: replying to it makes no sense, picking it back up
