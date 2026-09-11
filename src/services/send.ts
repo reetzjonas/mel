@@ -22,7 +22,10 @@ export async function getIdentities(accountId: string): Promise<Identity[]> {
 }
 
 async function roleMailboxId(accountId: string, role: MailboxRole): Promise<string | null> {
-  const rows = await db.mailboxes.where('[accountId+role]').equals([accountId, role ?? '']).toArray()
+  const rows = await db.mailboxes
+    .where('[accountId+role]')
+    .equals([accountId, role ?? ''])
+    .toArray()
   return rows[0]?.id ?? null
 }
 
@@ -158,6 +161,61 @@ function bodyAsHtml(body: EmailBody | null): string {
   return `<pre>${text.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</pre>`
 }
 
+/**
+ * A draft's stored body as editor content. Plain text becomes paragraphs and
+ * line breaks rather than the `<pre>` a quoted body gets: this is text you are
+ * about to go on writing, and the editor would turn a `<pre>` into a code
+ * block.
+ */
+function draftBodyHtml(body: EmailBody | null): string {
+  if (body?.html) return sanitizeMailHtml(body.html)
+  const text = body?.text ?? ''
+  if (!text.trim()) return ''
+  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;')
+  return text
+    .split(/\n{2,}/)
+    .map((p) => `<p>${escape(p).replace(/\n/g, '<br>')}</p>`)
+    .join('')
+}
+
+/**
+ * Reopens an existing draft in the compose window.
+ *
+ * A draft is the one message in the app that is not finished: it has to come
+ * back as editable fields rather than as a rendered body, or the only thing
+ * you can do with it is look at it. The draft's own id travels with it, so
+ * autosave replaces that message rather than leaving a second copy behind and
+ * sending destroys it (see `sendMail` plus `discardDraft` in Compose).
+ *
+ * Attachments come back by blob id — they already live on the server, so
+ * nothing is re-uploaded; `size` is what the part reports. Inline parts
+ * (`cid:`) are left out: they belong to the HTML that references them and
+ * re-attaching them would duplicate them on send.
+ */
+export function buildDraftInit(header: EmailHeader, body: EmailBody | null): ComposeInit {
+  return {
+    to: header.to,
+    cc: header.cc,
+    // Bcc is not part of a delivered message and therefore not in the header;
+    // the body fetch asks for it explicitly, and an older cached body has none.
+    bcc: body?.bcc ?? [],
+    subject: header.subject ?? '',
+    bodyHtml: draftBodyHtml(body),
+    draftId: header.id,
+    inReplyTo: body?.inReplyTo ?? undefined,
+    references: body?.references ?? undefined,
+    attachments: (body?.attachments ?? [])
+      .filter((a) => a.blobId && !a.cid)
+      .map((a) => ({
+        blobId: a.blobId,
+        localKey: null,
+        name: a.name ?? 'attachment',
+        type: a.type,
+        size: a.size,
+      })),
+  }
+}
+
 export function buildReply(
   header: EmailHeader,
   body: EmailBody | null,
@@ -181,7 +239,11 @@ export function buildReply(
   const notMe = (a: EmailAddress) => a.email.toLowerCase() !== ownEmail.toLowerCase()
   const to = header.from.length ? header.from : header.to.filter(notMe)
   const cc =
-    mode === 'replyAll' ? [...header.to, ...header.cc].filter(notMe).filter((a) => !to.some((t) => t.email === a.email)) : []
+    mode === 'replyAll'
+      ? [...header.to, ...header.cc]
+          .filter(notMe)
+          .filter((a) => !to.some((t) => t.email === a.email))
+      : []
   return {
     to,
     cc,

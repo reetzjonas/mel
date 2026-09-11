@@ -130,7 +130,12 @@ export function AppShell() {
         </Link>
       </nav>
 
-      {compose && account && <Compose accountId={account.id} init={compose} />}
+      {/* Keyed on what is being written: opening a draft while a compose
+          window stands open has to start a new editor, not hand the old one a
+          different `init` it never reads again. */}
+      {compose && account && (
+        <Compose key={compose.draftId ?? 'new'} accountId={account.id} init={compose} />
+      )}
       <HelpOverlay />
       <Snackbar />
     </div>

@@ -80,9 +80,9 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const [identityId, setIdentityId] = useState<string>('')
   const [to, setTo] = useState(addressesToString(init.to))
   const [cc, setCc] = useState(addressesToString(init.cc))
-  const [bcc, setBcc] = useState('')
+  const [bcc, setBcc] = useState(addressesToString(init.bcc))
   const [showCc, setShowCc] = useState(Boolean(init.cc?.length))
-  const [showBcc, setShowBcc] = useState(false)
+  const [showBcc, setShowBcc] = useState(Boolean(init.bcc?.length))
   const [subject, setSubject] = useState(init.subject ?? '')
   const [attachments, setAttachments] = useState<OutgoingAttachment[]>(init.attachments ?? [])
   const [error, setError] = useState<string | null>(null)
@@ -90,7 +90,22 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const fileInput = useRef<HTMLInputElement>(null)
   const [editRevision, setEditRevision] = useState(0)
   const [draftSaved, setDraftSaved] = useState(false)
-  const draftId = useRef<string | null>(null)
+  /*
+   * Anything the window was opened with is *not* a change: reopening a draft
+   * and closing it again must not rewrite it (every autosave replaces the
+   * message, so an idle reopen would churn through draft ids for nothing).
+   */
+  const [dirty, setDirty] = useState(false)
+  const changed =
+    <T,>(set: (v: T) => void) =>
+    (v: T) => {
+      setDirty(true)
+      set(v)
+    }
+  /** The draft this window owns: reopened, or created by the first autosave. */
+  const draftId = useRef<string | null>(init.draftId ?? null)
+  /** The same fact, as state: a ref cannot make the delete button appear. */
+  const [hasDraft, setHasDraft] = useState(Boolean(init.draftId))
   const draftBusy = useRef(false)
 
   useEffect(() => {
@@ -109,19 +124,24 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
       StarterKit.configure({ link: { openOnClick: false } }),
       Placeholder.configure({ placeholder: t('compose.placeholder') }),
     ],
-    content: init.quotedHtml ? `<p></p>${init.quotedHtml}` : '',
-    autofocus: init.to?.length ? 'start' : false,
+    // A reopened draft is its own whole content; a reply gets an empty
+    // paragraph above the quote for the answer to go in.
+    content: init.bodyHtml ?? (init.quotedHtml ? `<p></p>${init.quotedHtml}` : ''),
+    autofocus: init.draftId ? 'end' : init.to?.length ? 'start' : false,
     // The toolbar's pressed state (bold/italic/…) depends on where the cursor
     // is, not just on what was typed — moving into already-bold text has to
     // flip the button with no content change at all.
-    onUpdate: () => setEditRevision((r) => r + 1),
+    onUpdate: () => {
+      setDirty(true)
+      setEditRevision((r) => r + 1)
+    },
     onSelectionUpdate: () => setEditRevision((r) => r + 1),
   })
 
   // Draft autosave: 2.5 s after the last change (text fields only; the real
   // send builds its own message including attachments).
   useEffect(() => {
-    if (editRevision === 0 && !subject && !to) return
+    if (!dirty) return
     const identity = identities.find((i) => i.id === identityId)
     if (!identity || !editor) return
     const timer = setTimeout(() => {
@@ -144,7 +164,10 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
       )
         .then((id) => {
           draftId.current = id
-          if (id) setDraftSaved(true)
+          if (id) {
+            setHasDraft(true)
+            setDraftSaved(true)
+          }
         })
         .finally(() => {
           draftBusy.current = false
@@ -152,6 +175,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     }, 2500)
     return () => clearTimeout(timer)
   }, [
+    dirty,
     to,
     cc,
     bcc,
@@ -171,6 +195,17 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
       const a = await stageAttachment(accountId, file)
       setAttachments((cur) => [...cur, a])
     }
+  }
+
+  /** Throws the stored draft away and closes — the counterpart to sending it. */
+  async function deleteDraft() {
+    const id = draftId.current
+    if (!id) return
+    draftId.current = null
+    setHasDraft(false)
+    await discardDraft(accountId, id)
+    closeCompose()
+    showSnackbar({ message: t('compose.draftDeleted') }, 4000)
   }
 
   async function send() {
@@ -226,7 +261,9 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
        */}
       <div className="animate-rise flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line">
         <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
-          <span className="text-sm font-semibold">{t('compose.new')}</span>
+          <span className="text-sm font-semibold">
+            {init.draftId ? t('compose.editDraft') : t('compose.new')}
+          </span>
           <Tooltip label={t('compose.discard')}>
             <button
               type="button"
@@ -261,7 +298,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               <select
                 aria-label={t('compose.from')}
                 value={identityId}
-                onChange={(e) => setIdentityId(e.target.value)}
+                onChange={(e) => changed(setIdentityId)(e.target.value)}
                 className="min-w-0 flex-1 border-0 bg-transparent px-0 py-2 text-sm outline-none"
               >
                 {identities.map((i) => (
@@ -278,7 +315,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             label={t('compose.to')}
             placeholder={t('compose.to')}
             value={to}
-            onChange={setTo}
+            onChange={changed(setTo)}
             autoFocus={!init.to?.length}
             trailing={
               <span className="flex shrink-0 gap-2 text-xs text-ink-muted">
@@ -301,7 +338,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               label={t('compose.cc')}
               placeholder={t('compose.cc')}
               value={cc}
-              onChange={setCc}
+              onChange={changed(setCc)}
             />
           )}
           {showBcc && (
@@ -310,7 +347,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               label={t('compose.bcc')}
               placeholder={t('compose.bcc')}
               value={bcc}
-              onChange={setBcc}
+              onChange={changed(setBcc)}
             />
           )}
           <div className={fieldRowClass}>
@@ -318,7 +355,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               className="w-full border-0 bg-transparent px-0 py-2 text-sm font-medium outline-none placeholder:text-ink-muted/60"
               placeholder={t('compose.subject')}
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(e) => changed(setSubject)(e.target.value)}
             />
           </div>
 
@@ -389,6 +426,20 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             hidden
             onChange={(e) => void attach(e.target.files)}
           />
+          {/* Only once the draft exists: throwing away a message that was
+              never stored is what the close button already does. */}
+          {hasDraft && (
+            <Tooltip label={t('compose.deleteDraft')}>
+              <button
+                type="button"
+                aria-label={t('compose.deleteDraft')}
+                onClick={() => void deleteDraft()}
+                className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-danger"
+              >
+                <Icon name="trash" size={16} />
+              </button>
+            </Tooltip>
+          )}
           {draftSaved && (
             <span className="ml-auto text-xs text-ink-muted">{t('compose.draftSaved')}</span>
           )}

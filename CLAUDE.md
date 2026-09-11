@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 178 Vitest + 46 Playwright (desktop + mobile; state-mutating specs are
+Tests: 189 Vitest + 48 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -101,6 +101,14 @@ Three things that were not obvious:
   scrolled into view once) and never folded away. Which messages count as new
   is seeded *after* the thread query resolves — seeding from the routed message
   alone makes the whole thread look like it just turned up.
+  **`useLiveQuery` hands back the previous query's result while the new one
+  runs**, so for one render after another message is opened `useThread` still
+  describes the conversation you came from. Seeding from *that* marked every
+  message of the newly opened thread as new — reported from a real account as
+  "everything says NEW". `threadForMessage()` (pure, tested) drops a thread
+  that does not contain the routed message, and both the seeding and the
+  rendered message list go through it. Pinned in `e2e/threads.spec.ts`
+  (switching messages, then back — verified to fail without the fix).
 - **Exactly one message is expanded in the reading pane.** Not a design
   preference: a body renders in a sandboxed iframe *without*
   `allow-same-origin` (mail scripts must never reach our origin), so its
@@ -108,17 +116,73 @@ Three things that were not obvious:
   need a guessed height. The folded messages are one-line rows and the open one
   takes what is left, with a `min-h-96` floor so a long thread scrolls instead
   of squeezing the body to nothing.
-- **Archive and delete take the conversation, everything else takes the
-  message.** That holds in the reading pane, the list row *and* the `e`/`#`
-  shortcuts (`targetIds()` in `shortcuts.ts`) — a shortcut that archived half of
-  what the button archives would be worse than no shortcut. Flag, unread, reply
-  and not-spam stay on the one message they can sensibly mean.
+- **Archive and delete take the open message; the conversation is a second
+  choice behind a caret.** They used to take the whole conversation, which the
+  user found too blunt — the two differ by every other message in the thread and
+  only the snackbar ever said which had happened. In the reading pane the two
+  buttons are now `SplitAction` (ReadingPane.tsx): the button itself is the one
+  message, the caret opens a two-entry menu ("Archive" / "Archive
+  conversation"). The `e`/`#` shortcuts follow the button's default and take the
+  single message — `targetIds()` is gone. **The list row still acts on its whole
+  conversation**, because a row *is* the conversation (it carries the count);
+  the pane is where one message can be singled out — but its **tooltips say
+  so**, in three cases, because the icons are identical either way:
+  `ids.length > 1` → "Archive conversation"; a row that counts several messages
+  but holds only one *here* → "Archive this message"; a plain single message →
+  "Archive". That middle case is the common inbox shape (they wrote once, your
+  replies are in Sent) and it is why the first attempt looked broken: only the
+  top row changed its tooltip, and the rows below were genuinely acting on one
+  message while their badge said four. The reading pane splits on the same
+  quantity (`splitScope = threadIds.length > 1`, not `isThread`) — a caret
+  offering the same act twice is worse than no caret. Flag, unread, reply and
+  not-spam stay on the one message they can sensibly mean, as before.
 
 **Search results are never grouped**: a search answers with the messages that
 matched, not with the threads they sit in. The list row component takes one
 `RowItem` either way, so a message row and a conversation row cannot drift
 apart, and all row actions go through the `bulk*` services with a single id when
 there is only one.
+
+## Drafts are reopened in the editor (not the reading pane)
+
+A draft used to be a dead end: the reading pane can only *show* a message, so a
+saved draft could be looked at and deleted and nothing else. It still opens in
+the reading pane like every other message — **clicking the row deliberately
+does not open the editor** (tried, and the user asked for it back: a modal
+appearing on a plain list click is too much for a click that everywhere else
+just shows you something). The pane's toolbar swaps reply/reply-all/forward for
+**Edit draft** instead, and that button is the way in — those three make no
+sense for your own unsent mail anyway.
+
+`buildDraftInit()` (`services/send.ts`, pure and tested) turns the header plus
+body back into a `ComposeInit`. Four things that are easy to miss:
+
+- **`ComposeInit.draftId` is what makes it an edit** rather than a copy: the
+  autosave passes it as `replaceId` (`Email/set` create + destroy in one call),
+  so finishing a draft leaves one message, not a trail. Sending destroys it via
+  the `discardDraft` that was already there.
+- **Bcc only exists in the body.** It is not part of a delivered message, so it
+  is deliberately not in the header property set — `EMAIL_BODY_PROPS` asks for
+  `bcc` (and `inReplyTo`, for a draft that answers something) and `EmailBody`
+  carries both as *optional* fields, since bodies cached before this have
+  neither.
+- **Plain text becomes paragraphs, not `<pre>`.** `bodyAsHtml()` (quoting) and
+  `draftBodyHtml()` (editing) differ on purpose: Tiptap turns a `<pre>` into a
+  code block, which is not what half-written prose should come back as.
+- **Autosave is gated on a `dirty` flag**, not on "the fields are non-empty" as
+  before. Opening a draft and closing it again must not rewrite it — every
+  autosave replaces the message, so an idle reopen would churn through draft ids
+  for nothing. Attachments come back by blob id (nothing is re-uploaded); inline
+  `cid:` parts are left out, they belong to the HTML that references them.
+
+The compose window also has a **Delete draft** button once a draft exists (the
+close button only closes), and `AppShell` keys `<Compose>` on `draftId` so
+opening a draft while another compose window stands open starts a new editor
+instead of handing the old one an `init` it never reads again.
+
+Covered by `src/services/send.test.ts` and two desktop e2e specs in
+`e2e/folders-drafts.spec.ts` (reopen → finish → send, and delete from the
+editor).
 
 ## Login, setup and signing out
 

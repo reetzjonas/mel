@@ -18,30 +18,6 @@ interface Ctx {
 
 const CHORD_MS = 600
 
-/**
- * What archive and delete apply to: the whole conversation in the folder you
- * are looking at, or the single message when conversations are off.
- *
- * The same rule the reading pane's buttons follow — a shortcut that quietly
- * archived half of what the button archives would be worse than no shortcut.
- * Index columns carry the mailboxes, so no payload is opened here.
- */
-async function targetIds(
-  accountId: string,
-  emailId: string,
-  mailboxId: string | undefined,
-): Promise<string[]> {
-  if (!useUi.getState().conversationView || !mailboxId) return [emailId]
-  const row = await db.emails.get([accountId, emailId])
-  if (!row) return [emailId]
-  const rows = await db.emails
-    .where('[accountId+threadId]')
-    .equals([accountId, row.threadId])
-    .toArray()
-  const ids = rows.filter((r) => r.mailboxIds.includes(mailboxId)).map((r) => r.id)
-  return ids.length ? ids : [emailId]
-}
-
 export function useMailShortcuts(ctx: Ctx) {
   const navigate = useNavigate()
   const ctxRef = useRef(ctx)
@@ -88,8 +64,13 @@ export function useMailShortcuts(ctx: Ctx) {
 
       if (!accountId || !emailId) return
       switch (e.key) {
+        // Archive and delete take the one message the URL names — the same
+        // default the reading pane's buttons have. Taking the whole
+        // conversation is a deliberate pick from the caret beside them, and a
+        // single key that quietly did the wider thing would be worse than no
+        // shortcut at all.
         case 'e': {
-          const undo = await bulkArchive(accountId, await targetIds(accountId, emailId, mailboxId))
+          const undo = await bulkArchive(accountId, [emailId])
           backToList()
           // null means no Archive mailbox could be created. Staying quiet here
           // looks exactly like success while nothing has moved at all.
@@ -105,7 +86,7 @@ export function useMailShortcuts(ctx: Ctx) {
           return
         }
         case '#': {
-          const undo = await bulkDelete(accountId, await targetIds(accountId, emailId, mailboxId))
+          const undo = await bulkDelete(accountId, [emailId])
           backToList()
           ui.showSnackbar(
             undo

@@ -115,6 +115,30 @@ export function buildConversations({
   return out
 }
 
+/**
+ * The thread query's answer **for this message** — or undefined while the
+ * previous one is still standing in for it.
+ *
+ * `useLiveQuery` hands back the last result while the new query runs, so for
+ * one render after another message is opened the array still describes the
+ * conversation you just left. The two are told apart by the obvious thing: a
+ * thread that does not contain the message the URL names is not that message's
+ * thread.
+ *
+ * This is load-bearing, not tidiness. The reading pane seeds "what was already
+ * here" from exactly this array (see `arrived`/the NEW chip). Seeded from the
+ * conversation you came from, *every* message of the new one is unaccounted
+ * for and the whole thread is marked as having just turned up — which is what
+ * it did, right up until the second render.
+ */
+export function threadForMessage(
+  thread: EmailHeader[] | undefined,
+  focusedId: string,
+): EmailHeader[] | undefined {
+  if (!thread) return undefined
+  return thread.some((m) => m.id === focusedId) ? thread : undefined
+}
+
 /** A message of the open thread, or a run of them folded into one band. */
 export type ThreadSlot = { index: number } | { folded: number[] }
 

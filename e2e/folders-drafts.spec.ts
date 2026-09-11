@@ -57,6 +57,68 @@ test('compose autosaves a draft into the Drafts folder', async ({ page }) => {
 })
 
 /*
+ * The point of a draft: picking it back up. Before this, a saved draft could
+ * only be looked at in the reading pane — the fields were gone, so the message
+ * could neither be finished nor sent, only deleted.
+ */
+test('reopen a saved draft, finish it and send it', async ({ page }) => {
+  test.setTimeout(60_000)
+  const subject = `Weiter-${Date.now() % 100000}`
+  await login(page)
+
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('bob@localhost')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Erster Satz.')
+  await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Discard' }).click()
+
+  await page.getByRole('link', { name: 'Drafts' }).click()
+  const row = page.getByText(subject)
+  await expect(row).toBeVisible({ timeout: 10_000 })
+
+  // The draft opens like any other message; the editor is one deliberate click
+  // further, on the button the reading pane offers instead of Reply.
+  await row.click()
+  await expect(page.getByRole('button', { name: 'Reply', exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Edit draft' }).click()
+  await expect(page.getByPlaceholder('To', { exact: true })).toHaveValue(/bob@localhost/)
+  await expect(page.getByPlaceholder('Subject', { exact: true })).toHaveValue(subject)
+  await expect(page.locator('.ProseMirror')).toContainText('Erster Satz.')
+
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' Zweiter Satz.')
+
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible({ timeout: 10_000 })
+  // Sending takes the draft with it: the message it was is gone from Drafts,
+  // and no second copy is left behind by the autosave that created it.
+  await expect(page.getByText(subject)).toHaveCount(0, { timeout: 20_000 })
+})
+
+/* Throwing a draft away from inside the editor, which is where you are when
+ * you decide it is not worth finishing. */
+test('delete a draft from the compose window', async ({ page }) => {
+  const subject = `Weg-${Date.now() % 100000}`
+  await login(page)
+
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('bob@localhost')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Doch nicht.')
+  await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
+
+  await page.getByRole('button', { name: 'Delete draft' }).click()
+  await expect(page.getByText('Draft deleted')).toBeVisible({ timeout: 10_000 })
+
+  await page.getByRole('link', { name: 'Drafts' }).click()
+  await expect(page.getByText(subject)).toHaveCount(0, { timeout: 10_000 })
+})
+
+/*
  * Files an existing message into an extra mailbox without taking it out of the
  * inbox. The UI's move replaces the mailbox set, which would leave the message
  * living only in the folder under test — deleting that folder would then

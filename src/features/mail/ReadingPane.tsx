@@ -8,7 +8,7 @@ import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSani
 import { imagePolicy } from '../../lib/imagePolicy'
 import { useMailboxes, useThread } from './hooks'
 import { MessageDetails } from './MessageDetails'
-import { foldThread, type ThreadSlot } from './conversations'
+import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
 import {
@@ -18,7 +18,7 @@ import {
   markRead,
   setFlagged,
 } from '../../services/mailActions'
-import { buildReply } from '../../services/send'
+import { buildDraftInit, buildReply } from '../../services/send'
 import { connectionFor } from '../../sync/connections'
 import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
@@ -55,12 +55,15 @@ function ActionButton({
   onClick,
   active,
   labelled,
+  disabled,
 }: {
   icon: IconName
   label: string
   onClick: () => void
   active?: boolean
   labelled?: boolean
+  /** Visibly disabled rather than a handler that quietly returns early. */
+  disabled?: boolean
 }) {
   return (
     <Tooltip label={label}>
@@ -68,7 +71,8 @@ function ActionButton({
         type="button"
         aria-label={label}
         onClick={onClick}
-        className={`flex items-center gap-1.5 rounded-md p-2 transition-colors hover:bg-surface-2 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
+        disabled={disabled}
+        className={`flex items-center gap-1.5 rounded-md p-2 transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
       >
         <Icon name={icon} size={16} className="shrink-0" />
         {labelled && (
@@ -78,6 +82,82 @@ function ActionButton({
         )}
       </button>
     </Tooltip>
+  )
+}
+
+/**
+ * Archive and delete while the pane is showing a conversation.
+ *
+ * The button itself takes the **one message** you are reading; the caret next
+ * to it offers the whole conversation. Which one is the default matters more
+ * here than anywhere else in the toolbar: the two differ by every other
+ * message in the thread, and telling them apart afterwards means noticing the
+ * snackbar in time.
+ */
+function SplitAction({
+  icon,
+  label,
+  threadLabel,
+  optionsLabel,
+  onMessage,
+  onThread,
+}: {
+  icon: IconName
+  label: string
+  threadLabel: string
+  optionsLabel: string
+  onMessage: () => void
+  onThread: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', close)
+    return () => document.removeEventListener('mousedown', close)
+  }, [open])
+
+  return (
+    <span ref={ref} className="relative flex items-center">
+      <ActionButton icon={icon} label={label} labelled onClick={onMessage} />
+      <Tooltip label={optionsLabel}>
+        <button
+          type="button"
+          aria-label={optionsLabel}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="-ml-1.5 rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        >
+          <Icon name="chevronDown" size={12} />
+        </button>
+      </Tooltip>
+      {open && (
+        <span
+          role="menu"
+          className="animate-rise absolute top-full left-0 z-20 mt-1 w-56 overflow-hidden rounded-control bg-raised py-1 shadow-overlay ring-1 ring-line"
+        >
+          {[[label, onMessage] as const, [threadLabel, onThread] as const].map(([text, run]) => (
+            <button
+              key={text}
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                setOpen(false)
+                run()
+              }}
+              className="block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
+            >
+              {text}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -243,9 +323,11 @@ export function ReadingPane({
   /*
    * The whole conversation, oldest first — falling back to the routed message
    * alone while the thread query is still in flight, so the pane never blanks
-   * out between messages.
+   * out between messages. "In flight" includes the render in which the query
+   * still answers with the *previous* conversation (see threadForMessage).
    */
-  const messages = grouped && thread?.length ? thread : [focused]
+  const loaded = threadForMessage(thread, focused.id)
+  const messages = grouped && loaded?.length ? loaded : [focused]
   /*
    * Exactly one message is open at a time.
    *
@@ -272,7 +354,7 @@ export function ReadingPane({
     setShowAll(false)
     known.current = null
   }
-  if (known.current === null && (!grouped || thread !== undefined)) {
+  if (known.current === null && (!grouped || loaded !== undefined)) {
     known.current = new Set(messages.map((m) => m.id))
   }
   const arrived = (id: string) => known.current !== null && !known.current.has(id)
@@ -280,6 +362,14 @@ export function ReadingPane({
   /** What a conversation-wide action applies to: this folder's messages. */
   const threadIds = messages.filter((m) => m.mailboxIds[mailboxId]).map((m) => m.id)
   const isThread = messages.length > 1
+  /*
+   * Whether archive and delete have two meanings here at all. Not `isThread`:
+   * a conversation spans folders, so a four-message thread can still have a
+   * single message *in this one*, and then "the conversation" and "this
+   * message" are the same act. A caret offering the same thing twice is worse
+   * than no caret.
+   */
+  const splitScope = threadIds.length > 1
 
   /*
    * A long thread is folded in the middle (see foldThread); the open message
@@ -358,13 +448,13 @@ export function ReadingPane({
 
   const backToList = () => void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
 
-  // Archive and delete take the conversation with them when the pane is
-  // showing one — leaving the other half of an exchange behind in the folder
-  // is not what "archive" means to anyone reading it. Everything else (flag,
-  // unread, reply, not spam) stays on the message you have open, which is the
-  // only one those can sensibly mean.
-  async function onArchive() {
-    const undo = await bulkArchive(accountId, isThread ? threadIds : [expanded.id])
+  // Archive and delete default to the **one message** that is open, like
+  // every other action in this toolbar; taking the whole conversation is a
+  // deliberate second choice behind the caret (see SplitAction). Reaching
+  // across the rest of a thread is the one action here that cannot be judged
+  // from what the pane is showing.
+  async function onArchive(thread = false) {
+    const undo = await bulkArchive(accountId, thread ? threadIds : [expanded.id])
     backToList()
     // null means no Archive mailbox could be created. Staying silent here is
     // indistinguishable from success and leaves the message where it was.
@@ -375,8 +465,8 @@ export function ReadingPane({
     )
   }
 
-  async function onDelete() {
-    const undo = await bulkDelete(accountId, isThread ? threadIds : [expanded.id])
+  async function onDelete(thread = false) {
+    const undo = await bulkDelete(accountId, thread ? threadIds : [expanded.id])
     backToList()
     showSnackbar(
       undo
@@ -390,6 +480,9 @@ export function ReadingPane({
     openCompose(buildReply(expanded, b, mode, ownEmail))
   }
 
+  // Your own unsent message: replying to it makes no sense, picking it back up
+  // is the only thing to do with it.
+  const isDraft = Boolean(expanded.keywords['$draft'])
   const flagged = Boolean(expanded.keywords['$flagged'])
   const isHtmlMail = body !== 'loading' && body !== null && Boolean(body.html)
   const doc =
@@ -443,18 +536,40 @@ export function ReadingPane({
               }}
             />
           )}
-          <ActionButton
-            icon="archive"
-            label={isThread ? t('mail.archiveThread') : t('mail.archive')}
-            labelled
-            onClick={() => void onArchive()}
-          />
-          <ActionButton
-            icon="trash"
-            label={isThread ? t('mail.deleteThread') : t('mail.delete')}
-            labelled
-            onClick={() => void onDelete()}
-          />
+          {splitScope ? (
+            <SplitAction
+              icon="archive"
+              label={t('mail.archive')}
+              threadLabel={t('mail.archiveThread')}
+              optionsLabel={t('mail.archiveOptions')}
+              onMessage={() => void onArchive()}
+              onThread={() => void onArchive(true)}
+            />
+          ) : (
+            <ActionButton
+              icon="archive"
+              label={t('mail.archive')}
+              labelled
+              onClick={() => void onArchive()}
+            />
+          )}
+          {splitScope ? (
+            <SplitAction
+              icon="trash"
+              label={t('mail.delete')}
+              threadLabel={t('mail.deleteThread')}
+              optionsLabel={t('mail.deleteOptions')}
+              onMessage={() => void onDelete()}
+              onThread={() => void onDelete(true)}
+            />
+          ) : (
+            <ActionButton
+              icon="trash"
+              label={t('mail.delete')}
+              labelled
+              onClick={() => void onDelete()}
+            />
+          )}
           {/*
            * Flag and mark-unread stay icon-only at every width: they are
            * toggles whose state the icon already carries (the flag fills), and
@@ -476,24 +591,41 @@ export function ReadingPane({
           />
         </span>
         <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
-          <ActionButton
-            icon="reply"
-            label={t('mail.reply')}
-            labelled
-            onClick={() => reply('reply')}
-          />
-          <ActionButton
-            icon="replyAll"
-            label={t('mail.replyAll')}
-            labelled
-            onClick={() => reply('replyAll')}
-          />
-          <ActionButton
-            icon="forward"
-            label={t('mail.forward')}
-            labelled
-            onClick={() => reply('forward')}
-          />
+          {isDraft ? (
+            // Disabled rather than silently doing nothing while the body is
+            // still loading: opening the editor without it would drop the text
+            // the draft already holds on the next autosave.
+            <ActionButton
+              icon="compose"
+              label={t('mail.editDraft')}
+              labelled
+              disabled={body === 'loading'}
+              onClick={() =>
+                openCompose(buildDraftInit(expanded, body === 'loading' ? null : body))
+              }
+            />
+          ) : (
+            <>
+              <ActionButton
+                icon="reply"
+                label={t('mail.reply')}
+                labelled
+                onClick={() => reply('reply')}
+              />
+              <ActionButton
+                icon="replyAll"
+                label={t('mail.replyAll')}
+                labelled
+                onClick={() => reply('replyAll')}
+              />
+              <ActionButton
+                icon="forward"
+                label={t('mail.forward')}
+                labelled
+                onClick={() => reply('forward')}
+              />
+            </>
+          )}
         </span>
         {/* On its own, pushed right: it opens a panel rather than acting on the
             message, and it is the one control here that never changes it. */}

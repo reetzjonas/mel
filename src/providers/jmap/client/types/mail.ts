@@ -53,6 +53,7 @@ export interface JmapEmail {
   threadId: string
   messageId?: string[] | null
   references?: string[] | null
+  inReplyTo?: string[] | null
   mailboxIds: Record<string, boolean>
   keywords: Record<string, boolean>
   size: number
@@ -106,12 +107,18 @@ export const EMAIL_METADATA_PROPS = ['id', 'blobId', 'headers'] as const
 
 export const EMAIL_BODY_PROPS = [
   'id',
+  // For reopening a draft: Bcc never travels with a delivered message, so it
+  // is not in the header property set and can only be read back here.
+  'bcc',
   'bodyValues',
   'textBody',
   'htmlBody',
   'attachments',
   'messageId',
   'references',
+  // Threading for a draft picked up again: the reply it belongs to is only
+  // recorded here, nowhere in the header the list is built from.
+  'inReplyTo',
 ] as const
 
 export interface EmailFilterCondition {

@@ -145,6 +145,21 @@ function Row({
   const { email, ids, unread, flagged } = item
   const sender = email.from[0]
   const { showSnackbar } = useUi()
+  /*
+   * What archive and delete on this row really take, spelled out in three
+   * cases — `ids` is the truth, not the count beside the sender.
+   *
+   * The count spans folders (your own replies in Sent are part of the
+   * exchange); `ids` is only this folder's share of it. So a row can say "4
+   * messages" and still have exactly one message here to act on, which is the
+   * common shape of an inbox: they wrote once, the rest of the thread is in
+   * Sent. That row gets "Archive this message" rather than a bare "Archive" —
+   * without it the badge next to the sender reads like a promise the action
+   * does not keep.
+   */
+  const scope = ids.length > 1 ? 'thread' : item.count > 1 ? 'one-of-thread' : 'single'
+  const actionLabel = (single: MsgKey, one: MsgKey, thread: MsgKey) =>
+    t(scope === 'thread' ? thread : scope === 'one-of-thread' ? one : single)
 
   // Every action goes through the bulk variants, with a single id when the row
   // is a single message: one code path, and a conversation costs one outbox
@@ -253,8 +268,16 @@ function Row({
               }
             />
           )}
-          <QuickAction icon="archive" label={t('mail.archive')} onClick={doArchive} />
-          <QuickAction icon="trash" label={t('mail.delete')} onClick={doDelete} />
+          <QuickAction
+            icon="archive"
+            label={actionLabel('mail.archive', 'mail.archiveMessage', 'mail.archiveThread')}
+            onClick={doArchive}
+          />
+          <QuickAction
+            icon="trash"
+            label={actionLabel('mail.delete', 'mail.deleteMessage', 'mail.deleteThread')}
+            onClick={doDelete}
+          />
         </span>
 
         <span className="flex items-baseline justify-between gap-3">

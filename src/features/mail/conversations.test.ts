@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailHeader } from '../../domain/email'
-import { buildConversations, foldThread } from './conversations'
+import { buildConversations, foldThread, threadForMessage } from './conversations'
 
 const INBOX = 'mb-inbox'
 const SENT = 'mb-sent'
@@ -209,5 +209,29 @@ describe('foldThread', () => {
       const slots = foldThread({ count: 10, expandedIndex })
       expect(slots.filter((s) => 'index' in s && s.index === expandedIndex)).toHaveLength(1)
     }
+  })
+})
+
+describe('threadForMessage', () => {
+  const a = header('a', '2026-01-01T10:00:00Z', [INBOX])
+  const b = header('b', '2026-01-01T11:00:00Z', [INBOX])
+  const other = header('z', '2026-01-01T09:00:00Z', [INBOX], { threadId: 't2' })
+
+  it('passes the thread through when it holds the open message', () => {
+    expect(threadForMessage([a, b], 'b')).toEqual([a, b])
+  })
+
+  it('is undefined while nothing has loaded yet', () => {
+    expect(threadForMessage(undefined, 'b')).toBeUndefined()
+  })
+
+  /*
+   * The regression: useLiveQuery answers with the previous conversation for one
+   * render after another message is opened. Taken at face value, the reading
+   * pane seeded "what was already here" from the thread you came from — and
+   * then marked every message of the new one NEW.
+   */
+  it('rejects the conversation you just left, which does not contain this message', () => {
+    expect(threadForMessage([other], 'b')).toBeUndefined()
   })
 })

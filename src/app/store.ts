@@ -6,9 +6,22 @@ import { conversationView, setConversationView } from '../lib/conversationView'
 export interface ComposeInit {
   to?: EmailAddress[]
   cc?: EmailAddress[]
+  bcc?: EmailAddress[]
   subject?: string
   /** Quoted original, appended below the cursor. */
   quotedHtml?: string
+  /**
+   * The editor's whole starting content — a draft being picked up again,
+   * rather than a quote written underneath a fresh message. Kept apart from
+   * `quotedHtml` because the two differ in where the cursor goes and in
+   * whether an empty paragraph is prepended.
+   */
+  bodyHtml?: string
+  /**
+   * The existing draft this compose window continues. Autosave replaces that
+   * message instead of creating a second one, and sending destroys it.
+   */
+  draftId?: string
   inReplyTo?: string[]
   references?: string[]
   attachments?: OutgoingAttachment[]

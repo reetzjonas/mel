@@ -41,10 +41,19 @@ export interface EmailBody {
   emailId: string
   html: string | null
   text: string | null
+  /*
+   * Only a draft ever needs this — the recipients of a message you received
+   * are in its header, but Bcc is not part of what is delivered, so reopening
+   * your own unsent draft is the one case where it has to come along. Optional
+   * because bodies cached before this existed simply do not carry it.
+   */
+  bcc?: EmailAddress[] | null
   attachments: EmailBodyPart[]
   /** RFC 5322 Message-ID(s), needed for reply threading. */
   messageId: string[] | null
   references: string[] | null
+  /** What this message answers — carried along when a draft is reopened. */
+  inReplyTo?: string[] | null
 }
 
 export interface Thread {
