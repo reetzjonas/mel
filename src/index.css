@@ -198,6 +198,55 @@ option {
 }
 
 /*
+ * Where the browser can be talked out of drawing the list itself, take it
+ * over: `base-select` turns the popup into a real element, so the selected
+ * row stops being painted in the OS highlight colour — which is what still
+ * put a light blue bar in the middle of a dark dialog even once the options
+ * themselves were dark. Guarded, because everywhere else the native popup and
+ * the two colours above remain the best available.
+ *
+ * The option rules are scoped to the picker on purpose: with `base-select` the
+ * closed control renders the selected option's own box, so padding set on
+ * `option` unscoped would also pad the control from the inside.
+ */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+
+  /* We draw the chevron ourselves — see `ui/Select.tsx`. */
+  select::picker-icon {
+    display: none;
+  }
+
+  ::picker(select) {
+    margin-top: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--mel-line);
+    border-radius: 0.75rem;
+    background: var(--mel-raised);
+    box-shadow: var(--mel-shadow-overlay);
+  }
+
+  /*
+   * Not scoped under `::picker(select)`: the options are children of the
+   * select, not of the pseudo-element, so a descendant selector never
+   * matches them. Which means these also reach the copy of the selected
+   * option that the closed control renders — hence background only, and no
+   * padding or radius that would push the control around from the inside.
+   */
+  option:hover,
+  option:focus {
+    background-color: var(--mel-surface-2);
+  }
+
+  select:open option:checked {
+    background-color: var(--mel-accent-wash);
+  }
+}
+
+/*
  * Compose editor content (Tiptap/ProseMirror) — the only rich-text surface in
  * the app, so scoped rules here rather than pulling in @tailwindcss/typography
  * for one editor. Preflight resets list-style and margin on ul/ol app-wide,
