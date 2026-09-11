@@ -11,13 +11,18 @@ import {
   moveMailbox,
   renameMailbox,
 } from '../../services/mailboxes'
+import { bulkMove } from '../../services/mailActions'
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
 import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { dragKind, readMailDrag, setFolderDrag } from './dragAndDrop'
 import { mailboxTree, moveTargets } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
+
+/** Stands for "no parent" in `dropTarget`, which otherwise holds folder ids. */
+const TOP_DROP = '__top__'
 
 const ROLE_ICONS: Record<string, IconName> = {
   inbox: 'inbox',
@@ -177,7 +182,54 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
   const accountId = account.id
   const [refreshing, setRefreshing] = useState(false)
   const [dialog, setDialog] = useState<Dialog>(null)
-  const { openCompose, showSnackbar } = useUi()
+  /** The folder being dragged, and the row the pointer is currently over. */
+  const [dragging, setDragging] = useState<Mailbox | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const { openCompose, showSnackbar, clearSelection } = useUi()
+
+  /*
+   * Where the folder in flight may land — the same rule the move dialog
+   * offers, so the two paths cannot disagree about what is allowed. Known up
+   * front because this component started the drag; the origin of *mail* is
+   * not, which is why that one is checked on arrival instead.
+   */
+  const folderTargets = dragging ? new Set(moveTargets(mailboxes, dragging).map((m) => m.id)) : null
+
+  const endDrag = () => {
+    setDragging(null)
+    setDropTarget(null)
+  }
+
+  /** Whether this row would take what is currently being dragged over it. */
+  const takes = (e: React.DragEvent, m: Mailbox) => {
+    const kind = dragKind(e)
+    if (kind === 'folder') return Boolean(folderTargets?.has(m.id))
+    return kind === 'mail' && m.mayAddItems
+  }
+
+  const onDropOn = (e: React.DragEvent, m: Mailbox) => {
+    e.preventDefault()
+    const kind = dragKind(e)
+    endDrag()
+    if (kind === 'folder') {
+      if (dragging && folderTargets?.has(m.id))
+        void moveMailbox(accountId, dragging.id, m.id).then(report)
+      return
+    }
+    const payload = readMailDrag(e)
+    // Dropping mail back where it came from is a gesture, not a move: the
+    // source folder is only readable now, so this is the first chance to say
+    // so, and the quietest answer is to do nothing.
+    if (!payload || payload.mailboxId === m.id) return
+    clearSelection()
+    void bulkMove(accountId, payload.ids, m.id).then((undo) =>
+      showSnackbar(
+        undo
+          ? { message: t('bulk.moved'), actionLabel: t('mail.undo'), action: () => void undo() }
+          : { message: t('bulk.moved') },
+      ),
+    )
+  }
 
   const refresh = () => {
     setRefreshing(true)
@@ -226,7 +278,32 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           <Icon name="compose" size={15} />
           {t('compose.new')}
         </button>
-        <div className="mb-1.5 flex items-center justify-between pr-1 pl-2.5">
+        {/*
+         * The account row doubles as "top level" while a folder is in flight.
+         * Every other destination is a folder, so without it a folder could be
+         * dragged in and never out — and a target that only appears mid-drag
+         * is both hard to aim at and impossible to hand a drag to, which is
+         * how this version was found. The row is always here; only its
+         * appearance changes.
+         */}
+        <div
+          onDragOver={(e) => {
+            if (dragKind(e) !== 'folder' || !dragging || dragging.parentId === null) return
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            setDropTarget(TOP_DROP)
+          }}
+          onDragLeave={() => setDropTarget((id) => (id === TOP_DROP ? null : id))}
+          onDrop={(e) => {
+            e.preventDefault()
+            const folder = dragging
+            endDrag()
+            if (folder) void moveMailbox(accountId, folder.id, null).then(report)
+          }}
+          className={`mb-1.5 flex items-center justify-between rounded-control pr-1 pl-2.5 ${
+            dropTarget === TOP_DROP ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
+          }`}
+        >
           <Tooltip label={account.label}>
             <span className="truncate text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
               {account.label}
@@ -265,6 +342,23 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
               key={m.id}
               to="/mail/$mailboxId"
               params={{ mailboxId: m.id }}
+              // Only what the menu would also offer to move. Setting it false
+              // elsewhere also stops the browser dragging the link's URL,
+              // which is never what someone reaching for a folder meant.
+              draggable={m.role === null && m.mayRename}
+              onDragStart={(e) => {
+                setFolderDrag(e, m.id)
+                setDragging(m)
+              }}
+              onDragEnd={endDrag}
+              onDragOver={(e) => {
+                if (!takes(e, m)) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move'
+                setDropTarget(m.id)
+              }}
+              onDragLeave={() => setDropTarget((id) => (id === m.id ? null : id))}
+              onDrop={(e) => onDropOn(e, m)}
               /*
                * Spelled out rather than computed from the contents: the row
                * holds an action button, and a labelled button folds its own
@@ -273,7 +367,9 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
                * appears on hover.
                */
               aria-label={m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name}
-              className="group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent"
+              className={`group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent ${
+                dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
+              }`}
               style={depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined}
             >
               <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />

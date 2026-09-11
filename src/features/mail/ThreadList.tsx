@@ -11,6 +11,7 @@ import { cleanPreview } from '../../lib/preview'
 import { useMailboxes } from './hooks'
 import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
+import { setMailDrag } from './dragAndDrop'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
@@ -129,6 +130,7 @@ function Row({
   selected,
   checked,
   inJunk,
+  mailboxId,
   onToggleSelect,
   onOpen,
 }: {
@@ -139,12 +141,14 @@ function Row({
   checked: boolean
   /** Shows the "not spam" shortcut; only messages filed as junk get it. */
   inJunk: boolean
+  /** The folder being listed — what a drag carries as its origin. */
+  mailboxId: string
   onToggleSelect: () => void
   onOpen: () => void
 }) {
   const { email, ids, unread, flagged } = item
   const sender = email.from[0]
-  const { showSnackbar } = useUi()
+  const { selection, showSnackbar } = useUi()
   /*
    * What archive and delete on this row really take, spelled out in three
    * cases — `ids` is the truth, not the count beside the sender.
@@ -193,6 +197,15 @@ function Row({
       onKeyDown={(e) => e.key === 'Enter' && onOpen()}
       data-selected={selected || undefined}
       data-checked={checked || undefined}
+      /*
+       * Dragging a row that is part of the selection takes the whole
+       * selection: the row is standing in for it, and moving one message out
+       * of a marked group is never what the gesture means. Otherwise it takes
+       * the row's own `ids`, which for a conversation is this folder's share
+       * of it — the same scope its archive and delete already use.
+       */
+      draggable
+      onDragStart={(e) => setMailDrag(e, { mailboxId, ids: checked ? selection : ids })}
       {...handlers}
       style={dx ? { transform: `translateX(${dx}px)` } : undefined}
       className="group relative mb-1 flex w-full cursor-pointer gap-3 rounded-control px-3 py-3.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash"
@@ -481,6 +494,7 @@ export function ThreadList({
             selected={item.item.ids.includes(selectedId ?? '')}
             checked={item.item.ids.some((id) => selected.has(id))}
             inJunk={Boolean(junkId && item.item.email.mailboxIds[junkId])}
+            mailboxId={mailboxId}
             onToggleSelect={() => toggleSelected(mailboxId, item.item.ids)}
             onOpen={() => open(item.item.email.id)}
           />

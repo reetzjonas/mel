@@ -146,6 +146,32 @@ test('search filters by subject server-side', async ({ page }) => {
   await expect(page.getByText('Willkommen bei mel')).toBeHidden()
 })
 
+/*
+ * Dragging a row onto a folder. The menu and the selection toolbar keep doing
+ * the same job for keyboard and touch, which have no drag — this only adds the
+ * pointer path, so it has to move exactly what the row's other actions would.
+ */
+test('dragging a row onto a folder moves it, and undo brings it back', async ({ page }) => {
+  test.setTimeout(60_000)
+  await login(page, ...ALICE)
+  const rows = page.getByTestId('thread-subject')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+
+  const subject = (await rows.first().innerText()).trim()
+  const row = page.getByTestId('thread-subject').filter({ hasText: subject }).first()
+  await row.dragTo(page.getByRole('link', { name: /^Archive/ }))
+
+  await expect(page.getByText('Moved')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('thread-subject').filter({ hasText: subject })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await expect(page.getByTestId('thread-subject').filter({ hasText: subject })).toHaveCount(1, {
+    timeout: 15_000,
+  })
+  // Let the undo reach the server before teardown.
+  await page.waitForTimeout(1500)
+})
+
 test('bulk select two messages, archive them, and undo', async ({ page }) => {
   test.setTimeout(60_000)
   await login(page, ...ALICE)

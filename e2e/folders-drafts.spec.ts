@@ -38,6 +38,50 @@ test('create, rename and delete a folder', async ({ page }) => {
   })
 })
 
+/*
+ * Dragging one folder onto another re-parents it, and the account row stands
+ * for the top level — without a target for that, a folder could be dragged in
+ * and never out, since every other one is a folder. The menu keeps offering
+ * both, for keyboard and touch.
+ */
+test('dragging a folder nests it, and the account row lifts it back out', async ({ page }) => {
+  test.setTimeout(60_000)
+  const stamp = Date.now() % 100000
+  const child = `Drag-${stamp}`
+  const parent = `Ziel-${stamp}`
+  await login(page)
+
+  for (const name of [child, parent]) {
+    await page.getByRole('button', { name: 'New folder', exact: true }).click()
+    await page.locator('form input').fill(name)
+    await page.getByRole('button', { name: 'Create' }).click()
+    await expect(page.getByRole('link', { name })).toBeVisible({ timeout: 10_000 })
+  }
+
+  // Nested rows are indented; the padding is what says it worked.
+  const indent = async () =>
+    page.getByRole('link', { name: child }).evaluate((el) => getComputedStyle(el).paddingLeft)
+  const before = await indent()
+
+  await page.getByRole('link', { name: child }).dragTo(page.getByRole('link', { name: parent }))
+  await expect.poll(indent, { timeout: 15_000 }).not.toBe(before)
+
+  // And back out, onto the account row, which stands for the top level.
+  await page
+    .getByRole('link', { name: child })
+    .dragTo(page.getByText('alice@localhost', { exact: true }))
+  await expect.poll(indent, { timeout: 15_000 }).toBe(before)
+
+  page.on('dialog', (d) => void d.accept())
+  for (const name of [child, parent]) {
+    const row = page.getByRole('link', { name })
+    await row.hover()
+    await row.getByRole('button', { name: 'Folder actions' }).click()
+    await page.getByRole('button', { name: 'Delete folder' }).click()
+    await expect(page.getByRole('link', { name })).toHaveCount(0, { timeout: 10_000 })
+  }
+})
+
 test('compose autosaves a draft into the Drafts folder', async ({ page }) => {
   const subject = `Entwurf-${Date.now() % 100000}`
   await login(page)

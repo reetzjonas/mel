@@ -13,3 +13,9 @@ See also the accessible-name-plus-unread-counter trap and the "global-setup fail
 on missing seed mail" note in `docs/notes/gotchas-jmap-mail.md`, and the shared-account
 mobile/desktop rule plus calendar cell cap in `docs/notes/gotchas-calendar.md` — both
 are e2e-authoring gotchas too, just filed with the feature they test.
+- **HTML5 drag and drop: `locator.dragTo()` works, driving the mouse does not.**
+  Chromium raises no drag events for synthetic `mouse.down`/`move`/`up`, so a
+  drag has to go through `dragTo` — which resolves its target *before* the drag
+  begins. A drop target that only appears once the drag is under way therefore
+  cannot be tested at all, which is a fair signal that it is also hard to aim
+  at (see `drag-and-drop.md`).

@@ -42,7 +42,7 @@ Mail, Notifications, Security, Account) with the open one in `?settings=`, so
 deep links and the back button keep working and `/settings` redirects in.
 See `docs/notes/settings-modal.md`.
 
-Tests: 224 Vitest + 52 Playwright (desktop + mobile; state-mutating specs are
+Tests: 224 Vitest + 54 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -61,6 +61,8 @@ working on that specific feature, not on every session:
   purge-vs-sync-race): `docs/notes/login-discovery.md`
 - **Design system** (OKLCH tokens, scrollbar behaviour, hover-height rule):
   `docs/notes/design-system.md`
+- **Drag and drop** (mail onto folders, folders into folders; pointer-only,
+  menu stays the accessible path): `docs/notes/drag-and-drop.md`
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
 
 ## Dev workflow
