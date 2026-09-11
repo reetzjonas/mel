@@ -240,7 +240,16 @@ export function buildReply(
   const subjectPrefix = mode === 'forward' ? 'Fwd: ' : 'Re: '
   const baseSubject = header.subject?.replace(/^(re|fwd?):\s*/i, '') ?? ''
   const quoted = `<blockquote>${bodyAsHtml(body)}</blockquote>`
-  const references = [...(body?.references ?? []), ...(body?.messageId ?? [])]
+  /*
+   * The header first, because it is always in the local store; the body only
+   * for messages whose header was cached before it carried these. Taking them
+   * from the body alone meant that replying before the body had been fetched —
+   * from the list by keyboard, or from a reading pane still showing its
+   * skeleton — produced a message with no In-Reply-To and no References, which
+   * the server has nothing to thread on.
+   */
+  const messageId = header.messageId ?? body?.messageId ?? null
+  const references = [...(header.references ?? body?.references ?? []), ...(messageId ?? [])]
 
   if (mode === 'forward') {
     return {
@@ -264,7 +273,7 @@ export function buildReply(
     cc,
     subject: subjectPrefix + baseSubject,
     quotedHtml: `<p>${quoteHeaderLine(header)}</p>${quoted}`,
-    inReplyTo: body?.messageId ?? undefined,
+    inReplyTo: messageId ?? undefined,
     references: references.length ? references : undefined,
   }
 }

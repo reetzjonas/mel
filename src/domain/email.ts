@@ -24,6 +24,13 @@ export interface EmailHeader {
   preview: string
   hasAttachment: boolean
   size: number
+  /*
+   * RFC 5322 Message-ID and References of this message, needed to thread a
+   * reply. Optional because headers cached before they were fetched simply do
+   * not carry them; `buildReply` falls back to the body for those.
+   */
+  messageId?: string[] | null
+  references?: string[] | null
 }
 
 export interface EmailBodyPart {

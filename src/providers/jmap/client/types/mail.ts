@@ -96,6 +96,14 @@ export const EMAIL_HEADER_PROPS = [
   'subject',
   'preview',
   'hasAttachment',
+  /*
+   * Threading identifiers travel with the header, not just with the body: a
+   * reply composed before the body has been fetched would otherwise go out
+   * with no In-Reply-To at all and start its own thread. Two short arrays per
+   * message, which is cheap next to `preview`.
+   */
+  'messageId',
+  'references',
 ] as const
 
 /**

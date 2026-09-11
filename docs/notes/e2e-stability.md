@@ -50,35 +50,33 @@ drives the same account, and parallel files were archiving each other's mail. Gr
 full runs ever since. **If something flickers again, check these classes first
 (account state, shared state, server limits) rather than assuming system load.**
 
-## Still open: the reply-threading test (found 2026-09-11)
+## The reply-threading flake was a real bug (2026-09-11, fixed)
 
-`threads.spec.ts` → "a reply joins the same conversation row" fails roughly one
-run in two, and **this one is not account state**: it reproduces identically on
-the pre-change tree (measured 1/3 green there, 1/2 green with the settings-modal
-work applied), so it is neither caused nor fixed by that branch.
+`threads.spec.ts` → "a reply joins the same conversation row" failed roughly one
+run in two, and **this one was not account state**: it reproduced identically on
+the tree before the settings-modal work (measured 1/3 green there, 1/2 green with
+it), so neither branch caused it.
 
-What the DOM shows on a red run is two conversation rows, each reading "2
-messages": the original grouped with its own copy in Sent, and the reply grouped
-with its copy in Sent. The server never joined them, which means the reply went
-out without `In-Reply-To`/`References`.
+What a red run showed was two conversation rows, each reading "2 messages": the
+original grouped with its own copy in Sent, and the reply grouped with its copy
+in Sent. The server never joined them, because the reply went out with no
+`In-Reply-To` and no `References` — the test clicks a row and hits Reply at once,
+and `buildReply` took both from the **body cache**, which had not arrived yet.
 
-The likely cause is in the app, not the test. `services/send.ts` builds both
-headers from the **body cache**:
+`messageId` lived on `EmailBody` only. It now travels on `EmailHeader` too
+(`messageId`/`references` added to `EMAIL_HEADER_PROPS`, mapped in
+`providers/jmap/mappers/mail.ts`), and `buildReply` reads the header first and
+falls back to the body only for headers cached before the fields existed — so a
+reply composed from the list by keyboard, or from a reading pane still showing
+its skeleton, is threaded the same as any other. Four consecutive green runs
+afterwards, against 1/3 and 1/2 before. Covered by unit tests in
+`services/send.test.ts`, which is the cheaper place to pin it than a 30s e2e run.
 
-```ts
-inReplyTo: body?.messageId ?? undefined,
-references: [...(body?.references ?? []), ...(body?.messageId ?? [])]
-```
+The moral for the next flake: this one looked exactly like environment noise and
+was not. Two runs on a stashed tree settled it in four minutes — measure before
+attributing.
 
-`messageId` lives on `EmailBody`, not on `EmailHeader` (`domain/email.ts`), so
-replying before the body has been fetched produces an unthreaded reply — and
-the test clicks the row and hits Reply immediately. That would hit real users
-the same way: answer a message that just arrived, fast enough, and the reply
-starts its own thread. Fixing it means either waiting for the body before the
-reply can be composed, or carrying `messageId`/`references` on the header row
-(they are already mapped in `providers/jmap/mappers/mail.ts`).
-
-One *other* race in the same test was fixed: it waited for
+One *other* race in the same test was fixed alongside: it waited for
 `[aria-label$="messages"]` across the whole list, which any conversation left
 over from another spec satisfies immediately, leaving the real wait to a 5s
 default timeout. The badge is now scoped to the row under test.

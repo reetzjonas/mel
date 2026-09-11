@@ -56,6 +56,8 @@ export function toEmailHeader(e: JmapEmail): EmailHeader {
     preview: e.preview ?? '',
     hasAttachment: e.hasAttachment ?? false,
     size: e.size,
+    messageId: e.messageId ?? null,
+    references: e.references ?? null,
   }
 }
 
