@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmailHeader } from '../../domain/email'
 import { db, type EmailRow } from '../../storage/db'
+import { toEmailRow } from '../../storage/emailRow'
 import { sealPlain } from '../../storage/envelope'
 import { useMailboxEmails, useThread } from './hooks'
 import { resetListIndexes } from './listIndex'
@@ -33,14 +34,9 @@ function header(id: string, iso: string, mailboxIds: string[]): EmailHeader {
 
 function row(id: string, iso: string, mailboxIds = [MB], accountId = ACC): EmailRow {
   return {
-    accountId,
-    id,
-    threadId: `t-${id}`,
-    mailboxIds,
-    receivedAt: Date.parse(iso),
+    ...toEmailRow(accountId, header(id, iso, mailboxIds)),
     unread: 1,
     flagged: 0,
-    payload: sealPlain(header(id, iso, mailboxIds)),
   }
 }
 
@@ -273,16 +269,7 @@ describe('useMailboxEmails grouped', () => {
     const h = header(id, iso, mailboxIds)
     h.threadId = threadId
     h.from = [{ name: null, email: sender }]
-    return {
-      accountId: ACC,
-      id,
-      threadId,
-      mailboxIds,
-      receivedAt: Date.parse(iso),
-      unread: 1,
-      flagged: 0,
-      payload: sealPlain(h),
-    }
+    return { ...toEmailRow(ACC, h), unread: 1, flagged: 0 }
   }
 
   async function groupedView() {

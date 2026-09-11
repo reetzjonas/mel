@@ -6,8 +6,9 @@ import type { Account } from '../../domain/account'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
+import { mailboxDateRange } from '../../storage/emailRow'
 import { buildConversations, isHidden, type Conversation } from './conversations'
-import { getDateOrder, getThreadIndex } from './listIndex'
+import { getThreadIndex } from './listIndex'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
@@ -166,20 +167,30 @@ export function useMailboxEmails(
       // handful unread, and filtering after paging would fill a page with
       // almost nothing while the rest of the folder never loads.
       const matchingIndex = filter === 'unread' ? '[accountId+unread]' : '[accountId+flagged]'
-      // The date order covers the account, not the folder, so it is cached and
-      // reused across folders — see listIndex.ts. Only the folder's own ids
-      // (and the flag index, when filtering) are read per refresh.
-      const [byDate, inMailbox, matching] = await Promise.all([
-        getDateOrder(account),
-        db.emails.where('mailboxIds').equals(mailbox).primaryKeys(),
+      // One prefix range over the derived `mailboxDates` index (emailRow.ts)
+      // hands back this folder's ids already newest-first. It replaces reading
+      // the account's whole date order and intersecting it with the folder —
+      // work that scaled with the account, so an empty folder paid as much as
+      // a 36k one, and paid it again on every sync write burst.
+      const [from, to] = mailboxDateRange(mailbox)
+      const [inMailbox, matching] = await Promise.all([
+        db.emails.where('mailboxDates').between(from, to).primaryKeys(),
         filter
           ? db.emails.where(matchingIndex).equals([account, 1]).primaryKeys()
           : Promise.resolve(null),
       ])
-      const members = new Set(inMailbox.map((k) => k[1]))
       const matches = matching && new Set(matching.map((k) => k[1]))
-      // `filter` copies: byDate is the cache and must not be touched.
-      return byDate.filter((id) => members.has(id) && (!matches || matches.has(id)))
+      const ids: string[] = []
+      for (const key of inMailbox) {
+        // The index key carries no account, and it is the primary key that
+        // says which account a row belongs to. Mailbox ids are only unique
+        // per account, so the check is what keeps a second account's folder
+        // of the same id out of this one.
+        if (key[0] !== account) continue
+        const id = key[1]
+        if (!matches || matches.has(id)) ids.push(id)
+      }
+      return ids
     }
 
     /** The ids the current window needs materialised. */

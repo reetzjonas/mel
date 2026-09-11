@@ -1,15 +1,16 @@
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
 
 /*
- * The two account-wide index reads the mail list is built on: which messages
- * belong to which thread, and the order every folder is listed in. Both are
- * derived from IndexedDB indexes only — no payload is read, so they work while
- * the account is sealed — both cover the account rather than the folder, and
- * both are therefore cached here and kept current from Dexie's table hooks.
+ * Which messages belong to which thread, account-wide: derived from IndexedDB
+ * indexes only — no payload is read, so it works while the account is sealed —
+ * cached here and kept current from Dexie's table hooks.
  *
- * Recomputing them per folder open is what made opening a folder cost seconds
- * on a large account: an *empty* folder was exactly as slow as a 36k-message
- * one, because the work never depended on the folder in the first place.
+ * Recomputing it per folder open is what made opening a folder cost seconds on
+ * a large account: an *empty* folder was exactly as slow as a 36k-message one,
+ * because the work never depended on the folder in the first place. The folder
+ * *order* used to be cached here too; it is read straight from the derived
+ * `mailboxDates` index now (storage/emailRow.ts) and needs no account-wide
+ * scan at all.
  */
 
 /**
@@ -36,24 +37,6 @@ let cached: { accountId: string; index: ThreadIndex } | null = null
 let building: { accountId: string; promise: Promise<ThreadIndex> } | null = null
 /** Row changes that arrived while the scan was running (see `patch`). */
 let buffered: ((index: ThreadIndex) => void)[] | null = null
-
-/*
- * The date order is *invalidated* rather than patched: an id array cannot be
- * spliced without knowing the dates of the entries around the new one, and
- * those are not in the primary keys the scan reads — that would take a cursor
- * over the whole range, which is precisely the cost being avoided. Rebuilding
- * from `getAllKeys` is ~170ms on 36k messages, so it is only worth avoiding
- * where it would be repeated needlessly.
- *
- * Which is the common case: reading, flagging, moving, archiving or deleting
- * mail all leave the *order* alone, so only an arriving or destroyed message
- * (or the rare update that touches receivedAt) drops it. Folder switches never
- * do.
- */
-let dates: { accountId: string; order: string[] } | null = null
-let scanningDates: { accountId: string; promise: Promise<string[]> } | null = null
-/** Set when a write lands mid-scan: the result is used but not cached. */
-let datesStale = false
 
 let hooked = false
 
@@ -187,50 +170,6 @@ function patch(accountId: string, apply: (index: ThreadIndex) => void): void {
   else if (buffered && building?.accountId === accountId) buffered.push(apply)
 }
 
-/**
- * Every message id of the account, newest first — the order every folder is
- * listed in, before it is intersected with the folder's own ids.
- *
- * The caller must not mutate the array: it is the cache itself, handed out to
- * be filtered.
- *
- * Read forwards and reversed in memory, deliberately. `.reverse()` on the
- * collection asks IndexedDB for a descending cursor, and Dexie's `getAllKeys`
- * fast path only covers ascending ranges unless the browser has the newer
- * `getAllRecords` API — so on Firefox and Safari the reversed form walks a
- * cursor row by row (~900ms on 36k in Chromium, where that path can be
- * measured) while this one is a single request.
- */
-export async function getDateOrder(accountId: string): Promise<string[]> {
-  installHooks()
-  if (dates?.accountId === accountId) return dates.order
-  if (scanningDates?.accountId === accountId) return scanningDates.promise
-
-  const promise = (async () => {
-    datesStale = false
-    try {
-      const keys = await db.emails
-        .where('[accountId+receivedAt]')
-        .between([accountId, -Infinity], [accountId, Infinity])
-        .primaryKeys()
-      const order = keys.map((key) => key[1]).reverse()
-      // A write that landed mid-scan may or may not be in here; handing it out
-      // once is harmless (the write's own refresh follows), caching it is not.
-      if (!datesStale) dates = { accountId, order }
-      return order
-    } finally {
-      if (scanningDates?.accountId === accountId) scanningDates = null
-    }
-  })()
-  scanningDates = { accountId, promise }
-  return promise
-}
-
-function invalidateDates(accountId: string): void {
-  if (dates?.accountId === accountId) dates = null
-  if (scanningDates?.accountId === accountId) datesStale = true
-}
-
 /*
  * The hooks fire *inside* the write transaction, so an aborted transaction
  * leaves the index describing a write that never landed. The mail list has
@@ -244,7 +183,6 @@ function installHooks(): void {
 
   db.emails.hook('creating', (_key: AccountScopedKey, row: EmailRow) => {
     patch(row.accountId, (index) => add(index, row.id, row.threadId))
-    invalidateDates(row.accountId)
   })
 
   db.emails.hook('updating', (mods: object, _key: AccountScopedKey, row: EmailRow) => {
@@ -256,14 +194,11 @@ function installHooks(): void {
       if (threadId !== row.threadId) remove(index, row.id, row.threadId)
       add(index, row.id, threadId)
     })
-    // Reading, flagging and moving all land here and leave the order alone.
-    if ('receivedAt' in mods) invalidateDates(row.accountId)
   })
 
   db.emails.hook('deleting', (_key: AccountScopedKey, row: EmailRow) => {
     if (!row) return
     patch(row.accountId, (index) => remove(index, row.id, row.threadId))
-    invalidateDates(row.accountId)
   })
 }
 
@@ -300,7 +235,4 @@ export function resetListIndexes(): void {
   cached = null
   building = null
   buffered = null
-  dates = null
-  scanningDates = null
-  datesStale = false
 }

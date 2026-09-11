@@ -1,13 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../db'
 import { sealPlain } from '../envelope'
-import {
-  changePassphrase,
-  dekFor,
-  initKeyring,
-  lock,
-  unlock,
-} from './keyring'
+import { changePassphrase, dekFor, initKeyring, lock, unlock } from './keyring'
 import { isAccountEncrypted, markAccountEncrypted } from './middleware'
 import { deserialize, serialize } from './serialize'
 
@@ -111,6 +105,7 @@ describe('crypto middleware', () => {
       id: 'e1',
       threadId: 't1',
       mailboxIds: ['inbox'],
+      mailboxDates: [],
       receivedAt: 1,
       unread: 1,
       flagged: 0,
@@ -155,6 +150,7 @@ describe('crypto middleware', () => {
       id: 'e2',
       threadId: 't1',
       mailboxIds: [],
+      mailboxDates: [],
       receivedAt: 1,
       unread: 0,
       flagged: 0,

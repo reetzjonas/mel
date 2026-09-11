@@ -1,7 +1,8 @@
 import type { EmailHeader } from '../domain/email'
 import { parseSearch } from '../lib/searchParser'
 import { db } from '../storage/db'
-import { openEnvelope, sealPlain } from '../storage/envelope'
+import { openEnvelope } from '../storage/envelope'
+import { toEmailRow } from '../storage/emailRow'
 import { connectionFor } from '../sync/connections'
 
 export interface SearchResult {
@@ -35,16 +36,7 @@ export async function searchEmails(
     const fetched = await conn.mail.getEmailHeaders(missing)
     for (const h of fetched) {
       byId.set(h.id, h)
-      await db.emails.put({
-        accountId,
-        id: h.id,
-        threadId: h.threadId,
-        mailboxIds: Object.keys(h.mailboxIds),
-        receivedAt: Date.parse(h.receivedAt),
-        unread: h.keywords['$seen'] ? 0 : 1,
-        flagged: h.keywords['$flagged'] ? 1 : 0,
-        payload: sealPlain(h),
-      })
+      await db.emails.put(toEmailRow(accountId, h))
     }
   }
   return { headers: ids.map((id) => byId.get(id)).filter((h): h is EmailHeader => !!h), snippets }

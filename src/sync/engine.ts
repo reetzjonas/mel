@@ -18,6 +18,7 @@ import {
   type MailboxRow,
 } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
+import { toEmailRow } from '../storage/emailRow'
 import { connectionFor } from './connections'
 
 function mailboxRow(accountId: string, m: Mailbox): MailboxRow {
@@ -28,19 +29,6 @@ function mailboxRow(accountId: string, m: Mailbox): MailboxRow {
     role: m.role,
     sortOrder: m.sortOrder,
     payload: sealPlain(m),
-  }
-}
-
-function emailRow(accountId: string, h: EmailHeader): EmailRow {
-  return {
-    accountId,
-    id: h.id,
-    threadId: h.threadId,
-    mailboxIds: Object.keys(h.mailboxIds),
-    receivedAt: Date.parse(h.receivedAt),
-    unread: h.keywords['$seen'] ? 0 : 1,
-    flagged: h.keywords['$flagged'] ? 1 : 0,
-    payload: sealPlain(h),
   }
 }
 
@@ -99,7 +87,7 @@ async function fullEmailSync(accountId: string, mail: MailProvider) {
       accountId,
       'Email',
       { created: headers, updated: [], destroyedIds: [], newState: state, hasMore: false },
-      emailRow,
+      toEmailRow,
     )
   })
   // Remove local rows the server no longer has.
@@ -126,7 +114,7 @@ async function syncEmails(accountId: string, mail: MailProvider) {
       if (e instanceof CannotCalculateChanges) return fullEmailSync(accountId, mail)
       throw e
     }
-    await applyPage(accountId, 'Email', page, emailRow)
+    await applyPage(accountId, 'Email', page, toEmailRow)
     if (!page.hasMore) return
     since = page.newState
   }

@@ -68,3 +68,26 @@
   throwing; the re-read after the commit goes through the decrypting read path.
   Reads outside a hook, such as `materialise()`, still throw on purpose — there
   it is a real error.
+- **A folder's order comes from a derived index column, not from the account.**
+  IndexedDB cannot sort a multiEntry `*mailboxIds` query by `receivedAt`, so
+  listing a folder used to mean reading the account's entire date index and
+  intersecting it with the folder — flat in the size of the folder, so an empty
+  one paid what a 36k one did. `mailboxDates` (`storage/emailRow.ts`) is that
+  missing compound index, derived: one entry per mailbox the message is in,
+  holding `<mailboxId>\0<inverted receivedAt>`. A prefix range returns one
+  folder's ids already newest-first. Measured on 36k messages, same data, same
+  page: the 28k inbox 335ms → 111ms, the 5k archive 243ms → 24ms — and it is the
+  second number that matters, because the old one barely moved with the folder.
+  Two details that are easy to get wrong: the timestamp is **inverted and
+  zero-padded**, since only an ascending scan is cheap and inverted ascending
+  *is* newest-first; and the separator is **NUL**, or a folder whose id extends
+  another one's (`inbox2` inside `inbox`) falls into its range. The index key
+  carries no account, so the caller filters on the primary key — mailbox ids are
+  only unique per account.
+- **A derived column is only as good as the least careful writer.** There were
+  four places building an email row by hand; three were converted to a shared
+  `toEmailRow` and the fourth — the undo closure in `bulkMove` — was missed,
+  which left restored messages indexed under the folder they had been moved
+  *to*. Nothing threw. The message simply stopped appearing where it had been
+  put back, and only an e2e test caught it. There is one writer now, and a unit
+  test pins move-and-undo.

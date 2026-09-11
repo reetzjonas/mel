@@ -37,6 +37,7 @@ async function seed() {
       threadId: 't',
       receivedAt: 0,
       mailboxIds: ['m'],
+      mailboxDates: [],
       unread: 0,
       flagged: 0,
       payload: stub(),

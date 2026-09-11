@@ -1,7 +1,8 @@
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox, MailboxRole } from '../domain/mailbox'
 import { db, type EmailRow } from '../storage/db'
-import { openEnvelope, sealPlain } from '../storage/envelope'
+import { openEnvelope } from '../storage/envelope'
+import { toEmailRow } from '../storage/emailRow'
 import { enqueue } from '../sync/outbox'
 
 /** Apply a header mutation locally (optimistic) and mirror the index fields. */
@@ -15,13 +16,7 @@ async function patchLocal(
     if (!row) return
     const h = openEnvelope(row.payload)
     mutate(h)
-    await db.emails.put({
-      ...row,
-      mailboxIds: Object.keys(h.mailboxIds),
-      unread: h.keywords['$seen'] ? 0 : 1,
-      flagged: h.keywords['$flagged'] ? 1 : 0,
-      payload: sealPlain(h),
-    })
+    await db.emails.put(toEmailRow(accountId, h))
   })
 }
 
@@ -38,13 +33,7 @@ async function patchLocalMany(
       if (!row) continue
       const h = openEnvelope(row.payload)
       mutate(h)
-      next.push({
-        ...row,
-        mailboxIds: Object.keys(h.mailboxIds),
-        unread: h.keywords['$seen'] ? 0 : 1,
-        flagged: h.keywords['$flagged'] ? 1 : 0,
-        payload: sealPlain(h),
-      })
+      next.push(toEmailRow(accountId, h))
     }
     await db.emails.bulkPut(next)
   })
@@ -209,7 +198,7 @@ export async function bulkMove(
         if (!row) continue
         const h = openEnvelope(row.payload)
         h.mailboxIds = previous.get(row.id) ?? h.mailboxIds
-        next.push({ ...row, mailboxIds: Object.keys(h.mailboxIds), payload: sealPlain(h) })
+        next.push(toEmailRow(accountId, h))
       }
       await db.emails.bulkPut(next)
     })

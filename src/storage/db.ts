@@ -5,6 +5,7 @@ import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
 import { cryptoMiddleware } from './crypto/middleware'
+import { mailboxDateKey } from './emailRow'
 import type { Envelope } from './envelope'
 
 // Rows carry plaintext index columns (ids, timestamps, flags only) plus the
@@ -39,6 +40,8 @@ export interface EmailRow {
   threadId: string
   /** Plain array mirror of mailboxIds for the multiEntry index. */
   mailboxIds: string[]
+  /** One `<mailboxId>+<inverted receivedAt>` per mailbox — see emailRow.ts. */
+  mailboxDates: string[]
   receivedAt: number // epoch ms, for sorting
   unread: 0 | 1
   flagged: 0 | 1
@@ -162,6 +165,26 @@ export class MelDb extends Dexie {
       calendars: '&[accountId+id], accountId',
       events: '&[accountId+id], accountId, *calendarIds',
     })
+    /*
+     * The derived per-folder date index (emailRow.ts). Its backfill only ever
+     * touches index columns, never the payload: `modify` hands over the stored
+     * row as it is, and the crypto middleware leaves a sealed payload sealed
+     * on the way back out — so it runs correctly whether the account is
+     * encrypted, locked, or neither.
+     */
+    this.version(4)
+      .stores({
+        emails:
+          '&[accountId+id], [accountId+threadId], [accountId+receivedAt], *mailboxIds, *mailboxDates, [accountId+unread], [accountId+flagged]',
+      })
+      .upgrade((tx) =>
+        tx
+          .table<EmailRow>('emails')
+          .toCollection()
+          .modify((row) => {
+            row.mailboxDates = (row.mailboxIds ?? []).map((m) => mailboxDateKey(m, row.receivedAt))
+          }),
+      )
     this.use(cryptoMiddleware)
   }
 }
