@@ -1,5 +1,4 @@
 import type { Credentials } from '../domain/account'
-import { resetListIndexes } from '../features/mail/listIndex'
 import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { JmapError } from '../providers/jmap/client/transport'
 import { providerFor } from '../providers/registry'
@@ -35,10 +34,7 @@ export class NoServerFound extends Error {
  * server is the right one and the password is wrong, and trying the remaining
  * hosts would only replace a useful error with a misleading "not found".
  */
-export async function addAccount(
-  candidates: string[],
-  credentials: Credentials,
-): Promise<string> {
+export async function addAccount(candidates: string[], credentials: Credentials): Promise<string> {
   const localId = crypto.randomUUID()
   let conn
   const tried: string[] = []
@@ -94,9 +90,6 @@ export async function removeAccount(accountId: string): Promise<void> {
       await table.where('accountId').equals(accountId).delete()
     }
   })
-  // A range delete reports no rows, so the cached list indexes cannot notice
-  // this one and would describe the mail of the account that just left.
-  resetListIndexes()
 }
 
 /**

@@ -27,9 +27,22 @@ const MAX_TIME = 9_999_999_999_999
 const SEP = '\u0000'
 const RANGE_END = '\uffff'
 
-export function mailboxDateKey(mailboxId: string, receivedAt: number): string {
+/*
+ * The thread rides along as a third segment. It changes nothing about the
+ * order — the timestamp in front of it decides that — but it means a cursor
+ * over the folder's range reports which conversation each message belongs to
+ * without reading a single record. That is what lets the grouped list build
+ * its window without an account-wide pass (see `readThreadWindow`).
+ */
+export function mailboxDateKey(mailboxId: string, receivedAt: number, threadId: string): string {
   const at = Number.isFinite(receivedAt) ? Math.min(Math.max(receivedAt, 0), MAX_TIME) : 0
-  return `${mailboxId}${SEP}${String(MAX_TIME - at).padStart(13, '0')}`
+  return `${mailboxId}${SEP}${String(MAX_TIME - at).padStart(13, '0')}${SEP}${threadId}`
+}
+
+/** The thread out of a key this module wrote. */
+export function threadOfKey(key: string): string | null {
+  const at = key.indexOf(SEP, key.indexOf(SEP) + 1)
+  return at === -1 ? null : key.slice(at + 1)
 }
 
 /** The prefix range that lists one folder, newest first. */
@@ -52,7 +65,7 @@ export function toEmailRow(accountId: string, h: EmailHeader): EmailRow {
     id: h.id,
     threadId: h.threadId,
     mailboxIds,
-    mailboxDates: mailboxIds.map((m) => mailboxDateKey(m, receivedAt)),
+    mailboxDates: mailboxIds.map((m) => mailboxDateKey(m, receivedAt, h.threadId)),
     receivedAt,
     unread: h.keywords['$seen'] ? 0 : 1,
     flagged: h.keywords['$flagged'] ? 1 : 0,

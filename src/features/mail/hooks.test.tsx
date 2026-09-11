@@ -5,7 +5,6 @@ import { db, type EmailRow } from '../../storage/db'
 import { toEmailRow } from '../../storage/emailRow'
 import { sealPlain } from '../../storage/envelope'
 import { useMailboxEmails, useThread } from './hooks'
-import { resetListIndexes } from './listIndex'
 
 const ACC = 'acc-1'
 const OTHER_ACC = 'acc-2'
@@ -62,7 +61,6 @@ async function mounted() {
 describe('useMailboxEmails', () => {
   beforeEach(async () => {
     vi.restoreAllMocks()
-    resetListIndexes()
     await db.emails.clear()
     // Inserted oldest-first so primary-key order is not date order.
     await db.emails.bulkPut([
@@ -168,7 +166,6 @@ describe('useMailboxEmails paging', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks()
-    resetListIndexes()
     await db.emails.clear()
     await db.emails.bulkPut(
       Array.from({ length: MANY }, (_, i) =>
@@ -228,6 +225,72 @@ describe('useMailboxEmails paging', () => {
   })
 })
 
+describe('useMailboxEmails grouped paging', () => {
+  const THREADS = 250
+
+  beforeEach(async () => {
+    vi.restoreAllMocks()
+    await db.emails.clear()
+    await db.mailboxes.clear()
+    await db.emails.bulkPut(
+      Array.from({ length: THREADS }, (_, i) => {
+        const h = header(
+          `g${String(i).padStart(3, '0')}`,
+          new Date(Date.UTC(2024, 0, 1) + i * 60_000).toISOString(),
+          [MB],
+        )
+        h.threadId = `gt-${String(i).padStart(3, '0')}`
+        return { ...toEmailRow(ACC, h), unread: 1, flagged: 0 }
+      }),
+    )
+  })
+
+  const view = async () => {
+    const v = renderHook(() => useMailboxEmails(ACC, MB, undefined, true))
+    await waitFor(() => expect(v.result.current.conversations).toBeDefined())
+    return v
+  }
+
+  /*
+   * Grouped paging goes back to the index rather than slicing something
+   * already in memory — reading the rest of the folder is exactly what the
+   * windowed read avoids. So "there is more" cannot be inferred from the
+   * length of what is loaded, and this is where that would show.
+   */
+  it('extends the window on demand and stops at the end', async () => {
+    const { result } = await view()
+    expect(result.current.conversations).toHaveLength(100)
+
+    await act(async () => {
+      result.current.loadMore()
+    })
+    await waitFor(() => expect(result.current.conversations).toHaveLength(200))
+
+    await act(async () => {
+      result.current.loadMore()
+    })
+    await waitFor(() => expect(result.current.conversations).toHaveLength(THREADS))
+
+    // Already complete: a further call must not loop or grow past the folder.
+    await act(async () => {
+      result.current.loadMore()
+    })
+    await new Promise((r) => setTimeout(r, 50))
+    expect(result.current.conversations).toHaveLength(THREADS)
+  })
+
+  it('keeps the newest conversation first across a page', async () => {
+    const { result } = await view()
+    expect(result.current.conversations?.[0]?.threadId).toBe('gt-249')
+    await act(async () => {
+      result.current.loadMore()
+    })
+    await waitFor(() => expect(result.current.conversations).toHaveLength(200))
+    expect(result.current.conversations?.[0]?.threadId).toBe('gt-249')
+    expect(result.current.conversations?.[199]?.threadId).toBe('gt-050')
+  })
+})
+
 describe('useMailboxEmails consistency', () => {
   it('drops a row whose own header says it left the mailbox', async () => {
     // Guards the case where the ordering index still reports membership after
@@ -280,7 +343,6 @@ describe('useMailboxEmails grouped', () => {
 
   beforeEach(async () => {
     vi.restoreAllMocks()
-    resetListIndexes()
     await db.emails.clear()
     await db.mailboxes.clear()
     await db.emails.bulkPut([

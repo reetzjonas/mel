@@ -1,4 +1,4 @@
-import Dexie, { type Table } from 'dexie'
+import Dexie, { type Table, type Transaction } from 'dexie'
 import type { Account, Credentials } from '../domain/account'
 import type { Calendar, CalendarEvent } from '../domain/calendar'
 import type { AddressBook, Contact } from '../domain/contact'
@@ -177,16 +177,30 @@ export class MelDb extends Dexie {
         emails:
           '&[accountId+id], [accountId+threadId], [accountId+receivedAt], *mailboxIds, *mailboxDates, [accountId+unread], [accountId+flagged]',
       })
-      .upgrade((tx) =>
-        tx
-          .table<EmailRow>('emails')
-          .toCollection()
-          .modify((row) => {
-            row.mailboxDates = (row.mailboxIds ?? []).map((m) => mailboxDateKey(m, row.receivedAt))
-          }),
-      )
+      .upgrade((tx) => backfillMailboxDates(tx))
+    // Same column, now with the thread as a third segment so the grouped list
+    // can read its window without scanning the account (see emailRow.ts).
+    this.version(5).upgrade((tx) => backfillMailboxDates(tx))
     this.use(cryptoMiddleware)
   }
+}
+
+/*
+ * Rewrites the derived folder index from the columns beside it. Only index
+ * columns are touched, never the payload: `modify` hands over the stored row
+ * as it is, and the crypto middleware leaves a sealed payload sealed on the
+ * way back out — so this runs correctly whether the account is encrypted,
+ * locked, or neither.
+ */
+function backfillMailboxDates(tx: Transaction): PromiseLike<unknown> {
+  return tx
+    .table<EmailRow>('emails')
+    .toCollection()
+    .modify((row) => {
+      row.mailboxDates = (row.mailboxIds ?? []).map((m) =>
+        mailboxDateKey(m, row.receivedAt, row.threadId),
+      )
+    })
 }
 
 export const db = new MelDb()

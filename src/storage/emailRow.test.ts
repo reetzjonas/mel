@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { EmailHeader } from '../domain/email'
-import { mailboxDateKey, mailboxDateRange, toEmailRow } from './emailRow'
+import { mailboxDateKey, mailboxDateRange, threadOfKey, toEmailRow } from './emailRow'
 
 const header = (over: Partial<EmailHeader> = {}): EmailHeader =>
   ({
@@ -28,14 +28,14 @@ const inRange = (key: string, mailboxId: string) => {
 describe('mailboxDateKey', () => {
   // The whole point: an ascending index scan has to come out newest first.
   it('sorts a later message before an earlier one', () => {
-    const older = mailboxDateKey('inbox', Date.parse('2020-01-01T00:00:00Z'))
-    const newer = mailboxDateKey('inbox', Date.parse('2026-01-01T00:00:00Z'))
+    const older = mailboxDateKey('inbox', Date.parse('2020-01-01T00:00:00Z'), 't1')
+    const newer = mailboxDateKey('inbox', Date.parse('2026-01-01T00:00:00Z'), 't1')
     expect(newer < older).toBe(true)
   })
 
   it('pads, so a shorter timestamp cannot sort as though it were larger', () => {
     const times = [1, 1_000, 999_999_999_999, 1_757_000_000_000]
-    const keys = times.map((at) => mailboxDateKey('inbox', at))
+    const keys = times.map((at) => mailboxDateKey('inbox', at, 't1'))
     // Newest first is the reverse of ascending time.
     expect([...keys].sort()).toEqual([...keys].reverse())
   })
@@ -46,14 +46,29 @@ describe('mailboxDateKey', () => {
    * into the list.
    */
   it('keeps a folder whose id extends another out of its range', () => {
-    expect(inRange(mailboxDateKey('inbox', 0), 'inbox')).toBe(true)
-    expect(inRange(mailboxDateKey('inbox2', 0), 'inbox')).toBe(false)
-    expect(inRange(mailboxDateKey('inbox', 0), 'inbox2')).toBe(false)
+    expect(inRange(mailboxDateKey('inbox', 0, 't1'), 'inbox')).toBe(true)
+    expect(inRange(mailboxDateKey('inbox2', 0, 't1'), 'inbox')).toBe(false)
+    expect(inRange(mailboxDateKey('inbox', 0, 't1'), 'inbox2')).toBe(false)
   })
 
   it('survives a header with an unparseable date instead of writing NaN', () => {
     const row = toEmailRow('a1', header({ receivedAt: 'not a date' }))
-    expect(row.mailboxDates[0]).toBe(mailboxDateKey('inbox', 0))
+    expect(row.mailboxDates[0]).toBe(mailboxDateKey('inbox', 0, 't1'))
+  })
+
+  /*
+   * The thread rides in the key so a cursor over a folder can report the
+   * conversation of each message without reading the record.
+   */
+  it('carries the thread, and hands it back', () => {
+    expect(threadOfKey(mailboxDateKey('inbox', 1, 'thread-7'))).toBe('thread-7')
+    expect(threadOfKey('nonsense')).toBeNull()
+  })
+
+  it('still orders by date, whatever the threads are called', () => {
+    const older = mailboxDateKey('inbox', 1, 'zzz')
+    const newer = mailboxDateKey('inbox', 2, 'aaa')
+    expect(newer < older).toBe(true)
   })
 })
 

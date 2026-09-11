@@ -1,22 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { EmailHeader } from '../../domain/email'
-import { db, type EmailRow } from '../../storage/db'
+import { db } from '../../storage/db'
 import { toEmailRow } from '../../storage/emailRow'
-import { getThreadIndex, resetListIndexes, splitThreads } from './listIndex'
+import { readThreadMembers, readThreadWindow } from './listIndex'
 
-const ACC = 'acc-1'
-const MB = 'mb-inbox'
+const ACC = 'a1'
+const INBOX = 'mb-inbox'
+const SENT = 'mb-sent'
 
-function row(
-  id: string,
-  threadId: string,
-  accountId = ACC,
-  iso = '2026-01-01T00:00:00.000Z',
-): EmailRow {
-  const header: EmailHeader = {
+const header = (id: string, iso: string, threadId: string, mailboxId = INBOX): EmailHeader =>
+  ({
     id,
     threadId,
-    mailboxIds: { [MB]: true },
+    mailboxIds: { [mailboxId]: true },
     keywords: {},
     from: [],
     to: [],
@@ -27,99 +23,76 @@ function row(
     preview: '',
     hasAttachment: false,
     size: 0,
+  }) as EmailHeader
+
+async function seed(rows: [id: string, iso: string, threadId: string, mailboxId?: string][]) {
+  await db.emails.clear()
+  for (const [id, iso, threadId, mailboxId] of rows) {
+    await db.emails.put(toEmailRow(ACC, header(id, iso, threadId, mailboxId)))
   }
-  return { ...toEmailRow(accountId, header), unread: 0, flagged: 0 }
 }
 
-const members = (index: { members: Map<string, string[]> }) =>
-  Object.fromEntries([...index.members].map(([k, v]) => [k, [...v].sort()]))
-
-describe('splitThreads', () => {
-  it('cuts the range at each thread’s first id', () => {
-    // Ordered by (threadId, id), the way IndexedDB returns the index range.
-    const index = splitThreads(
-      ['a1', 'a2', 'b1'],
-      new Map([
-        ['a1', 't-a'],
-        ['b1', 't-b'],
-      ]),
-    )
-    expect(members(index!)).toEqual({ 't-a': ['a1', 'a2'], 't-b': ['b1'] })
-    expect(index!.threadOf.get('a2')).toBe('t-a')
-  })
-
-  it('refuses to guess when the two reads disagree', () => {
-    // A thread whose first id is missing would silently swallow its messages
-    // into the previous thread, so this has to report failure instead.
-    expect(splitThreads(['a1', 'b1'], new Map([['b1', 't-b']]))).toBeNull()
-    expect(
-      splitThreads(
-        ['a1'],
-        new Map([
-          ['a1', 't-a'],
-          ['b1', 't-b'],
-        ]),
-      ),
-    ).toBeNull()
-  })
-})
-
-describe('getThreadIndex', () => {
+describe('readThreadWindow', () => {
   beforeEach(async () => {
-    resetListIndexes()
-    await db.emails.clear()
-    await db.emails.bulkPut([
-      row('a', 't-1'),
-      row('b', 't-1'),
-      row('c', 't-2'),
-      row('x', 't-9', 'acc-2'),
+    await seed([
+      ['a', '2026-01-01T10:00:00Z', 't-1'],
+      ['b', '2026-01-02T10:00:00Z', 't-2'],
+      ['c', '2026-01-03T10:00:00Z', 't-1'],
+      ['d', '2026-01-04T10:00:00Z', 't-3'],
     ])
   })
 
-  it('groups every message of the account and nothing of another', async () => {
-    const index = await getThreadIndex(ACC)
-    expect(members(index)).toEqual({ 't-1': ['a', 'b'], 't-2': ['c'] })
-    expect(index.threadOf.get('x')).toBeUndefined()
+  it('lists each conversation once, newest message first', async () => {
+    const { threadOrder } = await readThreadWindow(ACC, INBOX, 10)
+    expect(threadOrder).toEqual(['t-3', 't-1', 't-2'])
   })
 
-  it('reads the range with getAllKeys, not the cursor fallback', async () => {
-    // The fallback pairs index keys with primary keys by walking a cursor, and
-    // that walk is what made this cost seconds on a large account. It only runs
-    // when the cheap reads disagree, which they cannot inside one transaction —
-    // so a run that needs it means the fast path silently stopped working.
-    const transaction = vi.spyOn(db, 'transaction')
-    await getThreadIndex(ACC)
-    expect(transaction).not.toHaveBeenCalled()
-    transaction.mockRestore()
+  /*
+   * The point of the whole exercise: the folder is not scanned, the cursor
+   * stops once the window is full. A caller asking for two conversations must
+   * not be handed a third.
+   */
+  it('stops at the window instead of reading the folder', async () => {
+    const { threadOrder, exhausted } = await readThreadWindow(ACC, INBOX, 2)
+    expect(threadOrder).toEqual(['t-3', 't-1'])
+    expect(exhausted).toBe(false)
   })
 
-  it('is the same object on the next call — the scan runs once', async () => {
-    expect(await getThreadIndex(ACC)).toBe(await getThreadIndex(ACC))
+  it('reports the end of the folder, so paging knows to stop', async () => {
+    expect((await readThreadWindow(ACC, INBOX, 10)).exhausted).toBe(true)
+    expect((await readThreadWindow(ACC, 'mb-empty', 10)).threadOrder).toEqual([])
   })
 
-  it('picks up an arriving message without rescanning', async () => {
-    const index = await getThreadIndex(ACC)
-    await db.emails.put(row('d', 't-2'))
-    expect(members(index)).toEqual({ 't-1': ['a', 'b'], 't-2': ['c', 'd'] })
+  it('applies the filter while scanning, not to the finished window', async () => {
+    const { threadOrder } = await readThreadWindow(ACC, INBOX, 10, (id) => id === 'b')
+    expect(threadOrder).toEqual(['t-2'])
   })
 
-  it('drops a deleted message and the thread it emptied', async () => {
-    const index = await getThreadIndex(ACC)
-    await db.emails.delete([ACC, 'c'])
-    expect(index.members.has('t-2')).toBe(false)
-    expect(index.threadOf.has('c')).toBe(false)
+  it('ignores a folder of the same id belonging to another account', async () => {
+    await db.emails.put(toEmailRow('a2', header('foreign', '2026-02-01T10:00:00Z', 't-9')))
+    const { threadOrder } = await readThreadWindow(ACC, INBOX, 10)
+    expect(threadOrder).not.toContain('t-9')
+  })
+})
+
+describe('readThreadMembers', () => {
+  /*
+   * Account-wide on purpose: a conversation's count and participants include
+   * the replies filed in Sent, which is why this one read cannot be scoped to
+   * the folder being listed.
+   */
+  it('collects a conversation across folders', async () => {
+    await seed([
+      ['a', '2026-01-01T10:00:00Z', 't-1'],
+      ['reply', '2026-01-02T10:00:00Z', 't-1', SENT],
+      ['other', '2026-01-03T10:00:00Z', 't-2'],
+    ])
+    const members = await readThreadMembers(ACC, ['t-1'])
+    expect(members.get('t-1')).toEqual(['a', 'reply'])
+    expect(members.has('t-2')).toBe(false)
   })
 
-  it('moves a message that changed thread', async () => {
-    const index = await getThreadIndex(ACC)
-    await db.emails.put(row('b', 't-2'))
-    expect(members(index)).toEqual({ 't-1': ['a'], 't-2': ['b', 'c'] })
-  })
-
-  it('keeps rows written while the scan was still running', async () => {
-    resetListIndexes()
-    const pending = getThreadIndex(ACC)
-    await db.emails.put(row('late', 't-1'))
-    expect(members(await pending)['t-1']).toEqual(['a', 'b', 'late'])
+  it('asks for nothing when there is nothing on screen', async () => {
+    expect((await readThreadMembers(ACC, [])).size).toBe(0)
   })
 })

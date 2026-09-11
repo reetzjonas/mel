@@ -1,238 +1,107 @@
-import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
+import { db, type AccountScopedKey } from '../../storage/db'
+import { mailboxDateRange, threadOfKey } from '../../storage/emailRow'
 
 /*
- * Which messages belong to which thread, account-wide: derived from IndexedDB
- * indexes only — no payload is read, so it works while the account is sealed —
- * cached here and kept current from Dexie's table hooks.
+ * The two reads the grouped mail list is built on, both scoped to what is on
+ * screen rather than to the account.
  *
- * Recomputing it per folder open is what made opening a folder cost seconds on
- * a large account: an *empty* folder was exactly as slow as a 36k-message one,
- * because the work never depended on the folder in the first place. The folder
- * *order* used to be cached here too; it is read straight from the derived
- * `mailboxDates` index now (storage/emailRow.ts) and needs no account-wide
- * scan at all.
+ * This used to be an account-wide thread index: every message of every folder
+ * paired with its conversation, scanned once per page load and then patched
+ * from Dexie's table hooks. It was correct and it was cached, but the build
+ * itself sat on the critical path of the first folder opened — 548ms on a
+ * 36k-message account, split roughly into 100ms of `getAllKeys`, 200ms of
+ * cursor over 9,011 distinct threads, and 250ms of building two maps with 36k
+ * entries in them. The last part is what made caching the wrong answer: no
+ * index can make JavaScript fill a 36k-entry Map quickly.
+ *
+ * What the list renders is about a hundred conversations. So that is what gets
+ * read. Both functions touch index keys only — no payload, so they work while
+ * the account is sealed.
  */
 
 /**
- * Which messages belong to which thread, account-wide.
+ * The folder's conversations, newest message first, stopping once `want` of
+ * them have been found.
  *
- * Grouping the mail list needs this for the whole account, not just the folder
- * on screen: a conversation spans folders, so a row's count and participants
- * include the replies sitting in Sent.
- */
-export interface ThreadIndex {
-  /** threadId → the ids of every message of that thread, in any mailbox. */
-  members: Map<string, string[]>
-  /** id → threadId, for the messages of this account. */
-  threadOf: Map<string, string>
-}
-
-/*
- * The thread index is built once and then *patched* per changed row: a message
- * arriving or moving affects one thread, and rescanning the account for it took
- * ~380ms with the scan below (~1.2s with the pairing it replaced), which is
- * what opening a folder used to pay every single time.
- */
-let cached: { accountId: string; index: ThreadIndex } | null = null
-let building: { accountId: string; promise: Promise<ThreadIndex> } | null = null
-/** Row changes that arrived while the scan was running (see `patch`). */
-let buffered: ((index: ThreadIndex) => void)[] | null = null
-
-let hooked = false
-
-const RANGE_END = '￿'
-
-/**
- * Splits the primary keys of the `[accountId+threadId]` range into threads.
+ * Walks the derived `mailboxDates` index, which is already in date order and
+ * carries the thread in the key — so the conversation of each message is known
+ * without reading the record. A folder of 28k messages is not scanned; the
+ * cursor stops after the few hundred entries it takes to collect `want`
+ * distinct threads.
  *
- * `ids` is ordered by IndexedDB as (threadId, id) — an index is sorted by its
- * key and then by primary key — so each thread's messages are contiguous and
- * begin with the thread's lowest id. `firstIdOf` maps exactly those lowest ids
- * to their thread, which is all that is needed to cut the array up: no key has
- * to be read per row.
- *
- * Returns null if the two reads it is given do not line up. That cannot happen
- * when both come from one transaction, but guessing here would attribute
- * messages to the wrong thread, so the caller pairs them the expensive way
- * instead.
+ * Raw IndexedDB because Dexie cannot hand out the index key next to the
+ * primary key, and both are needed: one says which conversation, the other
+ * which message and which account.
  */
-export function splitThreads(ids: string[], firstIdOf: Map<string, string>): ThreadIndex | null {
-  const index: ThreadIndex = { members: new Map(), threadOf: new Map() }
-  let list: string[] | null = null
-  let threadId: string | null = null
-  for (const id of ids) {
-    const starts = firstIdOf.get(id)
-    if (starts !== undefined) {
-      threadId = starts
-      list = []
-      index.members.set(starts, list)
-    }
-    if (!list || threadId === null) return null
-    list.push(id)
-    index.threadOf.set(id, threadId)
-  }
-  return index.members.size === firstIdOf.size ? index : null
-}
-
-/**
- * One read transaction holding both scans: the whole range's primary keys via
- * `getAllKeys`, and one cursor step per *distinct* thread (`nextunique`), which
- * reports the thread together with its first primary key.
- *
- * Raw IndexedDB rather than Dexie for two reasons: Dexie has no way to expose
- * `primaryKey` on a unique-key scan, and `getAllKeys` is what makes this cheap
- * — Dexie's `keys()` has no such fast path and walks the cursor row by row.
- * Only keys are read, never a record, so the crypto middleware this bypasses
- * has nothing to do here anyway.
- */
-async function readRange(
+export async function readThreadWindow(
   accountId: string,
-): Promise<{ ids: string[]; firstIdOf: Map<string, string> }> {
+  mailboxId: string,
+  want: number,
+  keep?: (id: string) => boolean,
+): Promise<{ threadOrder: string[]; exhausted: boolean }> {
   await db.open()
   const idb = db.backendDB()
+  const [from, to] = mailboxDateRange(mailboxId)
   return new Promise((resolve, reject) => {
     const tx = idb.transaction('emails', 'readonly')
-    const index = tx.objectStore('emails').index('[accountId+threadId]')
-    const range = IDBKeyRange.bound([accountId, ''], [accountId, RANGE_END])
-    const firstIdOf = new Map<string, string>()
-    let ids: string[] = []
+    const index = tx.objectStore('emails').index('mailboxDates')
+    const scan = index.openKeyCursor(IDBKeyRange.bound(from, to))
+    const seen = new Set<string>()
+    const threadOrder: string[] = []
 
-    const all = index.getAllKeys(range)
-    all.onsuccess = () => {
-      ids = (all.result as AccountScopedKey[]).map((key) => key[1])
-    }
-    const scan = index.openKeyCursor(range, 'nextunique')
     scan.onsuccess = () => {
       const cursor = scan.result
-      if (!cursor) return
-      const id = (cursor.primaryKey as AccountScopedKey)[1]
-      const threadId = (cursor.key as [string, string])[1]
-      firstIdOf.set(id, threadId)
+      if (!cursor || threadOrder.length >= want) return
+      // Mailbox ids are only unique per account, and the index key carries no
+      // account — the primary key is what says whose folder this is.
+      const [rowAccount, id] = cursor.primaryKey as AccountScopedKey
+      const threadId = rowAccount === accountId ? threadOfKey(cursor.key as string) : null
+      if (threadId && !seen.has(threadId) && (!keep || keep(id))) {
+        seen.add(threadId)
+        threadOrder.push(threadId)
+      }
       cursor.continue()
     }
 
-    tx.oncomplete = () => resolve({ ids, firstIdOf })
+    // Exhausted means the folder holds no further conversation — which is
+    // what tells the list there is nothing left to page in. Without it, a
+    // window that happens to be full looks exactly like the end of the folder.
+    tx.oncomplete = () => resolve({ threadOrder, exhausted: threadOrder.length < want })
     tx.onerror = () => reject(tx.error)
     tx.onabort = () => reject(tx.error)
   })
 }
 
 /**
- * The fallback: two scans of the same range, pairing index keys with primary
- * keys by position. Correct but slow — `keys()` walks a cursor — and it only
- * runs if `splitThreads` found the cheap reads inconsistent.
+ * Every message of each of those conversations, in any folder.
+ *
+ * Account-wide on purpose, and this is the part that cannot be folder-scoped:
+ * a conversation's count and participants include the replies sitting in Sent.
+ * It is cheap because it is asked for a hundred threads, not for all of them —
+ * one small range read each, in a single transaction.
  */
-async function pairByCursor(accountId: string): Promise<ThreadIndex> {
-  return db.transaction('r', db.emails, async () => {
-    const range = () =>
-      db.emails.where('[accountId+threadId]').between([accountId, ''], [accountId, RANGE_END])
-    const [keys, primary] = await Promise.all([range().keys(), range().primaryKeys()])
-    const index: ThreadIndex = { members: new Map(), threadOf: new Map() }
-    for (let i = 0; i < primary.length; i++) {
-      const threadId = (keys[i] as [string, string] | undefined)?.[1]
-      const id = primary[i]?.[1]
-      if (threadId === undefined || id === undefined) continue
-      add(index, id, threadId)
+export async function readThreadMembers(
+  accountId: string,
+  threadIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const members = new Map<string, string[]>()
+  if (!threadIds.length) return members
+  await db.open()
+  const idb = db.backendDB()
+  return new Promise((resolve, reject) => {
+    const tx = idb.transaction('emails', 'readonly')
+    const index = tx.objectStore('emails').index('[accountId+threadId]')
+    for (const threadId of threadIds) {
+      const request = index.getAllKeys(IDBKeyRange.only([accountId, threadId]))
+      request.onsuccess = () => {
+        members.set(
+          threadId,
+          (request.result as AccountScopedKey[]).map((key) => key[1]),
+        )
+      }
     }
-    return index
+    tx.oncomplete = () => resolve(members)
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
   })
-}
-
-async function scan(accountId: string): Promise<ThreadIndex> {
-  const { ids, firstIdOf } = await readRange(accountId)
-  return splitThreads(ids, firstIdOf) ?? pairByCursor(accountId)
-}
-
-/** Idempotent: a row can be both scanned and reported by a racing hook. */
-function add(index: ThreadIndex, id: string, threadId: string): void {
-  index.threadOf.set(id, threadId)
-  const list = index.members.get(threadId)
-  if (!list) index.members.set(threadId, [id])
-  else if (!list.includes(id)) list.push(id)
-}
-
-function remove(index: ThreadIndex, id: string, threadId: string): void {
-  index.threadOf.delete(id)
-  const list = index.members.get(threadId)
-  if (!list) return
-  const at = list.indexOf(id)
-  if (at !== -1) list.splice(at, 1)
-  if (!list.length) index.members.delete(threadId)
-}
-
-/**
- * Applies one row change, or parks it until the running scan has finished — a
- * patch applied before the maps exist would be lost, and one applied to a
- * half-built index would be undone by the rest of the scan.
- */
-function patch(accountId: string, apply: (index: ThreadIndex) => void): void {
-  if (cached?.accountId === accountId) apply(cached.index)
-  else if (buffered && building?.accountId === accountId) buffered.push(apply)
-}
-
-/*
- * The hooks fire *inside* the write transaction, so an aborted transaction
- * leaves the index describing a write that never landed. The mail list has
- * always been built on that assumption — its own header cache is patched from
- * the same hooks — and a failed write is followed by a sync that corrects the
- * rows, and with them this index.
- */
-function installHooks(): void {
-  if (hooked) return
-  hooked = true
-
-  db.emails.hook('creating', (_key: AccountScopedKey, row: EmailRow) => {
-    patch(row.accountId, (index) => add(index, row.id, row.threadId))
-  })
-
-  db.emails.hook('updating', (mods: object, _key: AccountScopedKey, row: EmailRow) => {
-    // `put()` on an existing key lands here with a diff keyed by dotted paths;
-    // threadId is a column of its own, so a rethread shows up under that key.
-    const changed = 'threadId' in mods ? (mods as { threadId?: unknown }).threadId : undefined
-    const threadId = typeof changed === 'string' ? changed : row.threadId
-    patch(row.accountId, (index) => {
-      if (threadId !== row.threadId) remove(index, row.id, row.threadId)
-      add(index, row.id, threadId)
-    })
-  })
-
-  db.emails.hook('deleting', (_key: AccountScopedKey, row: EmailRow) => {
-    if (!row) return
-    patch(row.accountId, (index) => remove(index, row.id, row.threadId))
-  })
-}
-
-/** The account's thread index: scanned once, reused and patched after that. */
-export async function getThreadIndex(accountId: string): Promise<ThreadIndex> {
-  installHooks()
-  if (cached?.accountId === accountId) return cached.index
-  if (building?.accountId === accountId) return building.promise
-
-  const promise = (async () => {
-    buffered = []
-    try {
-      const index = await scan(accountId)
-      // Whatever was written while the scan ran is not in it yet.
-      for (const apply of buffered) apply(index)
-      cached = { accountId, index }
-      return index
-    } finally {
-      buffered = null
-      if (building?.accountId === accountId) building = null
-    }
-  })()
-  building = { accountId, promise }
-  return promise
-}
-
-/**
- * Drops both caches. Needed wherever mail rows disappear without the table
- * hooks seeing it: `Collection.delete()` and `clear()` reach IndexedDB as a
- * range delete and report no rows, so signing out (and test setup) has to say
- * so explicitly.
- */
-export function resetListIndexes(): void {
-  cached = null
-  building = null
-  buffered = null
 }

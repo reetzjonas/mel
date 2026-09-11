@@ -8,7 +8,7 @@ import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
 import { mailboxDateRange } from '../../storage/emailRow'
 import { buildConversations, isHidden, type Conversation } from './conversations'
-import { getThreadIndex } from './listIndex'
+import { readThreadMembers, readThreadWindow } from './listIndex'
 import { openEnvelope } from '../../storage/envelope'
 
 export function useAccounts() {
@@ -86,8 +86,16 @@ export interface MailboxList {
   emails: EmailHeader[] | undefined
   /** Conversation rows, newest first — only while grouping is on. */
   conversations: Conversation[] | undefined
-  /** How many rows the mailbox holds in total: messages, or threads when
-   *  grouped. */
+  /*
+   * Messages in the folder when listing messages — the real total, of which
+   * only a window is materialised.
+   *
+   * Grouped, it is the conversations *found so far*, not the folder's total.
+   * Counting the folder's distinct conversations would mean the account-wide
+   * pass that the windowed read exists to avoid, and nothing renders this:
+   * the virtual list runs on the rows it is given plus `loadMore`. It stays
+   * because the message count is honest and free, and the tests read it.
+   */
   total: number
   /** Materialise the next page; no-op once everything is loaded. */
   loadMore: () => void
@@ -150,8 +158,6 @@ export function useMailboxEmails(
     let threadOrder: string[] = []
     /** threadId → every message of that thread, in any mailbox. */
     let members = new Map<string, string[]>()
-    /** id → threadId, for the messages of this account. */
-    let threadOf = new Map<string, string>()
     /** The threads currently rendered — what a changed row is checked against. */
     let visibleThreads = new Set<string>()
     /** Trash and junk, unless one of them is the mailbox being listed. */
@@ -159,27 +165,36 @@ export function useMailboxEmails(
     /** Headers fetched so far, by id. */
     const cache = new Map<string, EmailHeader>()
     let windowSize = PAGE
+    /** Set once the folder has no further conversation to page in. */
+    let exhausted = false
+
+    /*
+     * Ids matching the active flag filter, or null when nothing is filtered.
+     *
+     * An index scan rather than a predicate over the materialised window: a
+     * folder can hold thousands of messages with a handful unread, and
+     * filtering after paging would fill a page with almost nothing while the
+     * rest of the folder never loads.
+     */
+    async function filterSet(): Promise<Set<string> | null> {
+      if (!filter) return null
+      const index = filter === 'unread' ? '[accountId+unread]' : '[accountId+flagged]'
+      const keys = await db.emails.where(index).equals([account, 1]).primaryKeys()
+      return new Set(keys.map((key) => key[1]))
+    }
 
     /** Ordering straight from the indexes — no record bodies are read. */
     async function readOrder(): Promise<string[]> {
-      // The filter is a third index scan rather than a predicate over the
-      // materialised window: a folder can hold thousands of messages with a
-      // handful unread, and filtering after paging would fill a page with
-      // almost nothing while the rest of the folder never loads.
-      const matchingIndex = filter === 'unread' ? '[accountId+unread]' : '[accountId+flagged]'
       // One prefix range over the derived `mailboxDates` index (emailRow.ts)
       // hands back this folder's ids already newest-first. It replaces reading
       // the account's whole date order and intersecting it with the folder —
       // work that scaled with the account, so an empty folder paid as much as
       // a 36k one, and paid it again on every sync write burst.
       const [from, to] = mailboxDateRange(mailbox)
-      const [inMailbox, matching] = await Promise.all([
+      const [inMailbox, matches] = await Promise.all([
         db.emails.where('mailboxDates').between(from, to).primaryKeys(),
-        filter
-          ? db.emails.where(matchingIndex).equals([account, 1]).primaryKeys()
-          : Promise.resolve(null),
+        filterSet(),
       ])
-      const matches = matching && new Set(matching.map((k) => k[1]))
       const ids: string[] = []
       for (const key of inMailbox) {
         // The index key carries no account, and it is the primary key that
@@ -226,6 +241,7 @@ export function useMailboxEmails(
             filter,
             excludedMailboxIds: excluded,
           }),
+          // Conversations loaded, not the folder's total — see MailboxList.
           total: threadOrder.length,
         })
         return
@@ -246,26 +262,32 @@ export function useMailboxEmails(
     }
 
     async function refresh() {
-      order = await readOrder()
       if (grouped) {
-        // The thread index spans the account too, and is likewise built once
-        // and kept current by table hooks. Rebuilding these per folder open is
-        // what made opening any folder, even an empty one, cost seconds.
-        const [index, hidden] = await Promise.all([
-          getThreadIndex(account),
+        /*
+         * Only the window is read: the conversations on screen, and then the
+         * messages of those conversations. The folder's other 27,900 ids are
+         * never touched, which is the whole difference to the account-wide
+         * thread index this replaced.
+         */
+        const [matches, hidden] = await Promise.all([
+          filterSet(),
           hiddenMailboxIds(account, mailbox),
         ])
-        members = index.members
-        threadOf = index.threadOf
         excluded = hidden
-        const seen = new Set<string>()
-        threadOrder = []
-        for (const id of order) {
-          const threadId = threadOf.get(id)
-          if (!threadId || seen.has(threadId)) continue
-          seen.add(threadId)
-          threadOrder.push(threadId)
-        }
+        const window = await readThreadWindow(
+          account,
+          mailbox,
+          windowSize,
+          matches ? (id) => matches.has(id) : undefined,
+        )
+        threadOrder = window.threadOrder
+        exhausted = window.exhausted
+        members = await readThreadMembers(account, threadOrder)
+        // Grouped rendering never reads it, and filling it would mean the
+        // folder-wide scan this exists to avoid.
+        order = []
+      } else {
+        order = await readOrder()
       }
       await materialise()
       publish()
@@ -288,7 +310,16 @@ export function useMailboxEmails(
     }
 
     more.current = () => {
-      if (!ready || windowSize >= (grouped ? threadOrder.length : order.length)) return
+      if (!ready) return
+      // Grouped paging has to go back to the index: the next conversations are
+      // not in memory, because reading them was exactly what was skipped.
+      if (grouped) {
+        if (exhausted) return
+        windowSize += PAGE
+        void refresh()
+        return
+      }
+      if (windowSize >= order.length) return
       windowSize += PAGE
       void materialise().then(publish)
     }

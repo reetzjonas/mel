@@ -77,7 +77,9 @@ const injected = await page.evaluate(
             // Mirrors mailboxDateKey() in src/storage/emailRow.ts. Duplicated
             // rather than imported because this runs as a plain script against
             // the built app; if the format there changes, change it here.
-            mailboxDates: [`${box}\u0000${String(9999999999999 - receivedAt).padStart(13, '0')}`],
+            mailboxDates: [
+              `${box}\u0000${String(9999999999999 - receivedAt).padStart(13, '0')}\u0000${threadId}`,
+            ],
             receivedAt,
             unread: i % 9 === 0 ? 1 : 0,
             flagged: i % 23 === 0 ? 1 : 0,

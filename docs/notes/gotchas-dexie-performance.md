@@ -91,3 +91,22 @@
   *to*. Nothing threw. The message simply stopped appearing where it had been
   put back, and only an e2e test caught it. There is one writer now, and a unit
   test pins move-and-undo.
+- **The grouped list reads its window, not the account.** Conversations need
+  account-wide knowledge in one respect only — a thread's messages include the
+  replies filed in Sent — and that tempted an account-wide *index*: every
+  message paired with its thread, scanned once per page load and patched from
+  table hooks. Measured on 36k messages it cost **548ms** on the first folder
+  opened: ~100ms `getAllKeys`, ~200ms of `nextunique` cursor over 9,011 distinct
+  threads, and ~250ms of JavaScript filling two 36k-entry Maps. Caching cannot
+  fix the last part, and the list only ever renders about a hundred rows.
+  `mailboxDates` now carries the threadId as a third segment, so a **bounded key
+  cursor** over the folder's range reports each message's conversation without
+  reading a record, and stops as soon as it has enough distinct threads;
+  `readThreadMembers` then does one small range read per visible thread. Index
+  work per grouped folder open: **548ms → 28-61ms**, and the grouped path is now
+  cheaper than the ungrouped one, which still reads the folder's whole key
+  range for `total`.
+- **Paging a windowed read cannot infer "there is more" from what it loaded.**
+  A full window and the end of the folder look identical from the outside, so
+  `readThreadWindow` reports `exhausted` itself. Getting this wrong does not
+  crash anything — the list simply stops loading at row 100, or loops.
