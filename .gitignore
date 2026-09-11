@@ -28,3 +28,6 @@ playwright-report
 *.njsproj
 *.sln
 *.sw?
+
+# TanStack Router scratch files; a route scaffold once got committed from here.
+.tanstack
