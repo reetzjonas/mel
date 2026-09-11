@@ -224,7 +224,7 @@ option {
     margin-top: 0.25rem;
     padding: 0.25rem;
     border: 1px solid var(--mel-line);
-    border-radius: 0.75rem;
+    border-radius: var(--radius-control);
     background: var(--mel-raised);
     box-shadow: var(--mel-shadow-overlay);
   }
@@ -239,6 +239,17 @@ option {
   option:hover,
   option:focus {
     background-color: var(--mel-surface-2);
+  }
+
+  /*
+   * Padding/radius on the option row, unlike background, would shift the
+   * closed control's layout if left unscoped — so these are scoped to
+   * `select:open`, matching only while the picker is actually showing.
+   */
+  select:open option {
+    margin: 0.0625rem 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-control);
   }
 
   select:open option:checked {

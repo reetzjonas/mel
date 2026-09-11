@@ -27,7 +27,7 @@ function AppSwitcherLink({ to, label }: { to: string; label: string }) {
   return (
     <Link
       to={to}
-      className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink [&.active]:shadow-raised"
+      className="rounded-control px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink [&.active]:shadow-raised"
     >
       {label}
     </Link>
