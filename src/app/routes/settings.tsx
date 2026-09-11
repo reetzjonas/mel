@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useTheme, type ThemePreference } from '../ThemeProvider'
 import { useUi } from '../store'
 import { useAccounts } from '../../features/mail/hooks'
+import { OutboxQueue } from '../../features/settings/OutboxQueue'
 import { ServerCapabilities } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
 import { imagePolicy, setImagePolicy, type ImagePolicy } from '../../lib/imagePolicy'
@@ -13,7 +14,12 @@ import {
   isAccountEncrypted,
   lock,
 } from '../../services/encryption'
-import { disableWebPush, enableWebPush, isSubscribed, webPushSupported } from '../../services/webPush'
+import {
+  disableWebPush,
+  enableWebPush,
+  isSubscribed,
+  webPushSupported,
+} from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
 import { connectionFor } from '../../sync/connections'
 import type { VacationSettings } from '../../providers/types'
@@ -22,7 +28,6 @@ import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/s
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 })
-
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -56,7 +61,8 @@ function NotificationSetting() {
   const [status, setStatus] = useState(
     'Notification' in window ? Notification.permission : 'denied',
   )
-  if (status === 'granted') return <p className="text-sm text-ink-muted">{t('settings.notifications.enabled')}</p>
+  if (status === 'granted')
+    return <p className="text-sm text-ink-muted">{t('settings.notifications.enabled')}</p>
   if (status === 'denied' && Notification.permission === 'denied')
     return <p className="text-sm text-ink-muted">{t('settings.notifications.denied')}</p>
   return (
@@ -138,15 +144,13 @@ function WebPushSetting({ accountId }: { accountId: string }) {
 
   return (
     <div className="space-y-3">
-      <p className="text-sm text-ink-muted">{state === 'on' ? t('push.enabled') : t('push.hint')}</p>
+      <p className="text-sm text-ink-muted">
+        {state === 'on' ? t('push.enabled') : t('push.hint')}
+      </p>
       <button
         type="button"
         disabled={state === 'busy'}
-        className={
-          state === 'on'
-            ? secondaryButtonClass
-            : primaryButtonClass
-        }
+        className={state === 'on' ? secondaryButtonClass : primaryButtonClass}
         onClick={() => {
           const wasOn = state === 'on'
           setState('busy')
@@ -156,7 +160,8 @@ function WebPushSetting({ accountId }: { accountId: string }) {
               await disableWebPush(accountId)
               setState('off')
             } else {
-              if (!(await requestNotificationPermission())) throw new Error(t('settings.notifications.denied'))
+              if (!(await requestNotificationPermission()))
+                throw new Error(t('settings.notifications.denied'))
               await enableWebPush(accountId)
               setState('on')
             }
@@ -166,7 +171,11 @@ function WebPushSetting({ accountId }: { accountId: string }) {
           })
         }}
       >
-        {state === 'busy' ? t('push.working') : state === 'on' ? t('push.disable') : t('push.enable')}
+        {state === 'busy'
+          ? t('push.working')
+          : state === 'on'
+            ? t('push.disable')
+            : t('push.enable')}
       </button>
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
@@ -383,6 +392,12 @@ function SettingsPage() {
         {account && (
           <Section title={t('crypto.section')}>
             <EncryptionSetting accountId={account.id} />
+          </Section>
+        )}
+
+        {account && (
+          <Section title={t('queue.section')}>
+            <OutboxQueue accountId={account.id} />
           </Section>
         )}
 

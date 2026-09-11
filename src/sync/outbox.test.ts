@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
-import { flush } from './outbox'
+import { discardAction, flush, retryAction } from './outbox'
 
 // jsdom has no Web Locks; the outbox takes one around every flush.
 Object.defineProperty(navigator, 'locks', {
@@ -34,7 +34,11 @@ async function stranded(kind: string) {
     status: 'inflight',
     attempts: 0,
     notBefore: 0,
-    payload: sealPlain({ kind, updates: { 'mail-1': { mailboxIds: { inbox: true } } }, ids: ['x'] }),
+    payload: sealPlain({
+      kind,
+      updates: { 'mail-1': { mailboxIds: { inbox: true } } },
+      ids: ['x'],
+    }),
   })
 }
 
@@ -82,5 +86,80 @@ describe('outbox recovery after an interrupted run', () => {
     await flush(ACC)
 
     expect(executed).toEqual(['setEmails:mail-2'])
+  })
+})
+
+describe('managing the queue by hand', () => {
+  /** A row that was given up on, as flush leaves it. */
+  async function failed(): Promise<number> {
+    await db.outbox.clear()
+    return db.outbox.add({
+      accountId: ACC,
+      kind: 'email.update',
+      status: 'failed',
+      attempts: 3,
+      notBefore: Date.now() + 60_000,
+      reason: 'forbidden',
+      failedAt: Date.now(),
+      payload: sealPlain({ kind: 'email.update', updates: { 'mail-3': {} } }),
+    })
+  }
+
+  it('requeues a failed action without its backoff or its old reason', async () => {
+    // A retry is a person saying the obstacle is gone; making them wait out
+    // the backoff of the attempt that failed would be answering a different
+    // question.
+    const seq = await failed()
+
+    await retryAction(seq)
+
+    const row = await db.outbox.get(seq)
+    expect(row?.status).toBe('pending')
+    expect(row?.attempts).toBe(0)
+    expect(row?.notBefore).toBe(0)
+    expect(row?.reason).toBeUndefined()
+  })
+
+  it('runs the requeued action on the next flush', async () => {
+    executed.length = 0
+    const seq = await failed()
+
+    await retryAction(seq)
+    await flush(ACC)
+
+    expect(executed).toEqual(['setEmails:mail-3'])
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('discards an action so it is never sent', async () => {
+    const seq = await failed()
+
+    await discardAction(seq)
+
+    expect(await db.outbox.get(seq)).toBeUndefined()
+  })
+
+  it('refuses to touch an action that is being sent right now', async () => {
+    // The flush owns that row: retrying it would run it twice, and deleting it
+    // would lose the outcome of a call already on its way.
+    //
+    // Its own account: `retryAction` above schedules a flush, and a flush that
+    // reached this row would recover it as stranded (which is what it is meant
+    // to do for a *dead* run) and complete it out from under the assertions.
+    await db.outbox.clear()
+    const seq = await db.outbox.add({
+      accountId: 'acc-inflight',
+      kind: 'email.update',
+      status: 'inflight',
+      attempts: 0,
+      notBefore: 0,
+      payload: sealPlain({ kind: 'email.update', updates: { 'mail-4': {} } }),
+    })
+
+    await retryAction(seq)
+    expect((await db.outbox.get(seq))?.status).toBe('inflight')
+
+    await discardAction(seq)
+    expect(await db.outbox.get(seq)).toBeDefined()
   })
 })

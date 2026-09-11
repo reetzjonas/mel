@@ -192,19 +192,72 @@ test('an action that never reached the server is reported, not dropped quietly',
   // 400 is permanent, so the outbox gives up rather than retrying. The local
   // change already happened optimistically, which is why silence here is worse
   // than useless: the next sync just undoes what the user asked for.
-  await page.route('http://localhost:8080/jmap/**', async (route) => {
-    const body = route.request().postData() ?? ''
-    if (body.includes('Email/set')) return route.fulfill({ status: 400, body: 'nope' })
-    return route.continue()
-  })
+  const block = async () =>
+    page.route('http://localhost:8080/jmap/**', async (route) => {
+      const body = route.request().postData() ?? ''
+      if (body.includes('Email/set')) return route.fulfill({ status: 400, body: 'nope' })
+      return route.continue()
+    })
+  await block()
 
-  await rows.first().hover()
-  await rows.first().getByRole('button', { name: 'Flag', exact: true }).click()
+  /** Flags or unflags the first message, whichever it currently offers. */
+  const toggleFlag = async () => {
+    await rows.first().hover()
+    await rows
+      .first()
+      .getByRole('button', { name: /^(Flag|Remove flag)$/ })
+      .click()
+  }
+  await toggleFlag()
 
   await expect(page.getByTestId('sync-status')).toContainText('could not be sent', {
     timeout: 30_000,
   })
   expect(warnings.some((w) => w.includes('failed permanently'))).toBe(true)
+
+  /*
+   * ...and can then be dealt with. A count in the sync bar plus a line in the
+   * console is a report, not a way out: the change never reached the server,
+   * the next sync undoes it locally, and there was nothing to click.
+   *
+   * One failed action at a time on purpose. Queueing two and handling them
+   * separately races: the second sits pending, and any flush trigger turns it
+   * into a second entry between the assertion and the click. The sync bar
+   * (which only exists on /mail) is the signal that the flush has finished —
+   * navigating straight to the settings page instead reloads the app mid-flush
+   * and the entry shows up whenever the recovery gets round to it.
+   */
+  const entries = page.getByRole('listitem').filter({ hasText: 'Flag messages' })
+  await page.goto('/settings')
+  await expect(entries).toHaveCount(1, { timeout: 15_000 })
+  // Named by what it does, not by the method it uses, and with the server's
+  // own refusal kept as a token.
+  await expect(entries.first()).toContainText('Not sent')
+  await expect(entries.first()).toContainText('400')
+
+  // Discarding: gone for good, and the server's version stands.
+  page.once('dialog', (d) => void d.accept())
+  await entries.first().getByRole('button', { name: 'Discard' }).click()
+  await expect(page.getByText('Nothing is waiting to be sent.')).toBeVisible({ timeout: 10_000 })
+
+  // And once more, to retry instead — keeping a failed action around rather
+  // than dropping it is only worth anything if the cause can go away.
+  await page.goto('/mail')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+  await toggleFlag()
+  await expect(page.getByTestId('sync-status')).toContainText('could not be sent', {
+    timeout: 30_000,
+  })
+
+  await page.goto('/settings')
+  await expect(entries).toHaveCount(1, { timeout: 15_000 })
+  await page.unroute('http://localhost:8080/jmap/**')
+  await entries.first().getByRole('button', { name: 'Retry' }).click()
+  await expect(page.getByText('Nothing is waiting to be sent.')).toBeVisible({ timeout: 20_000 })
+
+  await page.goto('/mail')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByTestId('sync-status')).not.toContainText('could not be sent')
 })
 
 test('icon controls are labelled by the app tooltip, not the browser one', async ({ page }) => {

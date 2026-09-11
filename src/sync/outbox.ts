@@ -107,7 +107,11 @@ async function recoverStranded(accountId: string): Promise<void> {
         `[mel] outbox action "${row.kind}" was interrupted mid-flight and cannot be` +
           ' replayed without risking a duplicate, so it is marked failed.',
       )
-      await db.outbox.update(row.seq!, { status: 'failed' })
+      await db.outbox.update(row.seq!, {
+        status: 'failed',
+        reason: 'interrupted',
+        failedAt: Date.now(),
+      })
     }
   }
 }
@@ -141,6 +145,10 @@ export async function flush(accountId: string): Promise<void> {
               status: 'pending',
               attempts,
               notBefore: Date.now() + backoff,
+              // Recorded while it is still retrying too: an action that keeps
+              // backing off is the other way to be stuck, and the queue view
+              // has nothing else to explain it with.
+              reason: reasonOf(e),
             })
             scheduleFlush(accountId, backoff)
             break // keep ordering: don't run later actions past a stuck one
@@ -153,7 +161,11 @@ export async function flush(accountId: string): Promise<void> {
             `[mel] outbox action "${row.kind}" failed permanently and was dropped:`,
             e,
           )
-          await db.outbox.update(row.seq!, { status: 'failed' })
+          await db.outbox.update(row.seq!, {
+            status: 'failed',
+            reason: reasonOf(e),
+            failedAt: Date.now(),
+          })
         }
       }
     })
@@ -168,10 +180,77 @@ function isPermanent(e: unknown): boolean {
   return Boolean((e as { permanent?: boolean } | null)?.permanent)
 }
 
+/**
+ * How a failure is recorded on the row: a token, never a sentence.
+ *
+ * The reason is stored in a plain column (the encrypted payload holds the
+ * action), so it has to stay a classification — a server's `description` can
+ * quote what was submitted. Everything thrown from `execute` carries a
+ * `reason` for exactly that purpose; the readable error keeps going to the
+ * console.
+ */
+function reasonOf(e: unknown): string {
+  const tagged = (e as { reason?: string } | null)?.reason
+  if (tagged) return tagged
+  if (e instanceof JmapError) return e.status ? `${e.kind} ${e.status}` : e.kind
+  return 'error'
+}
+
+/** An error carrying the failure's own type as its reason token. */
+function failureError(failure: {
+  type: string
+  description?: string | null
+  permanent: boolean
+}): Error {
+  const err = new Error(failure.description ?? failure.type)
+  return Object.assign(err, { permanent: failure.permanent, reason: failure.type })
+}
+
+/** Our own refusals, which never reach the server at all. */
+function localError(message: string, reason: string): Error {
+  return Object.assign(new Error(message), { permanent: true, reason })
+}
+
+/**
+ * Put a failed action back in the queue, as if it had just been enqueued.
+ *
+ * Kept deliberately blunt: attempts go back to zero and the backoff is
+ * dropped, because a retry is a person saying "the thing that was in the way
+ * is gone now" — a server that was refusing at attempt six does not deserve
+ * six more seconds of waiting once the mailbox it was missing exists.
+ */
+export async function retryAction(seq: number): Promise<void> {
+  const row = await db.outbox.get(seq)
+  if (!row || row.status === 'inflight') return
+  await db.outbox.update(seq, {
+    status: 'pending',
+    attempts: 0,
+    notBefore: 0,
+    reason: undefined,
+    failedAt: undefined,
+  })
+  scheduleFlush(row.accountId, 0)
+}
+
+/**
+ * Throw a queued action away.
+ *
+ * The local optimistic change stays until the next sync overwrites it from the
+ * server — which is the point: discarding means "never mind, the server's
+ * version wins", and the sync is what makes that true. Callers sync afterwards
+ * so the list stops showing a change that is not going to happen.
+ */
+export async function discardAction(seq: number): Promise<void> {
+  const row = await db.outbox.get(seq)
+  if (!row || row.status === 'inflight') return
+  await db.outbox.delete(seq)
+  void syncAccount(row.accountId).catch(() => {})
+}
+
 async function execute(accountId: string, action: OutboxAction): Promise<void> {
   const conn = await connectionFor(accountId)
   const mail = conn.mail
-  if (!mail) throw Object.assign(new Error('no mail provider'), { permanent: true })
+  if (!mail) throw localError('no mail provider', 'noProvider')
 
   switch (action.kind) {
     case 'email.update': {
@@ -186,82 +265,54 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
     }
     case 'contact.create': {
       const contacts = conn.contacts
-      if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
+      if (!contacts) throw localError('no contacts provider', 'noProvider')
       const r = await contacts.createContact(action.contact)
-      if (r.failure) {
-        const err = new Error(r.failure.description ?? r.failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = r.failure.permanent
-        throw err
-      }
+      if (r.failure) throw failureError(r.failure)
       // The server row arrives via sync; drop the optimistic temp row.
       await db.contacts.delete([accountId, action.tempId])
       return
     }
     case 'contact.update': {
       const contacts = conn.contacts
-      if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
+      if (!contacts) throw localError('no contacts provider', 'noProvider')
       const failure = await contacts.updateContact(action.contact)
-      if (failure) {
-        const err = new Error(failure.description ?? failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
-        throw err
-      }
+      if (failure) throw failureError(failure)
       return
     }
     case 'contact.destroy': {
       const contacts = conn.contacts
-      if (!contacts) throw Object.assign(new Error('no contacts provider'), { permanent: true })
+      if (!contacts) throw localError('no contacts provider', 'noProvider')
       const failure = await contacts.destroyContacts(action.ids)
-      if (failure && failure.type !== 'notFound') {
-        const err = new Error(failure.description ?? failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
-        throw err
-      }
+      if (failure && failure.type !== 'notFound') throw failureError(failure)
       return
     }
     case 'event.create': {
       const cal = conn.calendars
-      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      if (!cal) throw localError('no calendar provider', 'noProvider')
       const r = await cal.createEvent(action.event)
-      if (r.failure) {
-        const err = new Error(r.failure.description ?? r.failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = r.failure.permanent
-        throw err
-      }
+      if (r.failure) throw failureError(r.failure)
       await db.events.delete([accountId, action.tempId])
       return
     }
     case 'event.update': {
       const cal = conn.calendars
-      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      if (!cal) throw localError('no calendar provider', 'noProvider')
       const failure = await cal.updateEvent(action.event)
-      if (failure) {
-        const err = new Error(failure.description ?? failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
-        throw err
-      }
+      if (failure) throw failureError(failure)
       return
     }
     case 'event.rsvp': {
       const cal = conn.calendars
-      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      if (!cal) throw localError('no calendar provider', 'noProvider')
       const failure = await cal.rsvp(action.eventId, action.participantId, action.status)
-      if (failure) {
-        const err = new Error(failure.description ?? failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
-        throw err
-      }
+      if (failure) throw failureError(failure)
       return
     }
     case 'event.destroy': {
       const cal = conn.calendars
-      if (!cal) throw Object.assign(new Error('no calendar provider'), { permanent: true })
+      if (!cal) throw localError('no calendar provider', 'noProvider')
       const failure = await cal.destroyEvents(action.ids)
-      if (failure && failure.type !== 'notFound') {
-        const err = new Error(failure.description ?? failure.type)
-        ;(err as Error & { permanent?: boolean }).permanent = failure.permanent
-        throw err
-      }
+      if (failure && failure.type !== 'notFound') throw failureError(failure)
       return
     }
     case 'email.send': {
@@ -269,7 +320,7 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
       for (const a of action.mail.attachments) {
         if (a.blobId || !a.localKey) continue
         const cached = await db.blobCache.get([accountId, a.localKey])
-        if (!cached) throw Object.assign(new Error('attachment lost'), { permanent: true })
+        if (!cached) throw localError('attachment lost', 'attachmentLost')
         const { data, type } = openEnvelope(cached.payload)
         const up = await mail.uploadBlob(data, type)
         a.blobId = up.blobId
@@ -287,9 +338,12 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
 function throwIfAllPermanent(failed: Record<string, { type: string; permanent: boolean }>) {
   const entries = Object.values(failed)
   if (!entries.length) return
-  const err = new Error(entries.map((f) => f.type).join(', '))
-  ;(err as Error & { permanent?: boolean }).permanent = entries.every((f) => f.permanent)
-  throw err
+  // The set-error types are tokens already, so they double as the reason.
+  const types = [...new Set(entries.map((f) => f.type))].join(', ')
+  throw Object.assign(new Error(types), {
+    permanent: entries.every((f) => f.permanent),
+    reason: types,
+  })
 }
 
 export function useOutboxAutoFlush() {

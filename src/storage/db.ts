@@ -75,6 +75,16 @@ export interface OutboxRow {
   attempts: number
   notBefore: number
   payload: Envelope<unknown>
+  /**
+   * Why the last attempt failed, as a **protocol token** — `notFound`,
+   * `forbidden`, `network 503`, never a server-written sentence. The full
+   * error goes to the console; this column is read by the queue view, and it
+   * sits outside the encrypted payload like every other index column, so it
+   * must stay a classification rather than anything the message carried.
+   */
+  reason?: string
+  /** When it was given up on, for the queue view. */
+  failedAt?: number
 }
 
 export interface AddressBookRow {
