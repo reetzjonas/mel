@@ -680,11 +680,9 @@ export function ReadingPane({
           {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
-              <Tooltip label={sender?.email ?? t('mail.unknownSender')}>
-                <span className="truncate text-sm font-semibold">
-                  {sender?.name || sender?.email || t('mail.unknownSender')}
-                </span>
-              </Tooltip>
+              <span className="truncate text-sm font-semibold">
+                {sender?.name || sender?.email || t('mail.unknownSender')}
+              </span>
               {/* Opened from the Drafts folder: it is yours and unsent, and
                   nothing else about the pane says so. */}
               {expanded.keywords['$draft'] && <Tag label={t('mail.draft')} tone="honey" />}
@@ -692,6 +690,14 @@ export function ReadingPane({
                 {formatFullDate(expanded.receivedAt)}
               </span>
             </div>
+            {/* Always visible, not just on hover: a spoofed display name is a
+                common phishing trick, and the address underneath it is the
+                one detail that gives it away. */}
+            {sender?.name && sender.email && (
+              <p className="truncate text-xs text-ink-muted">
+                <span className="font-medium">{t('mail.from')}:</span> {sender.email}
+              </p>
+            )}
             <AddressLine label={t('mail.to')} list={expanded.to} />
             <AddressLine label={t('mail.cc')} list={expanded.cc} />
           </div>
