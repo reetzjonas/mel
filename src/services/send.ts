@@ -94,7 +94,20 @@ export async function sendMail(
   return { undo: () => cancel(seq) }
 }
 
-/** Autosave a draft to the server; replaces the previous autosave. */
+/**
+ * What a save attempt did. The id alone cannot say: replacing an existing
+ * draft answers with the id it was handed, so a failure and a success look
+ * identical from outside. The autosave can ignore `ok` (it tries again on the
+ * next change), the Save button cannot — it has to report rather than draw a
+ * "saved" the server never agreed to.
+ */
+export interface DraftSaveResult {
+  /** The draft's id afterwards: the new one, or the old one on failure. */
+  id: string | null
+  ok: boolean
+}
+
+/** Saves a draft to the server; replaces the previous one in the same call. */
 export async function saveDraft(
   accountId: string,
   identity: Identity,
@@ -109,12 +122,13 @@ export async function saveDraft(
     references?: string[]
   },
   replaceId: string | null,
-): Promise<string | null> {
-  if (!navigator.onLine) return replaceId
+): Promise<DraftSaveResult> {
+  const unsaved = { id: replaceId, ok: false }
+  if (!navigator.onLine) return unsaved
   const drafts = await roleMailboxId(accountId, 'drafts')
-  if (!drafts) return replaceId
+  if (!drafts) return unsaved
   const conn = await connectionFor(accountId)
-  if (!conn.mail) return replaceId
+  if (!conn.mail) return unsaved
   const mail: OutgoingEmail = {
     identityId: identity.id,
     from: { name: identity.name || null, email: identity.email },
@@ -129,9 +143,10 @@ export async function saveDraft(
     references: fields.references ?? null,
   }
   try {
-    return (await conn.mail.saveDraft(mail, drafts, replaceId)) ?? replaceId
+    const id = await conn.mail.saveDraft(mail, drafts, replaceId)
+    return id ? { id, ok: true } : unsaved
   } catch {
-    return replaceId
+    return unsaved
   }
 }
 

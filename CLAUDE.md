@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 189 Vitest + 48 Playwright (desktop + mobile; state-mutating specs are
+Tests: 189 Vitest + 49 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -174,15 +174,28 @@ body back into a `ComposeInit`. Four things that are easy to miss:
   autosave replaces the message, so an idle reopen would churn through draft ids
   for nothing. Attachments come back by blob id (nothing is re-uploaded); inline
   `cid:` parts are left out, they belong to the HTML that references them.
+- **There is a Save button next to Send**, and the footer says *which* state it
+  is in ("Unsaved changes" / "Draft saved"). The autosave does work — verified
+  against the real server — but it only fires 2.5 s after the last change and
+  showed nothing until it did, so closing the window inside that gap dropped
+  the edit silently and there was no way to make sure. Both paths go through
+  one `storeDraft()`, and saves are **serialised through a promise queue**:
+  each one replaces the draft (create + destroy in one `Email/set`), so two
+  overlapping calls would each replace the other's message and leave a copy
+  behind. `dirty` is cleared by a save only if `changeSeq` has not moved
+  meanwhile, or a keystroke made during the request would be forgotten.
+  `saveDraft()` returns `{id, ok}` rather than an id: replacing answers with
+  the id it was handed, so failure and success are indistinguishable from
+  outside — the autosave may ignore that, the button may not.
 
 The compose window also has a **Delete draft** button once a draft exists (the
 close button only closes), and `AppShell` keys `<Compose>` on `draftId` so
 opening a draft while another compose window stands open starts a new editor
 instead of handing the old one an `init` it never reads again.
 
-Covered by `src/services/send.test.ts` and two desktop e2e specs in
-`e2e/folders-drafts.spec.ts` (reopen → finish → send, and delete from the
-editor).
+Covered by `src/services/send.test.ts` and three desktop e2e specs in
+`e2e/folders-drafts.spec.ts` (reopen → finish → send; save on demand, which
+also pins that no second copy appears; delete from the editor).
 
 ## Login, setup and signing out
 

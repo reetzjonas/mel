@@ -98,6 +98,56 @@ test('reopen a saved draft, finish it and send it', async ({ page }) => {
   await expect(page.getByText(subject)).toHaveCount(0, { timeout: 20_000 })
 })
 
+/*
+ * The autosave waits 2.5 s after the last change and says nothing until it
+ * fires, so closing the window inside that gap dropped the edit silently.
+ * Saving on demand is the answer, and it has to write into the draft the
+ * window already owns rather than leaving a second copy behind.
+ */
+test('save a draft on demand, into the same message', async ({ page }) => {
+  test.setTimeout(60_000)
+  const subject = `Speichern-${Date.now() % 100000}`
+  await login(page)
+
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('bob@localhost')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Erster Satz.')
+
+  // Unsaved until it is saved, and the footer says so rather than showing a
+  // stale "Draft saved" over edits that are not on the server.
+  await expect(page.getByText('Unsaved changes')).toBeVisible()
+  await page.getByRole('button', { name: 'Save draft' }).click()
+  await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Discard' }).click()
+
+  const drafts = page.getByRole('link', { name: 'Drafts' })
+  await drafts.click()
+  const rows = page.getByTestId('thread-subject').filter({ hasText: subject })
+  await expect(rows).toHaveCount(1, { timeout: 10_000 })
+
+  // Reopen, edit, save again: still one draft, carrying the newer text.
+  await rows.first().click()
+  await page.getByRole('button', { name: 'Edit draft' }).click()
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.press('End')
+  await page.keyboard.type(' Zweiter Satz.')
+  await page.getByRole('button', { name: 'Save draft' }).click()
+  await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Discard' }).click()
+
+  await page.getByRole('link', { name: 'Inbox' }).click()
+  await drafts.click()
+  await expect(rows).toHaveCount(1, { timeout: 10_000 })
+  await rows.first().click()
+  await page.getByRole('button', { name: 'Edit draft' }).click()
+  await expect(page.locator('.ProseMirror')).toContainText('Zweiter Satz.')
+
+  await page.getByRole('button', { name: 'Delete draft' }).click()
+  await expect(page.getByText('Draft deleted')).toBeVisible({ timeout: 10_000 })
+})
+
 /* Throwing a draft away from inside the editor, which is where you are when
  * you decide it is not worth finishing. */
 test('delete a draft from the compose window', async ({ page }) => {

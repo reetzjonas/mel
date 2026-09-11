@@ -15,7 +15,7 @@ import {
 } from '../../services/send'
 import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
-import { primaryButtonClass } from '../../ui/styles'
+import { primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { ComposeToolbar } from './ComposeToolbar'
 import { RecipientInput } from './RecipientInput'
 
@@ -96,17 +96,32 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
    * message, so an idle reopen would churn through draft ids for nothing).
    */
   const [dirty, setDirty] = useState(false)
+  /** Counts the edits, so a save cannot clear `dirty` for a keystroke that
+   *  happened while it was in flight. */
+  const changeSeq = useRef(0)
+  const markDirty = () => {
+    changeSeq.current += 1
+    setDirty(true)
+  }
   const changed =
     <T,>(set: (v: T) => void) =>
     (v: T) => {
-      setDirty(true)
+      markDirty()
       set(v)
     }
-  /** The draft this window owns: reopened, or created by the first autosave. */
+  /** The draft this window owns: reopened, or created by the first save. */
   const draftId = useRef<string | null>(init.draftId ?? null)
   /** The same fact, as state: a ref cannot make the delete button appear. */
   const [hasDraft, setHasDraft] = useState(Boolean(init.draftId))
-  const draftBusy = useRef(false)
+  const [saving, setSaving] = useState(false)
+  /*
+   * Saves run one after another. Each one *replaces* the draft (create plus
+   * destroy in one Email/set), so two overlapping calls would each replace the
+   * other's message and leave a copy behind — and an explicit save that
+   * happened to land on an autosave would otherwise have to report a failure
+   * that never occurred.
+   */
+  const queue = useRef<Promise<unknown>>(Promise.resolve())
 
   useEffect(() => {
     void getIdentities(accountId).then((list) => {
@@ -132,22 +147,26 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     // is, not just on what was typed — moving into already-bold text has to
     // flip the button with no content change at all.
     onUpdate: () => {
-      setDirty(true)
+      markDirty()
       setEditRevision((r) => r + 1)
     },
     onSelectionUpdate: () => setEditRevision((r) => r + 1),
   })
 
-  // Draft autosave: 2.5 s after the last change (text fields only; the real
-  // send builds its own message including attachments).
-  useEffect(() => {
-    if (!dirty) return
-    const identity = identities.find((i) => i.id === identityId)
-    if (!identity || !editor) return
-    const timer = setTimeout(() => {
-      if (draftBusy.current) return
-      draftBusy.current = true
-      void saveDraft(
+  /**
+   * Writes the current fields into the draft this window owns — the one thing
+   * both the 2.5 s autosave and the Save button do, so they cannot drift into
+   * saving different halves of the form.
+   *
+   * Text fields only: the real send builds its own message including the
+   * attachments, which are staged locally until then.
+   */
+  const storeDraft = (): Promise<boolean> => {
+    const run = async () => {
+      const identity = identities.find((i) => i.id === identityId)
+      if (!identity || !editor) return false
+      const seq = changeSeq.current
+      const { id, ok } = await saveDraft(
         accountId,
         identity,
         {
@@ -162,17 +181,29 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         },
         draftId.current,
       )
-        .then((id) => {
-          draftId.current = id
-          if (id) {
-            setHasDraft(true)
-            setDraftSaved(true)
-          }
-        })
-        .finally(() => {
-          draftBusy.current = false
-        })
-    }, 2500)
+      draftId.current = id
+      if (ok) {
+        setHasDraft(true)
+        setDraftSaved(true)
+        // Anything typed while this was in flight is still unsaved, and the
+        // next autosave has to pick it up.
+        if (changeSeq.current === seq) setDirty(false)
+      }
+      return ok
+    }
+    const next = queue.current.then(run, run)
+    queue.current = next
+    return next
+  }
+  // The timer below is armed by the deps, not re-armed on every render, so it
+  // must not close over a stale copy of the function.
+  const storeDraftRef = useRef(storeDraft)
+  storeDraftRef.current = storeDraft
+
+  // Draft autosave: 2.5 s after the last change.
+  useEffect(() => {
+    if (!dirty) return
+    const timer = setTimeout(() => void storeDraftRef.current(), 2500)
     return () => clearTimeout(timer)
   }, [
     dirty,
@@ -195,6 +226,23 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
       const a = await stageAttachment(accountId, file)
       setAttachments((cur) => [...cur, a])
     }
+  }
+
+  /**
+   * Save on demand. The autosave only fires 2.5 s after the last change, which
+   * is invisible from outside — closing the window inside that window dropped
+   * the edit with nothing to show for it, and there was no way to make sure.
+   */
+  async function saveNow() {
+    if (!navigator.onLine) {
+      setError(t('compose.saveOffline'))
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const ok = await storeDraft()
+    setSaving(false)
+    if (!ok) setError(t('compose.saveFailed'))
   }
 
   /** Throws the stored draft away and closes — the counterpart to sending it. */
@@ -409,6 +457,17 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             <Icon name="send" size={14} />
             {t('compose.send')}
           </button>
+          {/* Secondary, next to Send: the same act the autosave performs, on
+              demand. Disabled while one is running rather than queueing a
+              second identical write behind it. */}
+          <button
+            type="button"
+            onClick={() => void saveNow()}
+            disabled={saving || busy}
+            className={secondaryButtonClass}
+          >
+            {t('compose.saveDraft')}
+          </button>
           <Tooltip label={t('compose.attach')}>
             <button
               type="button"
@@ -440,8 +499,12 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               </button>
             </Tooltip>
           )}
-          {draftSaved && (
-            <span className="ml-auto text-xs text-ink-muted">{t('compose.draftSaved')}</span>
+          {/* Says which of the two it is. "Draft saved" left standing over
+              unsaved edits is exactly what made the autosave look broken. */}
+          {(dirty || draftSaved) && (
+            <span className="ml-auto text-xs text-ink-muted">
+              {dirty ? t('compose.unsavedChanges') : t('compose.draftSaved')}
+            </span>
           )}
         </footer>
       </div>
