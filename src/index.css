@@ -172,6 +172,7 @@ h2 {
 button:not(:disabled),
 [role='button']:not([aria-disabled='true']),
 label:has(> input[type='checkbox']),
+select:not(:disabled),
 summary {
   cursor: pointer;
 }
@@ -181,6 +182,19 @@ summary {
   outline: 2px solid var(--mel-accent);
   outline-offset: 2px;
   border-radius: 0.4rem;
+}
+
+/*
+ * The open list of a <select> is drawn by the browser, not by us, and takes
+ * its colours from the system rather than from the tokens: in the dark theme
+ * that produced a white list with the OS highlight colour sitting in the
+ * middle of an otherwise dark dialog. `color-scheme` alone does not settle it
+ * once the control carries an author background, so name the two colours. The
+ * closed control is ours — see `ui/Select.tsx`, which drops the native arrow.
+ */
+option {
+  background-color: var(--mel-raised);
+  color: var(--mel-ink);
 }
 
 /*

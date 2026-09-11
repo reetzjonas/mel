@@ -4,6 +4,7 @@ import { discoveryCandidates, srvCandidates } from '../../providers/jmap/client/
 import { t } from '../../lib/i18n'
 import { addAccount, NoServerFound } from '../../services/accounts'
 import { Icon } from '../../ui/Icon'
+import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
 /** Just the host, so the error names servers rather than full well-known URLs. */
@@ -61,9 +62,7 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
 
   function submit(e: React.FormEvent) {
     e.preventDefault()
-    void connect(
-      manualServer.trim() ? [manualServer.trim()] : discoveryCandidates(email),
-    )
+    void connect(manualServer.trim() ? [manualServer.trim()] : discoveryCandidates(email))
   }
 
   /** Opt-in only: this is the one step that tells a third party our domain. */
@@ -160,14 +159,10 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
 
             <label className="block space-y-1.5">
               <span className="text-xs font-medium text-ink-muted">{t('login.auth')}</span>
-              <select
-                className={inputClass}
-                value={method}
-                onChange={(e) => setMethod(e.target.value as AuthMethod)}
-              >
+              <Select value={method} onChange={(e) => setMethod(e.target.value as AuthMethod)}>
                 <option value="basic">{t('login.auth.basic')}</option>
                 <option value="bearer">{t('login.auth.bearer')}</option>
-              </select>
+              </Select>
             </label>
           </div>
         )}

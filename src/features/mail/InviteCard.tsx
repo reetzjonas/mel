@@ -10,7 +10,8 @@ import { parseDuration } from '../../lib/recurrence'
 import { getAttachmentText } from '../../services/mail'
 import { createEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
-import { inputClass, primaryButtonClass } from '../../ui/styles'
+import { Select } from '../../ui/Select'
+import { primaryButtonClass } from '../../ui/styles'
 
 const VIEWER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 
@@ -163,8 +164,9 @@ export function InviteCard({ accountId, part }: { accountId: string; part: Email
       ) : (
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
           {writable.length > 1 && (
-            <select
-              className={`${inputClass} w-auto max-w-56 py-1.5 text-xs`}
+            <Select
+              className="w-auto max-w-56"
+              controlClassName="py-1.5 text-xs"
               aria-label={t('cal.calendar')}
               value={selected}
               onChange={(e) => setCalendarId(e.target.value)}
@@ -174,7 +176,7 @@ export function InviteCard({ accountId, part }: { accountId: string; part: Email
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
           )}
           <button
             type="button"
