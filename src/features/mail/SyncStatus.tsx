@@ -1,4 +1,3 @@
-import { Link } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Account } from '../../domain/account'
@@ -7,6 +6,7 @@ import { formatRelativePast } from '../../lib/dates'
 import { db } from '../../storage/db'
 import { isSubscribed } from '../../services/webPush'
 import { getSyncStatus, subscribeSyncStatus, type SyncMode } from '../../sync/scheduler'
+import { useSettingsRoute } from '../settings/navigation'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 
@@ -71,6 +71,7 @@ const MODE_ICON: Record<SyncMode, IconName> = {
  */
 export function SyncStatus({ account }: { account: Account }) {
   const status = useSyncStatus(account.id)
+  const { open: openSettings } = useSettingsRoute()
   const online = useOnline()
   const webPushActive = useWebPushActive(account.capabilities.webPush)
   useTicker(30_000)
@@ -152,9 +153,10 @@ export function SyncStatus({ account }: { account: Account }) {
   // Links into the capability list: this bar is where people look first when
   // something seems off, and "why is the calendar missing" is answered there.
   const bar = (
-    <Link
-      to="/settings"
-      className="block shrink-0 border-t border-line px-3 py-2 text-[11px] text-ink-subtle transition-colors hover:bg-surface-2"
+    <button
+      type="button"
+      onClick={() => openSettings('account')}
+      className="block w-full shrink-0 border-t border-line px-3 py-2 text-left text-[11px] text-ink-subtle transition-colors hover:bg-surface-2"
       data-testid="sync-status"
     >
       <span className="flex items-center gap-1.5">
@@ -170,7 +172,7 @@ export function SyncStatus({ account }: { account: Account }) {
       >
         {detail}
       </span>
-    </Link>
+    </button>
   )
 
   return tooltip ? <Tooltip label={tooltip}>{bar}</Tooltip> : bar

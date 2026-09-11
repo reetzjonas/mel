@@ -3,6 +3,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAccounts } from '../features/mail/hooks'
+import { SettingsDialog } from '../features/settings/SettingsDialog'
+import { useSettingsRoute } from '../features/settings/navigation'
 import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
 import { db } from '../storage/db'
@@ -73,6 +75,7 @@ export function AppShell() {
   const accounts = useAccounts()
   const account = accounts?.[0]
   const { compose } = useUi()
+  const settings = useSettingsRoute()
   const unlockVersion = useUi((s) => s.unlockVersion)
   const lockedIds = useLiveQuery(async () => {
     const rows = await db.accounts.toArray()
@@ -102,13 +105,16 @@ export function AppShell() {
           <ThemeToggle />
           {account && <SignOutButton accountId={account.id} />}
           <Tooltip label={t('settings.title')}>
-            <Link
-              to="/settings"
+            <button
+              type="button"
               aria-label={t('settings.title')}
-              className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink [&.active]:text-accent"
+              onClick={() => settings.open('general')}
+              className={`rounded-control p-2 transition-colors hover:bg-surface-2 hover:text-ink ${
+                settings.tab ? 'text-accent' : 'text-ink-muted'
+              }`}
             >
               <Icon name="settings" />
-            </Link>
+            </button>
           </Tooltip>
         </div>
       </header>
@@ -121,13 +127,16 @@ export function AppShell() {
           <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
         ))}
         {/* Bottom bar is touch-only, where a hover tooltip never appears. */}
-        <Link
-          to="/settings"
+        <button
+          type="button"
           aria-label={t('settings.title')}
-          className="rounded-full px-3.5 py-1 text-ink-muted [&.active]:bg-accent [&.active]:text-accent-ink"
+          onClick={() => settings.open('general')}
+          className={`rounded-full px-3.5 py-1 ${
+            settings.tab ? 'bg-accent text-accent-ink' : 'text-ink-muted'
+          }`}
         >
           <Icon name="settings" size={18} />
-        </Link>
+        </button>
       </nav>
 
       {/* Keyed on what is being written: opening a draft while a compose
@@ -135,6 +144,9 @@ export function AppShell() {
           different `init` it never reads again. */}
       {compose && account && (
         <Compose key={compose.draftId ?? 'new'} accountId={account.id} init={compose} />
+      )}
+      {settings.tab && (
+        <SettingsDialog tab={settings.tab} onTab={settings.select} onClose={settings.close} />
       )}
       <HelpOverlay />
       <Snackbar />

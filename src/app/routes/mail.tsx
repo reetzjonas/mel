@@ -44,7 +44,15 @@ function MailLayout() {
   useEffect(() => {
     if (params.mailboxId || !mailboxes?.length || pathname !== '/mail') return
     const inbox = mailboxes.find((m) => m.role === 'inbox') ?? mailboxes[0]!
-    void navigate({ to: '/mail/$mailboxId', params: { mailboxId: inbox.id }, replace: true })
+    // Carries the search along: a deep link like /settings redirects through
+    // /mail, and dropping the params here would close the settings dialog
+    // again the moment the inbox arrives.
+    void navigate({
+      to: '/mail/$mailboxId',
+      params: { mailboxId: inbox.id },
+      search: (prev) => prev,
+      replace: true,
+    })
   }, [params.mailboxId, mailboxes, navigate, pathname])
 
   // Leaving mail altogether closes the drawer: it is bound to this layout, and
@@ -89,7 +97,6 @@ function MailLayout() {
           <Icon name="compose" size={22} />
         </button>
       )}
-
     </div>
   )
 }

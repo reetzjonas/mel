@@ -8,6 +8,16 @@ async function login(page: Page) {
   await page.getByRole('button', { name: 'Connect' }).click()
 }
 
+/** Settings are a modal: the gear opens it, and the tabs switch inside it. */
+async function openSettings(page: Page, tab: string) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('tab', { name: tab }).click()
+}
+
+async function closeSettings(page: Page) {
+  await page.getByRole('button', { name: 'Close settings' }).click()
+}
+
 /** The 10s undo window plus delivery; the send itself only starts after it. */
 async function waitForSend(page: Page) {
   await expect(page.getByText('Sending in 10 s')).toBeVisible()
@@ -51,12 +61,18 @@ test('a reply joins the same conversation row, and the pane lists both messages'
 
   // One row, not two: the reply joined the conversation instead of stacking a
   // second entry on top of it.
-  const badge = page.locator('[aria-label$="messages"]')
-  await expect(badge.first()).toBeVisible({ timeout: 30_000 })
+  //
+  // The badge has to be the one on *this* row. Searched across the whole list
+  // it matches any conversation another spec left behind, which satisfies the
+  // wait immediately and hands the real race — delivery, sync and grouping of
+  // the reply — to the 5s default timeout of the count assertion below. That
+  // is what made this fail in full runs and pass on its own.
+  const badge = listed.first().locator('..').locator('[aria-label$="messages"]')
+  await expect(badge).toBeVisible({ timeout: 30_000 })
   await expect(listed).toHaveCount(1)
   // The count spans folders, so the copies in Sent are in it too — what
   // matters is that it counts more than the one message in the inbox.
-  expect(Number(await badge.first().innerText())).toBeGreaterThan(1)
+  expect(Number(await badge.innerText())).toBeGreaterThan(1)
 
   // The row's own quick actions take the whole conversation, and say so: the
   // tooltip is the only thing that can, since the icons are the same two.
@@ -113,9 +129,9 @@ test('turning conversations off puts every message back on its own row', async (
 
   const counted = await page.getByTestId('thread-subject').count()
 
-  await page.goto('/settings')
+  await openSettings(page, 'Mail')
   await page.getByLabel('Conversations').selectOption('off')
-  await page.goto('/mail')
+  await closeSettings(page)
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
 
   // Ungrouped can only ever show at least as many rows as grouped, and no
@@ -123,6 +139,6 @@ test('turning conversations off puts every message back on its own row', async (
   expect(await page.getByTestId('thread-subject').count()).toBeGreaterThanOrEqual(counted)
   await expect(page.locator('[aria-label$="messages"]')).toHaveCount(0)
 
-  await page.goto('/settings')
+  await openSettings(page, 'Mail')
   await page.getByLabel('Conversations').selectOption('on')
 })

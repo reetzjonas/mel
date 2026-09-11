@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 
 /*
  * Desktop-only (see testIgnore in playwright.config.ts): this asserts on
@@ -151,6 +151,16 @@ test('a sync that cannot reach the server does not sit on "connecting"', async (
   })
 })
 
+/** Settings are a modal: the gear opens it, and the tabs switch inside it. */
+async function openSettings(page: Page, tab: string) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('tab', { name: tab }).click()
+}
+
+async function closeSettings(page: Page) {
+  await page.getByRole('button', { name: 'Close settings' }).click()
+}
+
 test('the sync bar leads to the server feature list', async ({ page }) => {
   await page.goto('/mail')
   await page.getByPlaceholder('you@example.com').fill('alice@localhost')
@@ -158,8 +168,10 @@ test('the sync bar leads to the server feature list', async ({ page }) => {
   await page.getByRole('button', { name: 'Connect' }).click()
   await expect(page.getByTestId('sync-status')).toBeVisible({ timeout: 15_000 })
 
+  // The bar opens settings straight on the tab that carries the list, and the
+  // open tab is in the URL rather than in component state.
   await page.getByTestId('sync-status').click()
-  await expect(page).toHaveURL(/\/settings$/)
+  await expect(page).toHaveURL(/settings=account/)
 
   const caps = page.locator('#server-capabilities')
   await expect(caps).toBeVisible()
@@ -224,11 +236,12 @@ test('an action that never reached the server is reported, not dropped quietly',
    * separately races: the second sits pending, and any flush trigger turns it
    * into a second entry between the assertion and the click. The sync bar
    * (which only exists on /mail) is the signal that the flush has finished —
-   * navigating straight to the settings page instead reloads the app mid-flush
-   * and the entry shows up whenever the recovery gets round to it.
+   * reloading the app mid-flush instead lets the entry show up whenever the
+   * recovery gets round to it. Opening the queue as a modal keeps the page, so
+   * there is no reload to race with in the first place.
    */
   const entries = page.getByRole('listitem').filter({ hasText: 'Flag messages' })
-  await page.goto('/settings')
+  await openSettings(page, 'Account')
   await expect(entries).toHaveCount(1, { timeout: 15_000 })
   // Named by what it does, not by the method it uses, and with the server's
   // own refusal kept as a token.
@@ -242,22 +255,86 @@ test('an action that never reached the server is reported, not dropped quietly',
 
   // And once more, to retry instead — keeping a failed action around rather
   // than dropping it is only worth anything if the cause can go away.
-  await page.goto('/mail')
+  await closeSettings(page)
   await expect(rows.first()).toBeVisible({ timeout: 15_000 })
   await toggleFlag()
   await expect(page.getByTestId('sync-status')).toContainText('could not be sent', {
     timeout: 30_000,
   })
 
-  await page.goto('/settings')
+  await openSettings(page, 'Account')
   await expect(entries).toHaveCount(1, { timeout: 15_000 })
   await page.unroute('http://localhost:8080/jmap/**')
   await entries.first().getByRole('button', { name: 'Retry' }).click()
   await expect(page.getByText('Nothing is waiting to be sent.')).toBeVisible({ timeout: 20_000 })
 
-  await page.goto('/mail')
+  await closeSettings(page)
   await expect(rows.first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByTestId('sync-status')).not.toContainText('could not be sent')
+})
+
+/*
+ * Settings moved from a screen of its own into a modal. The old address has to
+ * keep working (bookmarks, anything still linking there), and the tab has to
+ * survive the hop through /mail's inbox redirect rather than being dropped
+ * with the rest of the search params.
+ */
+test('the old settings address opens the dialog, and Back closes it', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByTestId('sync-status')).toBeVisible({ timeout: 15_000 })
+
+  await page.goto('/settings')
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  await expect(dialog).toBeVisible({ timeout: 15_000 })
+  await expect(page).toHaveURL(/settings=general/)
+
+  // Switching tabs replaces the entry, so one press of Back closes the dialog
+  // instead of walking back through every tab that was looked at.
+  await page.getByRole('tab', { name: 'Notifications' }).click()
+  await expect(page).toHaveURL(/settings=notifications/)
+  await page.getByRole('tab', { name: 'Security' }).click()
+  await expect(page).toHaveURL(/settings=security/)
+
+  await page.goBack()
+  await expect(dialog).toBeHidden()
+})
+
+/*
+ * The tabs hold very different amounts of content (two selects on General, a
+ * queue plus the whole capability list on Account). A panel sized to whatever
+ * is inside it would jump on every tab click, which reads as hectic — so the
+ * frame is fixed and only its contents scroll.
+ */
+test('the settings dialog keeps its size across tabs', async ({ page }) => {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByTestId('sync-status')).toBeVisible({ timeout: 15_000 })
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Settings' })
+  await expect(dialog).toBeVisible()
+
+  const sizes: { tab: string; width: number; height: number }[] = []
+  for (const tab of ['General', 'Mail', 'Notifications', 'Security', 'Account']) {
+    await page.getByRole('tab', { name: tab }).click()
+    await expect(page.getByRole('tab', { name: tab })).toHaveAttribute('aria-selected', 'true')
+    const box = await dialog.boundingBox()
+    sizes.push({ tab, width: box!.width, height: box!.height })
+  }
+
+  const first = sizes[0]!
+  for (const size of sizes.slice(1)) {
+    expect(size, `${size.tab} differs from ${first.tab}`).toEqual({
+      tab: size.tab,
+      width: first.width,
+      height: first.height,
+    })
+  }
 })
 
 test('icon controls are labelled by the app tooltip, not the browser one', async ({ page }) => {

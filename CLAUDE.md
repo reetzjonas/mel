@@ -37,7 +37,12 @@ quick actions in the list, folder management (create/rename/delete), draft
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 198 Vitest + 49 Playwright (desktop + mobile; state-mutating specs are
+Settings are a modal over the current screen, not a route: five tabs (General,
+Mail, Notifications, Security, Account) with the open one in `?settings=`, so
+deep links and the back button keep working and `/settings` redirects in.
+See `docs/notes/settings-modal.md`.
+
+Tests: 213 Vitest + 51 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 

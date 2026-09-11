@@ -32,6 +32,16 @@ async function countPlaintextLeaks(page: Page): Promise<number> {
   )
 }
 
+/** Settings are a modal: the gear opens it, and the tabs switch inside it. */
+async function openSettings(page: Page, tab: string) {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('tab', { name: tab }).click()
+}
+
+async function closeSettings(page: Page) {
+  await page.getByRole('button', { name: 'Close settings' }).click()
+}
+
 test('enable encryption, reload, unlock, read mail — no plaintext at rest', async ({ page }) => {
   test.setTimeout(60_000)
   await login(page)
@@ -39,7 +49,7 @@ test('enable encryption, reload, unlock, read mail — no plaintext at rest', as
   // Plaintext is present before enabling encryption.
   expect(await countPlaintextLeaks(page)).toBeGreaterThan(0)
 
-  await page.getByRole('link', { name: 'Settings' }).click()
+  await openSettings(page, 'Security')
   await page.getByPlaceholder('Passphrase', { exact: true }).fill(PASSPHRASE)
   await page.getByPlaceholder('Repeat passphrase').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Encrypt local data' }).click()
@@ -57,13 +67,16 @@ test('enable encryption, reload, unlock, read mail — no plaintext at rest', as
 
   await page.getByPlaceholder('Passphrase').fill(PASSPHRASE)
   await page.getByRole('button', { name: 'Unlock' }).click()
+  // The open tab lives in the URL, so the reload lands back in the settings
+  // dialog once the account is unlocked — close it before using the app behind.
+  await closeSettings(page)
   // Client-side navigation — a full reload would drop the in-memory DEK again.
   await page.getByRole('link', { name: 'Mail' }).first().click({ timeout: 15_000 })
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
 
   // Clean up: disable encryption again for the other test runs.
   page.on('dialog', (d) => void d.accept(PASSPHRASE))
-  await page.getByRole('link', { name: 'Settings' }).click()
+  await openSettings(page, 'Security')
   await page.getByRole('button', { name: 'Disable encryption' }).click()
   await expect(page.getByRole('button', { name: 'Encrypt local data' })).toBeVisible({
     timeout: 20_000,

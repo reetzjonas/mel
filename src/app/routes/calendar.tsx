@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useUi } from '../store'
 import type {
@@ -11,6 +11,7 @@ import { EventDialog } from '../../features/calendar/EventDialog'
 import { dayKey, TimeGrid } from '../../features/calendar/TimeGrid'
 import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
+import { useSettingsRoute } from '../../features/settings/navigation'
 import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
@@ -111,6 +112,7 @@ function colorFor(calendars: Calendar[], calendarId: string | undefined): string
 function CalendarApp() {
   const accounts = useAccounts()
   const account = accounts?.[0]
+  const { open: openSettings } = useSettingsRoute()
   const calendars = useCalendars(account?.id)
   const events = useEvents(account?.id)
   const { showSnackbar } = useUi()
@@ -154,9 +156,13 @@ function CalendarApp() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-muted">
         <p className="text-sm">{t('caps.unsupported.calendar')}</p>
-        <Link to="/settings" className="text-sm text-accent hover:underline">
+        <button
+          type="button"
+          onClick={() => openSettings('account')}
+          className="text-sm text-accent hover:underline"
+        >
           {t('caps.showDetails')}
-        </Link>
+        </button>
       </div>
     )
   }
