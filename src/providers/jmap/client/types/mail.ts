@@ -70,6 +70,8 @@ export interface JmapEmail {
   textBody?: JmapEmailBodyPart[]
   htmlBody?: JmapEmailBodyPart[]
   attachments?: JmapEmailBodyPart[]
+  /** Raw header list, only requested for the metadata view. */
+  headers?: Array<{ name: string; value: string }> | null
 }
 
 export interface JmapThread {
@@ -94,6 +96,13 @@ export const EMAIL_HEADER_PROPS = [
   'preview',
   'hasAttachment',
 ] as const
+
+/**
+ * Everything the metadata view needs: the raw headers, plus the blob id that
+ * makes the original message downloadable. Kept apart from the header and body
+ * property sets because a full header list is far too much to sync per message.
+ */
+export const EMAIL_METADATA_PROPS = ['id', 'blobId', 'headers'] as const
 
 export const EMAIL_BODY_PROPS = [
   'id',

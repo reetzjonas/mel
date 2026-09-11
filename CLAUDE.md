@@ -36,7 +36,7 @@ see below), quick actions in the list, folder management (create/rename/delete),
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Tests: 157 Vitest + 44 Playwright (desktop + mobile; state-mutating specs are
+Tests: 178 Vitest + 46 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -259,7 +259,7 @@ no longer materialises every header. See the note on mailbox listing below.
 ### Newly raised (order NOT yet agreed with the user)
 
 Prioritisation is pending, so ask which comes first before starting.
-**A is settled; B, C, E, G, F, J, L, M, P, T and V are done**, the rest is open. A is not a bug (see there).
+**A is settled; B, C, E, G, F, J, L, M, P, T, U and V are done**, the rest is open. A is not a bug (see there).
 
 **A. ~~Scrollbar width changes~~ settled.** Not a bug: measured together with the
 user, `offsetWidth - clientWidth` is **0px** on their machine, so Chrome is
@@ -483,8 +483,52 @@ otherwise. The reading pane keeps its existing back button — one tap to the
 list, which has the trigger. Regression: `e2e/mail.spec.ts`, mobile project
 only (`test.skip(!isMobile)`).
 
-**U. Mail metadata detail view.** A way to inspect a message's full metadata
-(headers, routing, etc.) beyond what the reading pane shows today.
+**U. ~~Mail metadata detail view~~ done** (#25). An info button in the reading
+pane toolbar (on its own, pushed right — it is the one control there that does
+not change the message) opens `MessageDetails.tsx`: an overview from what is
+stored locally, then authentication verdicts, the delivery path, notable
+headers and every raw header, with "copy headers" and "save original (.eml)".
+
+- **Headers are fetched per open and never cached.** They are not part of
+  reading mail, and caching them would park routing data for every message
+  anyone ever inspected in IndexedDB. The local half of the dialog therefore
+  renders offline and the header sections say why they are missing.
+  `EMAIL_METADATA_PROPS` (`id`, `blobId`, `headers`) is deliberately its own
+  property set — a full header list is far too much to sync per message.
+- **JMAP returns header values folded and with the leading space** (verified
+  against Stalwart), so everything goes through `unfoldHeader()`. Parsing lives
+  in `domain/messageMetadata.ts`, is pure and tested against a verbatim
+  Stalwart sample.
+- **`Received:` headers are prepended by each hop**, so the list arrives newest
+  first and `deliveryPath()` reverses it — unreversed it reads as if mail flowed
+  out of your own server. Clauses are matched *outside* parenthesised comments,
+  or `(from userid 1000)` looks like an origin.
+- **SPF is evaluated twice** (HELO and envelope sender), so a message normally
+  carries two SPF verdicts. `authResults()` therefore reads one verdict per
+  semicolon-separated clause and reports the **identity** it applies to
+  (`smtp.helo=…`, `smtp.mailfrom=…`, `header.d=…`), folding two entries only
+  when method, result *and* identity agree. Without the identity beside them the
+  two lines look like the server contradicting itself — which is exactly how the
+  user read them. `Received-SPF` is only a fallback.
+- **`policy.dmarc=quarantine` is not a verdict** but the policy the sender
+  published, and a `\b`-anchored method regex matches it happily (a dot is a
+  word boundary), putting a bogus second "dmarc" line next to the real result.
+  Reported from a real account. The method must be preceded by a separator —
+  written as a character class rather than a lookbehind, since Safari below 16.4
+  throws on lookbehind while *parsing* the file and takes the app down with it.
+- **The open dialog lives in `app/store.ts` (`messageDetailsOpen`)**, not in
+  component state: the mail shortcuts are single keys, and `e` would otherwise
+  archive the message *behind* the dialog and navigate away under it. The same
+  guard now covers the help overlay. The ReadingPane closes the flag on unmount
+  and when another message is opened, since nothing else would.
+- **Values are inert monospace text, never links**, clamped past 200 characters
+  with a toggle: a header holds whatever the sender wrote, including a URL one
+  click from a phishing page and a 4 KB DKIM signature. `emlFileName()` treats
+  the subject the same way — path separators, control characters and leading
+  dots are stripped before it becomes a download name.
+- e2e gotcha: the snackbar sits at `bottom-20` and covers the dialog footer on
+  a phone, so the export has to be clicked *before* the copy or the click is
+  intercepted.
 
 **V. ~~Rewrite the compose popup~~ done** (#26). There was no formatting toolbar
 at all before this — StarterKit already bundled bold/italic/underline/strike/

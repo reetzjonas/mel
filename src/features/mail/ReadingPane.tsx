@@ -7,6 +7,7 @@ import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
 import { imagePolicy } from '../../lib/imagePolicy'
 import { useMailboxes, useThread } from './hooks'
+import { MessageDetails } from './MessageDetails'
 import { foldThread, type ThreadSlot } from './conversations'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
@@ -323,7 +324,7 @@ export function ReadingPane({
   // address to. Only an explicit per-message release opens it.
   const allowRemote = released || (imagePolicy() === 'always' && !inJunk)
   const navigate = useNavigate()
-  const { openCompose, showSnackbar } = useUi()
+  const { openCompose, showSnackbar, messageDetailsOpen, setMessageDetailsOpen } = useUi()
   const frameTheme = useFrameTheme()
 
   // Fetching the body is keyed on the message identity alone: a keyword
@@ -340,6 +341,14 @@ export function ReadingPane({
       alive = false
     }
   }, [accountId, expanded.id])
+
+  // The details dialog is store state (the shortcuts have to see it), so it
+  // has to be closed by hand: opening another message would otherwise leave it
+  // standing over a message that is no longer the one it describes, and
+  // leaving the pane entirely would leave the shortcuts disabled.
+  useEffect(() => {
+    return () => setMessageDetailsOpen(false)
+  }, [expanded.id, setMessageDetailsOpen])
 
   // Separate from the body fetch above so that a keyword change alone (e.g.
   // another tab marking it read first) can be picked up without refetching.
@@ -486,6 +495,15 @@ export function ReadingPane({
             onClick={() => reply('forward')}
           />
         </span>
+        {/* On its own, pushed right: it opens a panel rather than acting on the
+            message, and it is the one control here that never changes it. */}
+        <span className="ml-auto flex items-center rounded-control bg-surface-2/60 p-0.5">
+          <ActionButton
+            icon="info"
+            label={t('mail.details')}
+            onClick={() => setMessageDetailsOpen(true)}
+          />
+        </span>
       </div>
       <header className="px-4 pt-1 pb-3 lg:px-6">
         <h2 className="text-xl leading-snug font-semibold">
@@ -611,6 +629,14 @@ export function ReadingPane({
         )}
         {renderSlots(slots.slice(splitAt + 1))}
       </div>
+      {messageDetailsOpen && (
+        <MessageDetails
+          accountId={accountId}
+          email={expanded}
+          mailboxes={mailboxes}
+          onClose={() => setMessageDetailsOpen(false)}
+        />
+      )}
     </article>
   )
 }

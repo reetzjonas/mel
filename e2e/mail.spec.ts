@@ -162,3 +162,41 @@ test('the folder list is reachable on mobile, where the sidebar is off-screen', 
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog', { name: 'Folders' })).toBeHidden()
 })
+
+test('message details: headers, delivery path, copy and export', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+  await login(page)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+  await page.getByText('Willkommen bei mel').click()
+  await page.getByRole('button', { name: 'Message details' }).click()
+
+  const dialog = page.getByRole('dialog')
+  // The headers are fetched from the server when the dialog opens; everything
+  // below them is read out of those headers.
+  await expect(dialog.getByRole('heading', { name: 'Delivery path' })).toBeVisible({
+    timeout: 10_000,
+  })
+  await expect(dialog.getByText('seed.mel.dev').first()).toBeVisible()
+  await expect(dialog.getByText('Delivered-To')).toBeVisible()
+  await expect(dialog.getByText('Authentication', { exact: true })).toBeVisible()
+
+  // A single-key shortcut must not reach the message behind the dialog — "e"
+  // would otherwise archive it and navigate away under the open panel.
+  await page.keyboard.press('e')
+  await expect(dialog).toBeVisible()
+  // The snackbar by role: "Archived" as loose text also matches the toolbar,
+  // whose buttons read "Archive" and "Delete" back to back.
+  await expect(page.getByRole('status')).toHaveCount(0)
+
+  // Export before copy: the snackbar the copy raises sits over the footer on a
+  // phone-sized viewport, and would swallow the click that follows it.
+  const download = page.waitForEvent('download', { timeout: 10_000 })
+  await dialog.getByRole('button', { name: 'Save original' }).click()
+  expect((await download).suggestedFilename()).toBe('Willkommen bei mel.eml')
+
+  await dialog.getByRole('button', { name: 'Copy headers' }).click()
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('Message-ID:')
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
+})

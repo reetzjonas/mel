@@ -56,7 +56,9 @@ export function useMailShortcuts(ctx: Ctx) {
       }
       const { accountId, ownEmail, mailboxId, emailId, mailboxes } = ctxRef.current
       const ui = useUi.getState()
-      if (ui.compose) return
+      // Anything modal swallows them: a single key acting on the message behind
+      // an open dialog is never what the keypress meant.
+      if (ui.compose || ui.messageDetailsOpen || ui.helpOpen) return
 
       const backToList = () => {
         if (mailboxId) void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })

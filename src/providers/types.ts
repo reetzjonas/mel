@@ -1,6 +1,7 @@
 import type { Account, AccountCapabilities, Credentials } from '../domain/account'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, MailFilter } from '../domain/email'
+import type { MessageMetadata } from '../domain/messageMetadata'
 import type { Identity, OutgoingEmail } from '../domain/identity'
 import type { Mailbox } from '../domain/mailbox'
 
@@ -67,6 +68,8 @@ export interface MailProvider {
   ): Promise<string>
   getEmailHeaders(ids: string[]): Promise<EmailHeader[]>
   getEmailBody(id: string): Promise<EmailBody | null>
+  /** Raw headers plus the blob id of the whole message, fetched on demand. */
+  getEmailMetadata(id: string): Promise<MessageMetadata | null>
 
   /** JSON-patch style updates ({"keywords/$seen": true}) and destroys. */
   setEmails(

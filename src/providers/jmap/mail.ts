@@ -23,6 +23,7 @@ import {
 import {
   EMAIL_BODY_PROPS,
   EMAIL_HEADER_PROPS,
+  EMAIL_METADATA_PROPS,
   type EmailFilter,
   type JmapEmail,
   type JmapMailbox,
@@ -234,6 +235,20 @@ export function createJmapMail(
       await b.send()
       const e = g.result.list[0]
       return e ? toEmailBody(e) : null
+    },
+
+    async getEmailMetadata(id) {
+      const b = batch()
+      const g = b.call<GetResponse<JmapEmail>>('Email/get', {
+        accountId,
+        ids: [id],
+        properties: EMAIL_METADATA_PROPS,
+      })
+      await b.send()
+      const e = g.result.list[0]
+      // A server may answer the request and still report no headers (they are
+      // optional in RFC 8621); an empty list says so, null means no message.
+      return e ? { headers: e.headers ?? [], blobId: e.blobId ?? null } : null
     },
 
     async setEmails(updates, destroy) {

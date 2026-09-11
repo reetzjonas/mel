@@ -37,6 +37,13 @@ interface UiState {
   folderDrawerOpen: boolean
   setFolderDrawerOpen: (open: boolean) => void
   /*
+   * The message metadata dialog. It lives here so the keyboard shortcuts can
+   * see it: they are single keys, and `e` archiving the message *behind* an
+   * open dialog is not something anyone means to do.
+   */
+  messageDetailsOpen: boolean
+  setMessageDetailsOpen: (open: boolean) => void
+  /*
    * Whether the mail list groups messages into conversations. Persisted in
    * localStorage, but mirrored here so flipping it in settings reaches the
    * mounted mail list — the two are in different routes.
@@ -81,6 +88,8 @@ export const useUi = create<UiState>((set) => ({
   setHelpOpen: (helpOpen) => set({ helpOpen }),
   folderDrawerOpen: false,
   setFolderDrawerOpen: (folderDrawerOpen) => set({ folderDrawerOpen }),
+  messageDetailsOpen: false,
+  setMessageDetailsOpen: (messageDetailsOpen) => set({ messageDetailsOpen }),
   conversationView: conversationView(),
   setConversationView: (on) => {
     setConversationView(on)
