@@ -54,3 +54,17 @@
   transaction auto-commit), hence @noble/ciphers. **No cursor reads**
   (`.filter().first()`, `.each()`) on tables carrying a payload — only
   get/bulkGet/toArray/query, or decryption is bypassed (openEnvelope then throws).
+- **Table hooks see rows the middleware has not decrypted.** A `creating`/
+  `updating` hook runs at a layer where the payload can still be a sealed
+  envelope, so calling `openEnvelope` on the row it hands over throws — inside
+  the caller's write transaction, which aborts *their* write. That is how
+  enabling encryption failed for as long as a mailbox list was mounted:
+  `rewriteAccountRows` bulk-puts every row, the list's `applyRow` hook chokes on
+  the first sealed one, and the whole migration rolls back with "Envelope is
+  encrypted and no store-level decryption is active". It stayed hidden only
+  because settings used to be a route: navigating there unmounted the list, so
+  no hook was subscribed. `applyRow` now treats an unreadable envelope as
+  "unknown here" (drop from cache, schedule the deferred re-read) instead of
+  throwing; the re-read after the commit goes through the decrypting read path.
+  Reads outside a hook, such as `materialise()`, still throw on purpose — there
+  it is a real error.

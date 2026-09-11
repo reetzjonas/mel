@@ -282,8 +282,30 @@ export function useMailboxEmails(
       void materialise().then(publish)
     }
 
+    /*
+     * Table hooks see a row as the storage layer hands it on, which while
+     * encryption is being switched on can be a sealed envelope this path has
+     * no key for. Throwing here would abort the caller's write transaction —
+     * that is how enabling encryption failed whenever a mailbox list happened
+     * to be mounted. The row is not lost: the deferred re-read goes through
+     * the decrypting read path after the commit.
+     */
+    function headerOf(row: EmailRow): EmailHeader | null {
+      try {
+        return openEnvelope(row.payload)
+      } catch {
+        return null
+      }
+    }
+
     function applyRow(row: EmailRow) {
       if (row.accountId !== account) return
+      const header = headerOf(row)
+      if (!header) {
+        cache.delete(row.id)
+        scheduleRefresh()
+        return
+      }
       // A filtered list is left by changing the flag too, not just the folder:
       // marking a message read under "unread only" has to drop it from the list
       // exactly the way moving it away would.
@@ -303,7 +325,7 @@ export function useMailboxEmails(
         const wasHere = before
           ? Boolean(before.mailboxIds[mailbox]) && matchesFilter(before, filter)
           : false
-        cache.set(row.id, openEnvelope(row.payload))
+        cache.set(row.id, header)
         // A message joining or leaving the thread, or the mailbox, changes
         // which rows exist and in what order; anything else (read, flagged) is
         // a repaint of a row that stays put.
@@ -316,14 +338,14 @@ export function useMailboxEmails(
       // Membership or arrival changes the ordering, so it has to be re-derived
       // — index-only, and the cache keeps already-fetched headers.
       if (belongs !== (position !== -1)) {
-        if (belongs) cache.set(row.id, openEnvelope(row.payload))
+        if (belongs) cache.set(row.id, header)
         else cache.delete(row.id)
         scheduleRefresh()
         return
       }
       // Same position, changed contents (read, flagged …): patch in place.
       if (belongs && known) {
-        cache.set(row.id, openEnvelope(row.payload))
+        cache.set(row.id, header)
         if (ready) publish()
       }
     }
