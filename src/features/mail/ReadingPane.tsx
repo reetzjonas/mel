@@ -1,5 +1,5 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate, formatListDate } from '../../lib/dates'
@@ -24,6 +24,13 @@ import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { Skeleton } from '../../ui/Skeleton'
+
+/*
+ * Loaded only once a message actually carries an event: reading the .ics costs
+ * a calendar reader and a timezone library, and every other message in the
+ * mailbox would be paying for it at startup.
+ */
+const InviteCard = lazy(() => import('./InviteCard').then((m) => ({ default: m.InviteCard })))
 
 function AddressLine({ label, list }: { label: string; list: EmailHeader['to'] }) {
   if (!list.length) return null
@@ -500,6 +507,21 @@ export function ReadingPane({
   ].join(', ')
   const blocked =
     !allowRemote && body !== 'loading' && body?.html ? hasRemoteContent(body.html) : false
+  /*
+   * An event travelling with the message. Senders label it inconsistently
+   * (application/ics, or text/calendar with no name at all), so the file
+   * extension counts as well — the card itself says so if the part turns out
+   * not to be readable.
+   */
+  const invitePart =
+    body !== 'loading' && body
+      ? body.attachments.find(
+          (a) =>
+            a.blobId &&
+            (a.type.toLowerCase().startsWith('text/calendar') ||
+              (a.name ?? '').toLowerCase().endsWith('.ics')),
+        )
+      : undefined
 
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
@@ -674,6 +696,13 @@ export function ReadingPane({
             <AddressLine label={t('mail.cc')} list={expanded.cc} />
           </div>
         </div>
+        {invitePart && (
+          // No fallback: the card appears when it has something to say, rather
+          // than reserving a band above the message first.
+          <Suspense fallback={null}>
+            <InviteCard accountId={accountId} part={invitePart} />
+          </Suspense>
+        )}
         {/* A floor under the open message: a long conversation is a stack of
             folded rows, and without one they would squeeze the body it belongs
             to down to nothing instead of letting the column scroll. */}

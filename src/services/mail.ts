@@ -63,3 +63,20 @@ export async function downloadOriginal(
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
   return true
 }
+
+/**
+ * An attachment's bytes as text. Meant for the small, machine-readable parts
+ * the app understands itself (text/calendar) — not a download, and not cached:
+ * it is read once while the message is open.
+ */
+export async function getAttachmentText(
+  accountId: string,
+  blobId: string,
+  type: string,
+  name: string,
+): Promise<string | null> {
+  const conn = await connectionFor(accountId)
+  if (!conn.mail) return null
+  const blob = await conn.mail.downloadBlob(blobId, type, name)
+  return blob.text()
+}

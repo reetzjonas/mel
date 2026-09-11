@@ -191,6 +191,16 @@ test('invite the other account, accept there, and see the reply on the organizer
   await expect(bobPage.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
     timeout: 15_000,
   })
+  // The iMIP mail itself carries the event as a text/calendar part, and the
+  // reading pane offers it for a calendar — here it is already filed, because
+  // the invitation was addressed to this account.
+  const inviteMail = bobPage.getByText(new RegExp(`Invitation: ${title}`)).first()
+  await expect(inviteMail).toBeVisible({ timeout: 30_000 })
+  await inviteMail.click()
+  await expect(bobPage.getByRole('heading', { name: 'Event in this message' })).toBeVisible({
+    timeout: 15_000,
+  })
+
   await bobPage.getByRole('link', { name: 'Calendar' }).first().click()
   await bobPage.getByRole('button', { name: 'next' }).click()
 
