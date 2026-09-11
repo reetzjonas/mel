@@ -49,3 +49,36 @@ Also: `workers: 2`, and `mobile` sits behind `desktop` via `dependencies` — ev
 drives the same account, and parallel files were archiving each other's mail. Green
 full runs ever since. **If something flickers again, check these classes first
 (account state, shared state, server limits) rather than assuming system load.**
+
+## Still open: the reply-threading test (found 2026-09-11)
+
+`threads.spec.ts` → "a reply joins the same conversation row" fails roughly one
+run in two, and **this one is not account state**: it reproduces identically on
+the pre-change tree (measured 1/3 green there, 1/2 green with the settings-modal
+work applied), so it is neither caused nor fixed by that branch.
+
+What the DOM shows on a red run is two conversation rows, each reading "2
+messages": the original grouped with its own copy in Sent, and the reply grouped
+with its copy in Sent. The server never joined them, which means the reply went
+out without `In-Reply-To`/`References`.
+
+The likely cause is in the app, not the test. `services/send.ts` builds both
+headers from the **body cache**:
+
+```ts
+inReplyTo: body?.messageId ?? undefined,
+references: [...(body?.references ?? []), ...(body?.messageId ?? [])]
+```
+
+`messageId` lives on `EmailBody`, not on `EmailHeader` (`domain/email.ts`), so
+replying before the body has been fetched produces an unthreaded reply — and
+the test clicks the row and hits Reply immediately. That would hit real users
+the same way: answer a message that just arrived, fast enough, and the reply
+starts its own thread. Fixing it means either waiting for the body before the
+reply can be composed, or carrying `messageId`/`references` on the header row
+(they are already mapped in `providers/jmap/mappers/mail.ts`).
+
+One *other* race in the same test was fixed: it waited for
+`[aria-label$="messages"]` across the whole list, which any conversation left
+over from another spec satisfies immediately, leaving the real wait to a 5s
+default timeout. The badge is now scoped to the row under test.
