@@ -17,6 +17,7 @@ docker/stalwart/.admin-pass
 docker/stalwart/etc/
 test-results
 playwright-report
+coverage
 
 # Editor directories and files
 .vscode/*

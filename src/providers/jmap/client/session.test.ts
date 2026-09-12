@@ -1,5 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { discoveryCandidates, sessionUrlFor, srvCandidates } from './session'
+import {
+  capabilitiesFor,
+  coreLimits,
+  discoveryCandidates,
+  fetchSession,
+  primaryMailAccount,
+  sessionUrlFor,
+  srvCandidates,
+} from './session'
+import { Cap, type JmapSession } from './types/core'
 
 describe('sessionUrlFor', () => {
   it('appends the well-known path to a bare host', () => {
@@ -29,9 +38,7 @@ describe('discoveryCandidates', () => {
   })
 
   it('uses plain http for local dev servers', () => {
-    expect(discoveryCandidates('alice@localhost')[0]).toBe(
-      'http://localhost:8080/.well-known/jmap',
-    )
+    expect(discoveryCandidates('alice@localhost')[0]).toBe('http://localhost:8080/.well-known/jmap')
   })
 
   it('returns nothing without a domain part', () => {
@@ -50,9 +57,7 @@ describe('srvCandidates', () => {
 
   it('turns an SRV record into a session URL', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(answer('0 1 443 mail.reetz.me.')))
-    expect(await srvCandidates('you@reetz.me')).toEqual([
-      'https://mail.reetz.me/.well-known/jmap',
-    ])
+    expect(await srvCandidates('you@reetz.me')).toEqual(['https://mail.reetz.me/.well-known/jmap'])
   })
 
   it('keeps a non-standard port', async () => {
@@ -83,5 +88,182 @@ describe('srvCandidates', () => {
     const url = String(fetchMock.mock.calls[0]![0])
     expect(url).toContain('_jmap._tcp.reetz.me')
     expect(url).not.toContain('secret-name')
+  })
+})
+
+const session = (over: Partial<JmapSession> = {}): JmapSession =>
+  ({
+    capabilities: { [Cap.core]: {} },
+    accounts: { a1: { accountCapabilities: { [Cap.mail]: {} } } },
+    primaryAccounts: { [Cap.mail]: 'a1' },
+    username: 'alice@example.test',
+    apiUrl: '/jmap/',
+    downloadUrl: '/jmap/download/{accountId}/{blobId}/{name}?type={type}',
+    uploadUrl: '/jmap/upload/{accountId}/',
+    eventSourceUrl: '/jmap/eventsource/?types={types}&ping={ping}',
+    state: 's',
+    ...over,
+  }) as unknown as JmapSession
+
+function answers(body: unknown, init: ResponseInit & { url?: string } = {}) {
+  const res = new Response(JSON.stringify(body), init)
+  // A well-known URL redirects to the real session endpoint, and the relative
+  // URLs in the body resolve against wherever we landed — not where we asked.
+  if (init.url) Object.defineProperty(res, 'url', { value: init.url })
+  return res
+}
+
+describe('fetchSession', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('resolves the session’s relative URLs against the redirect it followed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => answers(session(), { url: 'https://mail.example.test/jmap/session' })),
+    )
+
+    const r = await fetchSession('https://mail.example.test/.well-known/jmap', {
+      method: 'basic',
+      username: 'alice',
+      secret: 'pw',
+    })
+
+    expect(r.sessionUrl).toBe('https://mail.example.test/jmap/session')
+    expect(r.apiUrl).toBe('https://mail.example.test/jmap/')
+  })
+
+  it('keeps RFC 6570 placeholders intact, which new URL() would escape', async () => {
+    // Percent-encoded braces are not a template any more: substitution stops
+    // matching and every download and upload URL silently breaks.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => answers(session(), { url: 'https://mail.example.test/jmap/session' })),
+    )
+
+    const r = await fetchSession('https://mail.example.test/jmap/session', {
+      method: 'bearer',
+      secret: 't',
+    })
+
+    expect(r.downloadUrl).toContain('{blobId}')
+    expect(r.downloadUrl).not.toContain('%7B')
+    expect(r.uploadUrl).toContain('{accountId}')
+    expect(r.eventSourceUrl).toContain('{types}')
+  })
+
+  it('tells apart the three ways asking for a session can fail', async () => {
+    // The login screen says something different for each, so flattening them
+    // would send people hunting in the wrong place (see docs/notes).
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 401 })),
+    )
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'auth', status: 401 })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 500 })),
+    )
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'protocol', status: 500 })
+
+    // A CORS rejection reaches the browser as a thrown TypeError, not a status.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch')
+      }),
+    )
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'network' })
+  })
+})
+
+describe('coreLimits', () => {
+  it('fills in a default for each field on its own', () => {
+    // Merged per field, not `core ?? defaults`: a server that sends the
+    // capability but omits one number left it undefined, and an undefined
+    // chunk size produced an *empty* request that reported success — every
+    // mutation in it silently dropped.
+    const limits = coreLimits(session({ capabilities: { [Cap.core]: { maxObjectsInGet: 1000 } } }))
+    expect(limits.maxObjectsInGet).toBe(1000)
+    expect(limits.maxCallsInRequest).toBeGreaterThan(0)
+    expect(limits.maxObjectsInSet).toBeGreaterThan(0)
+  })
+
+  it('refuses nonsense in place of a number', () => {
+    const limits = coreLimits(
+      session({
+        capabilities: {
+          [Cap.core]: { maxObjectsInGet: 0, maxObjectsInSet: -5, maxCallsInRequest: 'lots' },
+        },
+      }),
+    )
+    expect(limits.maxObjectsInGet).toBeGreaterThan(0)
+    expect(limits.maxObjectsInSet).toBeGreaterThan(0)
+    expect(limits.maxCallsInRequest).toBeGreaterThan(0)
+  })
+
+  it('works at all when the server sends no core capability', () => {
+    expect(coreLimits(session({ capabilities: {} })).maxSizeUpload).toBeGreaterThan(0)
+  })
+})
+
+describe('capabilitiesFor', () => {
+  it('reads each feature off the account, not off the server', () => {
+    // A server can speak calendars while this account has none.
+    const s = session({
+      accounts: {
+        a1: { accountCapabilities: { [Cap.mail]: {}, [Cap.submission]: {} } },
+      } as never,
+    })
+    expect(capabilitiesFor(s, 'a1')).toMatchObject({
+      mail: true,
+      submission: true,
+      contacts: false,
+      calendars: false,
+    })
+  })
+
+  it('reports how live updates will arrive, and Web Push from the server', () => {
+    expect(capabilitiesFor(session(), 'a1').push).toBe('sse')
+    expect(capabilitiesFor(session({ eventSourceUrl: '' }), 'a1').push).toBe('poll')
+    expect(capabilitiesFor(session(), 'a1').webPush).toBe(false)
+    expect(
+      capabilitiesFor(session({ capabilities: { [Cap.webpushVapid]: {} } }), 'a1').webPush,
+    ).toBe(true)
+  })
+
+  it('says no to everything for an account the session does not list', () => {
+    expect(capabilitiesFor(session(), 'nope')).toMatchObject({ mail: false, calendars: false })
+  })
+})
+
+describe('primaryMailAccount', () => {
+  it('takes what the session nominates', () => {
+    expect(primaryMailAccount(session())).toBe('a1')
+  })
+
+  it('falls back to any account that can do mail', () => {
+    const s = session({
+      primaryAccounts: {} as never,
+      accounts: {
+        cal: { accountCapabilities: { [Cap.calendars]: {} } },
+        box: { accountCapabilities: { [Cap.mail]: {} } },
+      } as never,
+    })
+    expect(primaryMailAccount(s)).toBe('box')
+  })
+
+  it('is null on a server with no mail account at all', () => {
+    const s = session({
+      primaryAccounts: {} as never,
+      accounts: { cal: { accountCapabilities: { [Cap.calendars]: {} } } } as never,
+    })
+    expect(primaryMailAccount(s)).toBeNull()
   })
 })

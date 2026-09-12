@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { isGroup, type SearchGroup } from '../domain/search'
 import { parseSearch } from './searchParser'
 
 describe('parseSearch', () => {
@@ -61,5 +62,25 @@ describe('parseSearch', () => {
   it('ignores malformed dates and empty fields', () => {
     expect(parseSearch('before:tomorrow')).toBeNull()
     expect(parseSearch('from:')).toBeNull()
+  })
+})
+
+/*
+ * Everything that walks a parsed query — the JMAP translation above all —
+ * branches on this. Asserted against real parser output rather than
+ * hand-built literals, so it keeps answering for the shapes actually produced.
+ */
+describe('isGroup', () => {
+  it('tells a combining node from a single condition', () => {
+    const query = parseSearch('urgent from:a OR from:b')
+    expect(query).not.toBeNull()
+    expect(isGroup(query!)).toBe(true)
+    const children = (query as SearchGroup).children
+    expect(isGroup(children[0]!)).toBe(false)
+    expect(isGroup(children[1]!)).toBe(true)
+  })
+
+  it('does not mistake a lone condition for a group', () => {
+    expect(isGroup(parseSearch('from:a')!)).toBe(false)
   })
 })

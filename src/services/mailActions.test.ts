@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmailHeader } from '../domain/email'
 import { db } from '../storage/db'
-import { sealPlain } from '../storage/envelope'
+import { openEnvelope, sealPlain } from '../storage/envelope'
 import { mailboxDateRange } from '../storage/emailRow'
 import { bulkDelete, bulkMove, bulkSetKeyword } from './mailActions'
 
@@ -141,5 +141,91 @@ describe('bulk actions', () => {
     await bulkSetKeyword(ACC, [], '$seen', true)
     expect(await bulkDelete(ACC, [])).toBeNull()
     expect(enqueued).toHaveLength(0)
+  })
+})
+
+describe('marking messages read, unread and flagged', () => {
+  beforeEach(() => {
+    enqueued.length = 0
+  })
+
+  it('writes the change locally at once and queues it for the server', async () => {
+    // Optimistic: the row has to change under the user's hand, with the
+    // server told separately — the outbox is what makes that honest.
+    await seed([['m1', INBOX]])
+
+    await bulkSetKeyword(ACC, ['m1'], '$flagged', true)
+
+    const row = await db.emails.get([ACC, 'm1'])
+    expect(openEnvelope(row!.payload).keywords['$flagged']).toBe(true)
+    // The flag also lives in an index column, or the "flagged only" filter
+    // would not see it.
+    expect(row!.flagged).toBe(1)
+    expect(enqueued).toEqual([
+      { kind: 'email.update', updates: { m1: { 'keywords/$flagged': true } } },
+    ])
+  })
+
+  it('removes a keyword with null, not with false', async () => {
+    // JMAP patches a keyword away by setting it to null; false would store
+    // the key and leave the message looking flagged to anything reading it.
+    await seed([['m1', INBOX]])
+    await bulkSetKeyword(ACC, ['m1'], '$flagged', true)
+    enqueued.length = 0
+
+    await bulkSetKeyword(ACC, ['m1'], '$flagged', false)
+
+    expect(enqueued).toEqual([
+      { kind: 'email.update', updates: { m1: { 'keywords/$flagged': null } } },
+    ])
+    const row = await db.emails.get([ACC, 'm1'])
+    expect('$flagged' in openEnvelope(row!.payload).keywords).toBe(false)
+    expect(row!.flagged).toBe(0)
+  })
+
+  it('keeps the unread index column in step with $seen', async () => {
+    // The folder's unread count and the bold rows both read this column, not
+    // the payload.
+    await seed([['m1', INBOX]])
+
+    await bulkSetKeyword(ACC, ['m1'], '$seen', true)
+    expect((await db.emails.get([ACC, 'm1']))!.unread).toBe(0)
+
+    await bulkSetKeyword(ACC, ['m1'], '$seen', false)
+    expect((await db.emails.get([ACC, 'm1']))!.unread).toBe(1)
+  })
+
+  it('puts every message of a selection in one queued action', async () => {
+    await seed([
+      ['m1', INBOX],
+      ['m2', INBOX],
+    ])
+
+    await bulkSetKeyword(ACC, ['m1', 'm2'], '$seen', true)
+
+    expect(enqueued).toHaveLength(1)
+    expect(enqueued[0]).toMatchObject({
+      updates: { m1: { 'keywords/$seen': true }, m2: { 'keywords/$seen': true } },
+    })
+  })
+
+  it('offers no undo, unlike moving or deleting', async () => {
+    /*
+     * Deliberate, and worth pinning so nobody wires a snackbar expecting one:
+     * read/unread and flag are undone by pressing the same control again,
+     * while a move or a delete leaves nothing on screen to press. The bulk
+     * move and delete paths do return an undo for that reason.
+     */
+    await seed([['m1', INBOX]])
+
+    const result = await bulkSetKeyword(ACC, ['m1'], '$seen', true)
+
+    expect(result).toBeUndefined()
+  })
+
+  it('does nothing for an empty selection', async () => {
+    await seed([['m1', INBOX]])
+    await bulkSetKeyword(ACC, [], '$seen', true)
+    expect(enqueued).toEqual([])
   })
 })
