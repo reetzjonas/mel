@@ -157,10 +157,7 @@ export async function flush(accountId: string): Promise<void> {
           // optimistic local change already happened — so the next sync quietly
           // undoes what the user asked for. Say so loudly enough to diagnose:
           // the count surfaces in the sync bar, the reason here.
-          console.warn(
-            `[mel] outbox action "${row.kind}" failed permanently and was dropped:`,
-            e,
-          )
+          console.warn(`[mel] outbox action "${row.kind}" failed permanently and was dropped:`, e)
           await db.outbox.update(row.seq!, {
             status: 'failed',
             reason: reasonOf(e),
@@ -247,75 +244,75 @@ export async function discardAction(seq: number): Promise<void> {
   void syncAccount(row.accountId).catch(() => {})
 }
 
+/**
+ * The provider an action needs, or a refusal naming what is missing.
+ *
+ * Each case asks for its own. There used to be a guard on `conn.mail` ahead of
+ * the whole switch, which meant a server offering contacts but no mail failed
+ * every contact write as "noProvider" while the contacts provider sat right
+ * there — and the queue view could only say that something was missing, not
+ * that it was the wrong something.
+ */
+function need<T>(provider: T | null, what: string): T {
+  if (!provider) throw localError(`no ${what} provider`, 'noProvider')
+  return provider
+}
+
 async function execute(accountId: string, action: OutboxAction): Promise<void> {
   const conn = await connectionFor(accountId)
-  const mail = conn.mail
-  if (!mail) throw localError('no mail provider', 'noProvider')
 
   switch (action.kind) {
     case 'email.update': {
-      const r = await mail.setEmails(action.updates, [])
+      const r = await need(conn.mail, 'mail').setEmails(action.updates, [])
       throwIfAllPermanent(r.failed)
       return
     }
     case 'email.destroy': {
-      const r = await mail.setEmails({}, action.ids)
+      const r = await need(conn.mail, 'mail').setEmails({}, action.ids)
       throwIfAllPermanent(r.failed)
       return
     }
     case 'contact.create': {
-      const contacts = conn.contacts
-      if (!contacts) throw localError('no contacts provider', 'noProvider')
-      const r = await contacts.createContact(action.contact)
+      const r = await need(conn.contacts, 'contacts').createContact(action.contact)
       if (r.failure) throw failureError(r.failure)
       // The server row arrives via sync; drop the optimistic temp row.
       await db.contacts.delete([accountId, action.tempId])
       return
     }
     case 'contact.update': {
-      const contacts = conn.contacts
-      if (!contacts) throw localError('no contacts provider', 'noProvider')
-      const failure = await contacts.updateContact(action.contact)
+      const failure = await need(conn.contacts, 'contacts').updateContact(action.contact)
       if (failure) throw failureError(failure)
       return
     }
     case 'contact.destroy': {
-      const contacts = conn.contacts
-      if (!contacts) throw localError('no contacts provider', 'noProvider')
-      const failure = await contacts.destroyContacts(action.ids)
+      const failure = await need(conn.contacts, 'contacts').destroyContacts(action.ids)
       if (failure && failure.type !== 'notFound') throw failureError(failure)
       return
     }
     case 'event.create': {
-      const cal = conn.calendars
-      if (!cal) throw localError('no calendar provider', 'noProvider')
-      const r = await cal.createEvent(action.event)
+      const r = await need(conn.calendars, 'calendar').createEvent(action.event)
       if (r.failure) throw failureError(r.failure)
       await db.events.delete([accountId, action.tempId])
       return
     }
     case 'event.update': {
-      const cal = conn.calendars
-      if (!cal) throw localError('no calendar provider', 'noProvider')
-      const failure = await cal.updateEvent(action.event)
+      const failure = await need(conn.calendars, 'calendar').updateEvent(action.event)
       if (failure) throw failureError(failure)
       return
     }
     case 'event.rsvp': {
-      const cal = conn.calendars
-      if (!cal) throw localError('no calendar provider', 'noProvider')
+      const cal = need(conn.calendars, 'calendar')
       const failure = await cal.rsvp(action.eventId, action.participantId, action.status)
       if (failure) throw failureError(failure)
       return
     }
     case 'event.destroy': {
-      const cal = conn.calendars
-      if (!cal) throw localError('no calendar provider', 'noProvider')
-      const failure = await cal.destroyEvents(action.ids)
+      const failure = await need(conn.calendars, 'calendar').destroyEvents(action.ids)
       if (failure && failure.type !== 'notFound') throw failureError(failure)
       return
     }
     case 'email.send': {
+      const mail = need(conn.mail, 'mail')
       // Upload any attachments still stored locally.
       for (const a of action.mail.attachments) {
         if (a.blobId || !a.localKey) continue
@@ -349,8 +346,11 @@ function throwIfAllPermanent(failed: Record<string, { type: string; permanent: b
 export function useOutboxAutoFlush() {
   // Called once from the app shell: replay when we come back online.
   window.addEventListener('online', () => {
-    void db.accounts.toCollection().primaryKeys().then((ids) => {
-      for (const id of ids) void flush(String(id))
-    })
+    void db.accounts
+      .toCollection()
+      .primaryKeys()
+      .then((ids) => {
+        for (const id of ids) void flush(String(id))
+      })
   })
 }

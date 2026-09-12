@@ -260,6 +260,41 @@ describe('the writes that go to contacts and calendars', () => {
     ).toMatchObject({ status: 'pending', attempts: 1 })
   })
 
+  it('writes a contact on a server that offers contacts but no mail', async () => {
+    /*
+     * A guard on conn.mail used to run ahead of the whole switch, so on a
+     * contacts-only server every contact write failed as "noProvider" —
+     * naming a provider the action never needed, while its own sat right
+     * there. Rare, but the queue view could only say that something was
+     * missing, not that it was the wrong something.
+     */
+    vi.doMock('./connections', () => ({
+      connectionFor: () =>
+        Promise.resolve({
+          mail: null,
+          contacts: { updateContact: () => Promise.resolve(null) },
+          calendars: null,
+        }),
+    }))
+    vi.resetModules()
+    const { flush: freshFlush } = await import('./outbox')
+
+    await db.outbox.clear()
+    await db.outbox.add({
+      accountId: ACC,
+      kind: 'contact.update',
+      status: 'pending',
+      attempts: 0,
+      notBefore: 0,
+      payload: sealPlain({ kind: 'contact.update', contact: { id: 'c1' } }),
+    })
+    await freshFlush(ACC)
+
+    // Done and gone from the queue, not parked as failed.
+    expect(await db.outbox.toArray()).toEqual([])
+    vi.doUnmock('./connections')
+  })
+
   it('records an action with no provider for its kind rather than retrying at nothing', async () => {
     /*
      * A server offering mail but no contacts: retrying forever would keep a
