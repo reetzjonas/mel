@@ -184,6 +184,7 @@ export function createJmapMail(
       const pageSize = limits.maxObjectsInGet
       let position = 0
       let state = ''
+      let total: number | null = null
       for (;;) {
         const b = batch()
         const q = b.call<QueryResponse>('Email/query', {
@@ -191,6 +192,10 @@ export function createJmapMail(
           sort: [{ property: 'receivedAt', isAscending: false }],
           position,
           limit: pageSize,
+          // Only on the first page: counting the whole mailbox is real work
+          // for the server, and asking again on every one of 70-odd pages
+          // would repeat it for an answer that does not move.
+          ...(position === 0 ? { calculateTotal: true } : {}),
         })
         const g = b.call<GetResponse<JmapEmail>>('Email/get', {
           accountId,
@@ -201,8 +206,9 @@ export function createJmapMail(
         const st = b.call<GetResponse<JmapEmail>>('Email/get', { accountId, ids: [] })
         await b.send()
         state = st.result.state
+        if (q.result.total !== undefined) total = q.result.total
         const headers = g.result.list.map(toEmailHeader)
-        await onPage({ headers, state })
+        await onPage({ headers, state, total })
         if (q.result.ids.length < pageSize) return state
         // Must advance by exactly the page size that was requested above.
         position += pageSize

@@ -6,6 +6,8 @@ import { formatRelativePast } from '../../lib/dates'
 import { db } from '../../storage/db'
 import { isSubscribed } from '../../services/webPush'
 import { getSyncStatus, subscribeSyncStatus, type SyncMode } from '../../sync/scheduler'
+import { useFullSyncProgress } from './hooks'
+import { progressLabel } from './InitialSync'
 import { useSettingsRoute } from '../settings/navigation'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
@@ -71,6 +73,7 @@ const MODE_ICON: Record<SyncMode, IconName> = {
  */
 export function SyncStatus({ account }: { account: Account }) {
   const status = useSyncStatus(account.id)
+  const fullSync = useFullSyncProgress(account.id)
   const { open: openSettings } = useSettingsRoute()
   const online = useOnline()
   const webPushActive = useWebPushActive(account.capabilities.webPush)
@@ -105,6 +108,11 @@ export function SyncStatus({ account }: { account: Account }) {
     label = status.error.kind === 'auth' ? t('sync.error.auth') : t('sync.error.unreachable')
     icon = 'offline'
     tone = 'text-danger'
+  } else if (fullSync) {
+    // Its own label rather than the generic "Syncing…": this one runs for
+    // minutes on a large account, and the count below turns "is it stuck?"
+    // into a number that moves.
+    label = t('sync.initial')
   } else if (status.syncing) {
     label = t('sync.syncing')
   } else if (status.mode === 'push') {
@@ -129,7 +137,9 @@ export function SyncStatus({ account }: { account: Account }) {
    */
   let detail = ''
   let detailTone = ''
-  if (outbox.failed > 0) {
+  if (fullSync) {
+    detail = progressLabel(fullSync) ?? ''
+  } else if (outbox.failed > 0) {
     detail =
       outbox.failed === 1 ? t('sync.failed.one') : `${outbox.failed} ${t('sync.failed.many')}`
     detailTone = 'text-danger'

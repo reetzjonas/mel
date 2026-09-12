@@ -20,6 +20,7 @@ import {
 import { sealPlain } from '../storage/envelope'
 import { toEmailRow } from '../storage/emailRow'
 import { connectionFor } from './connections'
+import { setFullSyncProgress } from './progress'
 
 function mailboxRow(accountId: string, m: Mailbox): MailboxRow {
   return {
@@ -79,27 +80,49 @@ async function syncMailboxes(accountId: string, mail: MailProvider) {
   }
 }
 
+/**
+ * Fetch every message header, page by page, newest first.
+ *
+ * This is the one sync that takes real time — a first login on a large
+ * mailbox is tens of thousands of headers — so it reports its progress. Until
+ * it did, the list sat on "No messages" for minutes, which is not a slow
+ * answer but a wrong one.
+ */
 async function fullEmailSync(accountId: string, mail: MailProvider) {
   const seen = new Set<string>()
-  const finalState = await mail.listAllEmailHeaders(async ({ headers, state }) => {
-    for (const h of headers) seen.add(h.id)
-    await applyPage(
+  let done = 0
+  // Before the first request, not after it: that request is the longest wait
+  // of the lot on a large mailbox, and it is exactly the stretch where the
+  // list would otherwise still be calling itself empty.
+  setFullSyncProgress(accountId, { done: 0, total: null })
+  try {
+    const finalState = await mail.listAllEmailHeaders(async ({ headers, state, total }) => {
+      for (const h of headers) seen.add(h.id)
+      await applyPage(
+        accountId,
+        'Email',
+        { created: headers, updated: [], destroyedIds: [], newState: state, hasMore: false },
+        toEmailRow,
+      )
+      // After the write, not before: what it reports is what is readable.
+      done += headers.length
+      setFullSyncProgress(accountId, { done, total })
+    })
+    // Remove local rows the server no longer has.
+    const local = await db.emails.where('accountId').equals(accountId).primaryKeys()
+    const stale = local.filter((key) => !seen.has((key as [string, string])[1]))
+    if (stale.length) await db.emails.bulkDelete(stale as [string, string][])
+    await db.syncState.put({
       accountId,
-      'Email',
-      { created: headers, updated: [], destroyedIds: [], newState: state, hasMore: false },
-      toEmailRow,
-    )
-  })
-  // Remove local rows the server no longer has.
-  const local = await db.emails.where('accountId').equals(accountId).primaryKeys()
-  const stale = local.filter((key) => !seen.has((key as [string, string])[1]))
-  if (stale.length) await db.emails.bulkDelete(stale as [string, string][])
-  await db.syncState.put({
-    accountId,
-    collection: 'Email',
-    state: finalState,
-    updatedAt: Date.now(),
-  })
+      collection: 'Email',
+      state: finalState,
+      updatedAt: Date.now(),
+    })
+  } finally {
+    // Including on the way out through an error: a progress line left standing
+    // would claim a fetch is still running after it has given up.
+    setFullSyncProgress(accountId, null)
+  }
 }
 
 async function syncEmails(accountId: string, mail: MailProvider) {

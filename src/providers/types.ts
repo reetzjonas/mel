@@ -62,9 +62,19 @@ export interface MailProvider {
   syncMailboxes(sinceState?: string): Promise<SyncPage<Mailbox>>
   /** Throws CannotCalculateChanges when the server lost the state. */
   syncEmailHeaders(sinceState: string): Promise<SyncPage<EmailHeader>>
-  /** Paged full fetch of all email headers (initial sync / recovery). */
+  /**
+   * Paged full fetch of all email headers (initial sync / recovery).
+   *
+   * `total` is what the server says the account holds, so a first login on a
+   * large mailbox can say how far along it is instead of showing an empty
+   * list; null when the server declines to count.
+   */
   listAllEmailHeaders(
-    onPage: (page: { headers: EmailHeader[]; state: string }) => Promise<void>,
+    onPage: (page: {
+      headers: EmailHeader[]
+      state: string
+      total: number | null
+    }) => Promise<void>,
   ): Promise<string>
   getEmailHeaders(ids: string[]): Promise<EmailHeader[]>
   getEmailBody(id: string): Promise<EmailBody | null>

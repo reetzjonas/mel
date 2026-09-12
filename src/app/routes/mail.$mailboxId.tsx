@@ -1,9 +1,15 @@
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchesFilter, type MailFilter } from '../../domain/email'
+import { InitialSync } from '../../features/mail/InitialSync'
 import { SelectionToolbar } from '../../features/mail/SelectionToolbar'
 import { ThreadList } from '../../features/mail/ThreadList'
-import { useAccounts, useMailboxEmails, useMailboxes } from '../../features/mail/hooks'
+import {
+  useAccounts,
+  useFullSyncProgress,
+  useMailboxEmails,
+  useMailboxes,
+} from '../../features/mail/hooks'
 import { useUi } from '../store'
 import { t } from '../../lib/i18n'
 import { searchEmails, type SearchResult } from '../../services/search'
@@ -67,6 +73,7 @@ function MailboxView() {
   const accountId = account?.id
   const grouped = useUi((s) => s.conversationView)
   const mailbox = useMailboxEmails(accountId, mailboxId, filter, grouped)
+  const fullSync = useFullSyncProgress(accountId)
   const [results, setResults] = useState<SearchResult | null>(null)
   const [input, setInput] = useState(q ?? '')
   const [refreshing, setRefreshing] = useState(false)
@@ -247,6 +254,10 @@ function MailboxView() {
                 filter === 'unread' ? t('mail.filter.noUnreadHint') : t('mail.filter.noFlaggedHint')
               }
             />
+          ) : list.length === 0 && fullSync ? (
+            // The folder is not empty, we simply have not fetched it yet —
+            // saying "No messages" here was wrong, not merely unhelpful.
+            <InitialSync progress={fullSync} />
           ) : (
             account && (
               <ThreadList

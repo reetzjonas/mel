@@ -51,6 +51,7 @@ export default defineConfig({
       // Stalwart account and would race each other.
       testIgnore: [
         '**/capabilities.spec.ts',
+        '**/initial-sync.spec.ts',
         '**/mail-actions.spec.ts',
         '**/contacts.spec.ts',
         '**/calendar.spec.ts',

@@ -1,6 +1,6 @@
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
@@ -10,6 +10,7 @@ import { mailboxDateRange } from '../../storage/emailRow'
 import { buildConversations, isHidden, type Conversation } from './conversations'
 import { readThreadMembers, readThreadWindow } from './listIndex'
 import { openEnvelope } from '../../storage/envelope'
+import { getFullSyncProgress, subscribeFullSync, type FullSyncProgress } from '../../sync/progress'
 
 export function useAccounts() {
   const unlockVersion = useUi((s) => s.unlockVersion)
@@ -25,6 +26,18 @@ export function useAccounts() {
     }
     return out
   }, [unlockVersion])
+}
+
+/**
+ * How far the first full fetch has got, or null when none is running.
+ *
+ * What it is for: an account with tens of thousands of messages spends
+ * minutes on that fetch, and an empty list during it has to say "still
+ * fetching", not "no messages".
+ */
+export function useFullSyncProgress(accountId: string | undefined): FullSyncProgress | null {
+  const read = () => (accountId ? getFullSyncProgress(accountId) : null)
+  return useSyncExternalStore(subscribeFullSync, read, read)
 }
 
 /**
