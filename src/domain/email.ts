@@ -1,3 +1,5 @@
+import type { Unsubscribe } from './unsubscribe'
+
 export interface EmailAddress {
   name: string | null
   email: string
@@ -61,6 +63,11 @@ export interface EmailBody {
   references: string[] | null
   /** What this message answers — carried along when a draft is reopened. */
   inReplyTo?: string[] | null
+  /**
+   * The way out of a mailing list, when the message offers one. Optional
+   * because bodies cached before this existed simply do not carry it.
+   */
+  unsubscribe?: Unsubscribe | null
 }
 
 export interface Thread {

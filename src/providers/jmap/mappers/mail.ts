@@ -1,5 +1,6 @@
 import type { EmailBody, EmailHeader } from '../../../domain/email'
 import type { Mailbox, MailboxRole } from '../../../domain/mailbox'
+import { parseUnsubscribe } from '../../../domain/unsubscribe'
 import type { JmapEmail, JmapEmailBodyPart, JmapMailbox } from '../client/types/mail'
 
 const KNOWN_ROLES = new Set([
@@ -99,6 +100,10 @@ export function toEmailBody(e: JmapEmail): EmailBody {
     messageId: e.messageId ?? null,
     references: e.references ?? null,
     inReplyTo: e.inReplyTo ?? null,
+    unsubscribe: parseUnsubscribe(
+      e['header:List-Unsubscribe:asURLs'] ?? null,
+      e['header:List-Unsubscribe-Post:asText'] ?? null,
+    ),
     attachments: (e.attachments ?? []).map((p) => ({
       partId: p.partId,
       blobId: p.blobId,

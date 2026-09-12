@@ -73,6 +73,15 @@ export interface JmapEmail {
   attachments?: JmapEmailBodyPart[]
   /** Raw header list, only requested for the metadata view. */
   headers?: Array<{ name: string; value: string }> | null
+  /*
+   * Unsubscribe headers, in the server's own parsed forms (RFC 8621 §4.1.4):
+   * asURLs hands over the <…> list already split, so nothing here has to
+   * re-implement header grammar. Fetched with the body rather than in the
+   * header set — only an opened message can offer the button, and the header
+   * set is read for every message in the mailbox.
+   */
+  'header:List-Unsubscribe:asURLs'?: string[] | null
+  'header:List-Unsubscribe-Post:asText'?: string | null
 }
 
 export interface JmapThread {
@@ -127,6 +136,8 @@ export const EMAIL_BODY_PROPS = [
   // Threading for a draft picked up again: the reply it belongs to is only
   // recorded here, nowhere in the header the list is built from.
   'inReplyTo',
+  'header:List-Unsubscribe:asURLs',
+  'header:List-Unsubscribe-Post:asText',
 ] as const
 
 export interface EmailFilterCondition {

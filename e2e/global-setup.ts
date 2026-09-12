@@ -32,6 +32,7 @@ const SEEDED_INBOX = new Set([
   'Re: Projektstand',
   'HTML-Test',
   'Mit Anhang',
+  'Newsletter-Test',
 ])
 
 /*
@@ -42,7 +43,13 @@ const SEEDED_INBOX = new Set([
  * here instead names the missing message straight away.
  */
 const EXPECTED_INBOX: Record<string, string[]> = {
-  'alice@localhost': ['Willkommen bei mel', 'Projektstand', 'HTML-Test', 'Mit Anhang'],
+  'alice@localhost': [
+    'Willkommen bei mel',
+    'Projektstand',
+    'HTML-Test',
+    'Mit Anhang',
+    'Newsletter-Test',
+  ],
   'bob@localhost': ['Re: Projektstand'],
 }
 

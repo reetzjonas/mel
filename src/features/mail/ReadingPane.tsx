@@ -8,6 +8,7 @@ import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSani
 import { imagePolicy } from '../../lib/imagePolicy'
 import { useCanSend, useMailboxes, useThread } from './hooks'
 import { MessageDetails } from './MessageDetails'
+import { UnsubscribeBar } from './UnsubscribeBar'
 import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
 import { t } from '../../lib/i18n'
 import { getEmailBody } from '../../services/mail'
@@ -736,6 +737,11 @@ export function ReadingPane({
             <div className="flex h-full items-center justify-center text-sm text-danger">
               {t('mail.loadError')}
             </div>
+          )}
+          {/* Above the blocked-images notice: unsubscribing is about the
+              message as a whole, not about how it renders. */}
+          {body !== 'loading' && body?.unsubscribe && (
+            <UnsubscribeBar unsubscribe={body.unsubscribe} />
           )}
           {blocked && (
             <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2 text-xs text-ink-muted">

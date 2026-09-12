@@ -136,6 +136,12 @@ if [ "${TOTAL:-0}" -lt 4 ]; then
   send_mail bob@localhost alice@localhost "Willkommen bei mel" "Hallo Alice,\r\n\r\ndies ist die erste Testmail.\r\n\r\nGruss, Bob"
   send_mail bob@localhost alice@localhost "Projektstand" "Kurzes Update: Phase 0 laeuft."
   send_mail alice@localhost bob@localhost "Re: Projektstand" "Danke fuer das Update!"
+  # Newsletter fixture: carries the headers the unsubscribe bar reads (RFC
+  # 2369 plus the RFC 8058 one-click promise). The https target is example.com
+  # on purpose — no test may actually reach it.
+  send_mail news@example.com alice@localhost "Newsletter-Test" \
+    "Monatliche Neuigkeiten." \
+    'List-Unsubscribe: <https://example.com/unsub?id=42>, <mailto:unsub@example.com?subject=stop>\r\nList-Unsubscribe-Post: List-Unsubscribe=One-Click\r\n'
   send_mail bob@localhost alice@localhost "HTML-Test" \
     '<html><body><h1>Hallo</h1><p>Dies ist <b>HTML</b>-Mail mit <a href="https://example.com">Link</a> und Umlauten: &auml;&ouml;&uuml;.</p></body></html>' \
     'MIME-Version: 1.0\r\nContent-Type: text/html; charset=utf-8\r\n'
