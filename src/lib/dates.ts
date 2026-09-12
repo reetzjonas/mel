@@ -46,3 +46,12 @@ export function formatRelativePast(epochMs: number): string {
   if (abs < 86400) return relative.format(Math.round(seconds / 3600), 'hour')
   return relative.format(Math.round(seconds / 86400), 'day')
 }
+
+/**
+ * A local calendar day as `YYYY-MM-DD`, for grouping and lookups.
+ *
+ * Built from the local getters rather than toISOString(), which converts to
+ * UTC first: an event at 00:30 in Berlin would land on the previous day.
+ */
+export const dayKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`

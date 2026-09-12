@@ -94,7 +94,8 @@ describe('what a call reports back', () => {
     await bServer.send()
     const serverError = (() => {
       try {
-        serverCall.result
+        // The getter is what throws; `void` says the value is not the point.
+        void serverCall.result
       } catch (e) {
         return e as JmapError
       }
@@ -107,7 +108,7 @@ describe('what a call reports back', () => {
     await bBad.send()
     const badError = (() => {
       try {
-        badCall.result
+        void badCall.result
       } catch (e) {
         return e as JmapError
       }

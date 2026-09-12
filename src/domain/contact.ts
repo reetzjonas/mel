@@ -56,3 +56,30 @@ export function displayName(c: Contact): string {
 export function contactSortKey(c: Contact): string {
   return displayName(c).toLowerCase()
 }
+
+/**
+ * A blank card, for the editor to fill in.
+ *
+ * Here rather than beside the editor: it describes what a contact *is* when
+ * it has nothing in it yet, which is a fact about the domain and not about
+ * the form that happens to collect it.
+ */
+export function emptyContact(addressBookId: string): Contact {
+  return {
+    id: '',
+    addressBookIds: { [addressBookId]: true },
+    kind: 'individual',
+    fullName: '',
+    given: '',
+    surname: '',
+    nickname: '',
+    organization: '',
+    jobTitle: '',
+    emails: [{ value: '', label: null }],
+    phones: [],
+    addresses: [],
+    urls: [],
+    note: '',
+    memberUids: [],
+  }
+}

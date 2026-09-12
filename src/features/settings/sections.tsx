@@ -4,7 +4,7 @@
  */
 import { useEffect, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { useTheme, type ThemePreference } from '../../app/ThemeProvider'
+import { useTheme, type ThemePreference } from '../../app/theme'
 import { useUi } from '../../app/store'
 import { t } from '../../lib/i18n'
 import { imagePolicy, setImagePolicy, type ImagePolicy } from '../../lib/imagePolicy'

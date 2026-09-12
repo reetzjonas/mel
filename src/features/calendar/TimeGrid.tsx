@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import type { CalendarEvent, Occurrence } from '../../domain/calendar'
+import { dayKey } from '../../lib/dates'
 import { currentLocale } from '../../lib/i18n'
 
 const HOUR_HEIGHT = 48 // px
@@ -7,9 +8,6 @@ const HOUR_HEIGHT = 48 // px
 const hourLabelFmt = new Intl.DateTimeFormat(currentLocale, { hour: 'numeric' })
 const timeFmt = new Intl.DateTimeFormat(currentLocale, { hour: 'numeric', minute: '2-digit' })
 const dayHeaderFmt = new Intl.DateTimeFormat(currentLocale, { weekday: 'short', day: 'numeric' })
-
-export const dayKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 function minutesOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes()

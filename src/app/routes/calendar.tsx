@@ -8,7 +8,8 @@ import type {
   ParticipationStatus,
 } from '../../domain/calendar'
 import { EventDialog } from '../../features/calendar/EventDialog'
-import { dayKey, TimeGrid } from '../../features/calendar/TimeGrid'
+import { TimeGrid } from '../../features/calendar/TimeGrid'
+import { dayKey } from '../../lib/dates'
 import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'

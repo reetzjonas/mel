@@ -4,5 +4,17 @@
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  },
+  "overrides": [
+    {
+      // TanStack's file routes must export `Route` — that export is how
+      // routeTree.gen.ts is built, so a route module can never satisfy this
+      // rule, and every one of them was reporting a warning nobody could act
+      // on. Off here, and on everywhere else: see docs/notes/fast-refresh.md.
+      "files": ["src/app/routes/**"],
+      "rules": {
+        "react/only-export-components": "off"
+      }
+    }
+  ]
 }

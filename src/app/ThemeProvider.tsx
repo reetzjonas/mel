@@ -1,16 +1,6 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { ThemeContext, STORAGE_KEY, type ThemePreference } from './theme'
 import { applyThemeTuning, useThemeTuning } from './themeTuning'
-
-export type ThemePreference = 'light' | 'dark' | 'system'
-
-const STORAGE_KEY = 'mel:theme'
-
-interface ThemeContextValue {
-  preference: ThemePreference
-  setPreference: (pref: ThemePreference) => void
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null)
 
 function resolve(pref: ThemePreference): 'light' | 'dark' {
   if (pref !== 'system') return pref
@@ -43,10 +33,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [preference, tuning])
 
   return <ThemeContext value={{ preference, setPreference }}>{children}</ThemeContext>
-}
-
-export function useTheme(): ThemeContextValue {
-  const ctx = useContext(ThemeContext)
-  if (!ctx) throw new Error('useTheme outside ThemeProvider')
-  return ctx
 }

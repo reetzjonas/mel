@@ -1,5 +1,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { emptyContact, ContactEditor } from '../../features/contacts/ContactEditor'
+import { emptyContact } from '../../domain/contact'
+import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useDefaultAddressBookId } from '../../features/contacts/hooks'
 import { useAccounts } from '../../features/mail/hooks'
 import { createContact } from '../../services/contacts'

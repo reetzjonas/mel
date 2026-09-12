@@ -142,22 +142,3 @@ export function ContactEditor({
   )
 }
 
-export function emptyContact(addressBookId: string): Contact {
-  return {
-    id: '',
-    addressBookIds: { [addressBookId]: true },
-    kind: 'individual',
-    fullName: '',
-    given: '',
-    surname: '',
-    nickname: '',
-    organization: '',
-    jobTitle: '',
-    emails: [{ value: '', label: null }],
-    phones: [],
-    addresses: [],
-    urls: [],
-    note: '',
-    memberUids: [],
-  }
-}

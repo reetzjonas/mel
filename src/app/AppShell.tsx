@@ -14,7 +14,7 @@ import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { Snackbar } from '../ui/Snackbar'
 import { visibleApps } from './apps'
-import { useTheme } from './ThemeProvider'
+import { useTheme } from './theme'
 import { UnlockGate } from './UnlockGate'
 import { useUi } from './store'
 
