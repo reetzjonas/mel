@@ -1,6 +1,6 @@
 import type { EmailHeader } from '../domain/email'
-import type { Mailbox, MailboxRole } from '../domain/mailbox'
 import { db, type EmailRow } from '../storage/db'
+import { roleMailbox } from '../storage/mailboxes'
 import { openEnvelope } from '../storage/envelope'
 import { toEmailRow } from '../storage/emailRow'
 import { enqueue } from '../sync/outbox'
@@ -37,15 +37,6 @@ async function patchLocalMany(
     }
     await db.emails.bulkPut(next)
   })
-}
-
-async function roleMailbox(accountId: string, role: MailboxRole): Promise<Mailbox | null> {
-  const rows = await db.mailboxes
-    .where('[accountId+role]')
-    .equals([accountId, role ?? ''])
-    .toArray()
-  const first = rows[0]
-  return first ? openEnvelope(first.payload) : null
 }
 
 export async function setKeyword(

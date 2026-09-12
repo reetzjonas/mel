@@ -1,9 +1,9 @@
 import type { ComposeInit } from '../app/store'
 import type { EmailAddress, EmailBody, EmailHeader } from '../domain/email'
 import type { Identity, OutgoingAttachment, OutgoingEmail } from '../domain/identity'
-import type { MailboxRole } from '../domain/mailbox'
 import { sanitizeMailHtml } from '../lib/htmlSanitize'
 import { db } from '../storage/db'
+import { roleMailboxId } from '../storage/mailboxes'
 import { sealPlain } from '../storage/envelope'
 import { connectionFor } from '../sync/connections'
 import { cancel, enqueue } from '../sync/outbox'
@@ -19,14 +19,6 @@ export async function getIdentities(accountId: string): Promise<Identity[]> {
   const list = conn.mail ? await conn.mail.identities() : []
   identityCache.set(accountId, list)
   return list
-}
-
-async function roleMailboxId(accountId: string, role: MailboxRole): Promise<string | null> {
-  const rows = await db.mailboxes
-    .where('[accountId+role]')
-    .equals([accountId, role ?? ''])
-    .toArray()
-  return rows[0]?.id ?? null
 }
 
 /** Store the file locally; upload happens at send time (works offline). */
