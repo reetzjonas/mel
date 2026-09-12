@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { Transport } from './client/transport'
+import type { Invocation, JmapRequest } from './client/types/core'
 import { createJmapCalendars } from './calendars'
 import type { CalendarEvent, Participant } from '../../domain/calendar'
 import { fromEvent, toEvent, type JmapCalendarEvent } from './calendars'
@@ -322,5 +323,98 @@ describe('failures from the calendar server', () => {
   it('is null when a destroy went through', async () => {
     const { provider } = capturing({ destroyed: ['e1'] })
     await expect(provider.destroyEvents(['e1'])).resolves.toBeNull()
+  })
+})
+
+/**
+ * A transport answering each call by method name; an array answers repeated
+ * calls of the same name in turn, and a value carrying `error` is the server
+ * refusing that one call.
+ */
+function serverAnswering(byName: Record<string, unknown>) {
+  const sent: Array<[string, Record<string, unknown>]> = []
+  const taken: Record<string, number> = {}
+  const transport: Transport = {
+    fetchRaw: vi.fn(),
+    request: async (req: JmapRequest) => ({
+      methodResponses: req.methodCalls.map(([name, args, callId]: Invocation) => {
+        sent.push([name, args as Record<string, unknown>])
+        const a = byName[name]
+        const value = Array.isArray(a) ? a[(taken[name] = (taken[name] ?? 0) + 1) - 1] : a
+        if (value && typeof value === 'object' && 'error' in (value as object)) {
+          return ['error', (value as { error: unknown }).error, callId]
+        }
+        return [name, value ?? {}, callId]
+      }),
+      sessionState: 's',
+    }),
+  } as never
+  return { provider: createJmapCalendars(transport, 'acc1'), sent }
+}
+
+describe('syncing calendars and their events', () => {
+  it('asks for everything at once when there is no state yet', async () => {
+    const { provider, sent } = serverAnswering({
+      'Calendar/get': { list: [{ id: 'c1', name: 'Privat' }], state: 'cal-1' },
+    })
+
+    const page = await provider.syncCalendars(undefined)
+
+    // ids: null is "all of them"; an empty array would ask for none.
+    expect(sent[0]![1]['ids']).toBeNull()
+    expect(page).toMatchObject({ updated: [], destroyedIds: [], newState: 'cal-1', hasMore: false })
+    expect(page.created).toHaveLength(1)
+  })
+
+  it('fetches both sides of a delta in one request', async () => {
+    const { provider, sent } = serverAnswering({
+      'CalendarEvent/changes': {
+        created: ['new'],
+        updated: ['old'],
+        destroyed: ['gone'],
+        newState: 'ev-2',
+        hasMoreChanges: false,
+      },
+      'CalendarEvent/get': [{ list: [{ ...base, id: 'new' }] }, { list: [{ ...base, id: 'old' }] }],
+    })
+
+    const page = await provider.syncEvents('ev-1')
+
+    expect(sent.map(([name]) => name)).toEqual([
+      'CalendarEvent/changes',
+      'CalendarEvent/get',
+      'CalendarEvent/get',
+    ])
+    expect(page.created.map((e) => e.id)).toEqual(['new'])
+    expect(page.updated.map((e) => e.id)).toEqual(['old'])
+    expect(page.destroyedIds).toEqual(['gone'])
+  })
+
+  it('passes on that the server has more to give', async () => {
+    const { provider } = serverAnswering({
+      'CalendarEvent/changes': {
+        created: [],
+        updated: [],
+        destroyed: [],
+        newState: 'ev-2',
+        hasMoreChanges: true,
+      },
+      'CalendarEvent/get': { list: [] },
+    })
+
+    expect((await provider.syncEvents('ev-1')).hasMore).toBe(true)
+  })
+
+  it('raises a forgotten state as its own kind of failure', async () => {
+    /*
+     * The engine catches exactly this to wipe and refetch. A generic error
+     * would be retried against a state that is never coming back.
+     */
+    const { provider } = serverAnswering({
+      'Calendar/changes': { error: { type: 'cannotCalculateChanges' } },
+      'Calendar/get': { list: [] },
+    })
+
+    await expect(provider.syncCalendars('ancient')).rejects.toThrow()
   })
 })

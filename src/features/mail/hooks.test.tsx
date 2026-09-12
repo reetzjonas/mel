@@ -4,7 +4,17 @@ import type { EmailHeader } from '../../domain/email'
 import { db, type EmailRow } from '../../storage/db'
 import { toEmailRow } from '../../storage/emailRow'
 import { sealPlain } from '../../storage/envelope'
-import { useMailboxEmails, useThread } from './hooks'
+import { setFullSyncProgress } from '../../sync/progress'
+import {
+  hiddenMailboxIds,
+  useAccounts,
+  useCanSend,
+  useEmail,
+  useFullSyncProgress,
+  useMailboxEmails,
+  useMailboxes,
+  useThread,
+} from './hooks'
 
 const ACC = 'acc-1'
 const OTHER_ACC = 'acc-2'
@@ -473,5 +483,193 @@ describe('useMailboxEmails grouped', () => {
     await waitFor(() =>
       expect(view.result.current?.map((m) => m.id)).toEqual(['in-1', 'out-1', 'in-2']),
     )
+  })
+})
+
+async function putMailbox(id: string, role: string | null, over: Record<string, unknown> = {}) {
+  await db.mailboxes.put({
+    accountId: ACC,
+    id,
+    role: role as never,
+    parentId: null,
+    sortOrder: (over['sortOrder'] as number) ?? 0,
+    payload: sealPlain({
+      id,
+      name: id,
+      role,
+      parentId: null,
+      sortOrder: 0,
+      ...over,
+    } as never),
+  })
+}
+
+describe('the accounts on this device', () => {
+  beforeEach(() => db.accounts.clear())
+
+  it('skips one whose payload is still sealed rather than failing the list', async () => {
+    /*
+     * A locked account cannot be opened until the passphrase is entered, and
+     * the UnlockGate is what asks for it. Throwing here would take the whole
+     * app down behind the gate that is meant to recover it.
+     */
+    await db.accounts.put({
+      id: 'open',
+      provider: 'jmap',
+      encrypted: false,
+      payload: sealPlain({ account: { id: 'open', label: 'alice' } } as never),
+    })
+    await db.accounts.put({
+      id: 'locked',
+      provider: 'jmap',
+      encrypted: true,
+      payload: { enc: { iv: 'x', data: 'y' } } as never,
+    })
+
+    const { result } = renderHook(() => useAccounts())
+
+    await waitFor(() => expect(result.current).toHaveLength(1))
+    expect(result.current![0]!.id).toBe('open')
+  })
+})
+
+describe('whether a message may be written at all', () => {
+  beforeEach(() => db.accounts.clear())
+
+  const withSubmission = (submission: boolean) =>
+    db.accounts.put({
+      id: 'a1',
+      provider: 'jmap',
+      encrypted: false,
+      payload: sealPlain({
+        account: { id: 'a1', capabilities: { submission } },
+      } as never),
+    })
+
+  it('is false until the answer is in, not optimistic', async () => {
+    /*
+     * A Compose button that appears a moment late is far better than one that
+     * appears, gets pressed, and drops the message into the outbox for a
+     * server that was never going to send it.
+     */
+    await withSubmission(true)
+
+    const { result } = renderHook(() => useCanSend())
+
+    expect(result.current).toBe(false)
+    await waitFor(() => expect(result.current).toBe(true))
+  })
+
+  it('stays false for a server that only stores mail', async () => {
+    await withSubmission(false)
+
+    const { result } = renderHook(() => useCanSend())
+
+    await waitFor(() => expect(result.current).toBe(false))
+  })
+})
+
+describe('the folder list', () => {
+  beforeEach(() => db.mailboxes.clear())
+
+  it('puts the folders that matter first and sorts the rest sensibly', async () => {
+    /*
+     * Inbox, Drafts, Sent, Archive, Junk, Trash in that order, whatever the
+     * server's own sortOrder says — then the server's order, then the name.
+     */
+    await putMailbox('Trash', 'trash')
+    await putMailbox('Inbox', 'inbox')
+    await putMailbox('Zebra', null, { name: 'Zebra', sortOrder: 1 })
+    await putMailbox('Alpha', null, { name: 'Alpha', sortOrder: 1 })
+    await putMailbox('First', null, { name: 'First', sortOrder: 0 })
+
+    const { result } = renderHook(() => useMailboxes(ACC))
+
+    await waitFor(() => expect(result.current).toHaveLength(5))
+    expect(result.current!.map((m) => m.name)).toEqual([
+      'Inbox',
+      'Trash',
+      'First',
+      'Alpha',
+      'Zebra',
+    ])
+  })
+
+  it('is empty, not undefined, without an account', async () => {
+    const { result } = renderHook(() => useMailboxes(undefined))
+    await waitFor(() => expect(result.current).toEqual([]))
+  })
+})
+
+describe('the folders a conversation does not count', () => {
+  beforeEach(() => db.mailboxes.clear())
+
+  it('leaves out trash, junk and drafts', async () => {
+    /*
+     * A message you deleted should not go on padding the row you deleted it
+     * from, and an unsent draft is not part of the exchange yet — the other
+     * side has seen none of it.
+     */
+    await putMailbox('mb-trash', 'trash')
+    await putMailbox('mb-junk', 'junk')
+    await putMailbox('mb-drafts', 'drafts')
+    await putMailbox('mb-inbox', 'inbox')
+
+    const hidden = await hiddenMailboxIds(ACC, 'mb-inbox')
+
+    expect([...hidden].sort()).toEqual(['mb-drafts', 'mb-junk', 'mb-trash'])
+  })
+
+  it('never hides the folder being looked at', async () => {
+    // In Trash, the deleted messages are the thing you came to see.
+    await putMailbox('mb-trash', 'trash')
+    await putMailbox('mb-junk', 'junk')
+
+    const hidden = await hiddenMailboxIds(ACC, 'mb-trash')
+
+    expect([...hidden]).toEqual(['mb-junk'])
+  })
+})
+
+describe('progress of the first full fetch', () => {
+  it('follows the store and reports nothing without an account', async () => {
+    const { result, rerender } = renderHook(
+      ({ id }: { id: string | undefined }) => useFullSyncProgress(id),
+      { initialProps: { id: ACC as string | undefined } },
+    )
+
+    expect(result.current).toBeNull()
+
+    act(() => setFullSyncProgress(ACC, { done: 40, total: 36_000 }))
+    expect(result.current).toEqual({ done: 40, total: 36_000 })
+
+    rerender({ id: undefined })
+    expect(result.current).toBeNull()
+
+    act(() => setFullSyncProgress(ACC, null))
+  })
+})
+
+describe('a single message', () => {
+  beforeEach(() => db.emails.clear())
+
+  it('is null when there is none, and undefined only while looking', async () => {
+    /*
+     * The reading pane tells these apart: undefined is "still loading", null
+     * is "this message is gone" — which is what it shows after a delete on
+     * another device.
+     */
+    const { result } = renderHook(() => useEmail(ACC, 'nope'))
+
+    expect(result.current).toBeUndefined()
+    await waitFor(() => expect(result.current).toBeNull())
+  })
+
+  it('opens the stored payload when it is there', async () => {
+    await db.emails.put(row('m1', '2026-09-10T10:00:00Z'))
+
+    const { result } = renderHook(() => useEmail(ACC, 'm1'))
+
+    await waitFor(() => expect(result.current?.id).toBe('m1'))
   })
 })
