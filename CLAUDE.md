@@ -37,12 +37,12 @@ quick actions in the list, folder management (create/rename/delete), draft
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
-Settings are a modal over the current screen, not a route: five tabs (General,
-Mail, Notifications, Security, Account) with the open one in `?settings=`, so
-deep links and the back button keep working and `/settings` redirects in.
-See `docs/notes/settings-modal.md`.
+Settings are a modal over the current screen, not a route: six tabs (General,
+Appearance, Mail, Notifications, Security, Account) with the open one in
+`?settings=`, so deep links and the back button keep working and `/settings`
+redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 665 Vitest + 69 Playwright (desktop + mobile; state-mutating specs are
+Tests: 725 Vitest + 74 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -71,6 +71,9 @@ working on that specific feature, not on every session:
   `docs/notes/design-system.md`
 - **Drag and drop** (mail onto folders, folders into folders; pointer-only,
   menu stays the accessible path): `docs/notes/drag-and-drop.md`
+- **Resizable panel widths** (two boundaries, lg and up only; why the handles
+  cost no layout, and the pointercancel that collapsed a panel):
+  `docs/notes/panel-widths.md`
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
 
 ## Dev workflow
