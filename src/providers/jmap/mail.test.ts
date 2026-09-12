@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { CoreCapability, Invocation, JmapRequest } from './client/types/core'
 import type { Transport } from './client/transport'
 import { parseSearch } from '../../lib/searchParser'
+import { CannotCalculateChanges } from '../types'
 import { createJmapMail, jmapSearchFilter } from './mail'
 
 const limits = {
@@ -311,20 +312,45 @@ describe('jmapSearchFilter', () => {
   })
 })
 
-/** A transport answering each method call by name, recording what was sent. */
-function serverAnswering(byName: Record<string, unknown>) {
+/**
+ * A transport answering each method call by name, recording what was sent.
+ *
+ * An array answers repeated calls of the same name in turn — a batch may hold
+ * two Email/get calls meaning different things — and a value carrying `error`
+ * comes back as the server refusing that one call.
+ */
+function serverAnswering(
+  byName: Record<string, unknown>,
+  opts: { accountId?: string; limits?: CoreCapability; upload?: string; download?: string } = {},
+) {
   const sent: Array<[string, Record<string, unknown>]> = []
+  const taken: Record<string, number> = {}
+  const fetchRaw = vi.fn()
   const transport: Transport = {
-    fetchRaw: vi.fn(),
+    fetchRaw,
     request: async (req: JmapRequest) => ({
       methodResponses: req.methodCalls.map(([name, args, id]: Invocation) => {
         sent.push([name, args])
-        return [name, (byName[name] ?? {}) as never, id] as Invocation
+        const answer = byName[name]
+        const value = Array.isArray(answer)
+          ? answer[(taken[name] = (taken[name] ?? 0) + 1) - 1]
+          : answer
+        if (value && typeof value === 'object' && 'error' in (value as object)) {
+          return ['error', (value as { error: unknown }).error as never, id] as Invocation
+        }
+        return [name, (value ?? {}) as never, id] as Invocation
       }),
       sessionState: 's',
     }),
   } as never
-  return { mail: createJmapMail(transport, 'acc', limits, 'u', 'd'), sent }
+  const mail = createJmapMail(
+    transport,
+    opts.accountId ?? 'acc',
+    opts.limits ?? limits,
+    opts.upload ?? 'u',
+    opts.download ?? 'd',
+  )
+  return { mail, sent, fetchRaw }
 }
 
 const outgoing = {
@@ -448,5 +474,330 @@ describe('saving a draft', () => {
     })
 
     await expect(mail.saveDraft(outgoing as never, 'mb-drafts', 'old')).resolves.toBeNull()
+  })
+})
+
+describe('syncing the folder list', () => {
+  it('asks for every folder at once when there is no state to diff against', async () => {
+    const { mail, sent } = serverAnswering({
+      'Mailbox/get': { list: [{ id: 'mb-1', name: 'Inbox' }], state: 'm1' },
+    })
+
+    const p = await mail.syncMailboxes(undefined)
+
+    // ids: null is "all of them"; an empty array would mean "none".
+    expect(sent[0]![1]['ids']).toBeNull()
+    expect(p).toMatchObject({ updated: [], destroyedIds: [], newState: 'm1', hasMore: false })
+    expect(p.created).toHaveLength(1)
+  })
+
+  it('fetches both sides of a delta in the same request', async () => {
+    // Changes plus two gets by back-reference: one round trip rather than
+    // three, and the created/updated split survives it.
+    const { mail, sent } = serverAnswering({
+      'Mailbox/changes': {
+        created: ['new'],
+        updated: ['old'],
+        destroyed: ['gone'],
+        newState: 'm2',
+        hasMoreChanges: false,
+      },
+      'Mailbox/get': [
+        { list: [{ id: 'new', name: 'New' }] },
+        { list: [{ id: 'old', name: 'Old' }] },
+      ],
+    })
+
+    const p = await mail.syncMailboxes('m1')
+
+    expect(sent.map(([name]) => name)).toEqual(['Mailbox/changes', 'Mailbox/get', 'Mailbox/get'])
+    expect(p.created.map((m) => m.id)).toEqual(['new'])
+    expect(p.updated.map((m) => m.id)).toEqual(['old'])
+    expect(p.destroyedIds).toEqual(['gone'])
+  })
+
+  it('raises a forgotten state as its own kind of failure', async () => {
+    /*
+     * The engine catches exactly this to fall back to a full fetch. A generic
+     * error would be retried against a state that is never coming back.
+     */
+    const { mail } = serverAnswering({
+      'Mailbox/changes': { error: { type: 'cannotCalculateChanges' } },
+      'Mailbox/get': { list: [] },
+    })
+
+    await expect(mail.syncMailboxes('ancient')).rejects.toBeInstanceOf(CannotCalculateChanges)
+  })
+})
+
+describe('syncing message headers', () => {
+  it('asks for the header fields only, never the bodies', async () => {
+    /*
+     * A delta can carry thousands of messages. Letting the properties default
+     * to "everything" would pull every body with it — the difference between
+     * a sync and a download of the whole mailbox.
+     */
+    const { mail, sent } = serverAnswering({
+      'Email/changes': { created: [], updated: [], destroyed: [], newState: 'e2' },
+      'Email/get': { list: [] },
+    })
+
+    await mail.syncEmailHeaders('e1')
+
+    const props = sent[1]![1]['properties'] as string[]
+    expect(props).toContain('subject')
+    expect(props).not.toContain('bodyValues')
+  })
+
+  it('passes on that the server has more to give', async () => {
+    const { mail } = serverAnswering({
+      'Email/changes': {
+        created: [],
+        updated: [],
+        destroyed: [],
+        newState: 'e2',
+        hasMoreChanges: true,
+      },
+      'Email/get': { list: [] },
+    })
+
+    expect((await mail.syncEmailHeaders('e1')).hasMore).toBe(true)
+  })
+})
+
+describe('fetching messages by id', () => {
+  it('splits a list the server would refuse in one go', async () => {
+    // maxObjectsInGet is a hard server limit, and a request over it is
+    // rejected whole — every id in it would be lost.
+    const { mail, sent } = serverAnswering(
+      { 'Email/get': { list: [] } },
+      { limits: { ...limits, maxObjectsInGet: 2 } as CoreCapability },
+    )
+
+    await mail.getEmailHeaders(['a', 'b', 'c'])
+
+    expect(sent.map(([, args]) => args['ids'])).toEqual([['a', 'b'], ['c']])
+  })
+
+  it('answers null for a body the server does not have', async () => {
+    // Deleted elsewhere between the list being drawn and the message opened.
+    const { mail } = serverAnswering({ 'Email/get': { list: [] } })
+
+    await expect(mail.getEmailBody('gone')).resolves.toBeNull()
+  })
+
+  it('tells a message with no headers from a message that is not there', async () => {
+    /*
+     * Headers are optional in RFC 8621, so a server may answer the request and
+     * still list none. An empty array says "none"; null says "no such
+     * message", and the details view shows quite different things for each.
+     */
+    const withNone = serverAnswering({ 'Email/get': { list: [{ id: 'e1', blobId: 'b1' }] } })
+    await expect(withNone.mail.getEmailMetadata('e1')).resolves.toEqual({
+      headers: [],
+      blobId: 'b1',
+    })
+
+    const missing = serverAnswering({ 'Email/get': { list: [] } })
+    await expect(missing.mail.getEmailMetadata('gone')).resolves.toBeNull()
+  })
+})
+
+describe('creating, renaming and deleting a folder', () => {
+  it('hands back the id the server assigned', async () => {
+    // The first archive uses this id straight away rather than syncing the
+    // whole account to look the new folder up.
+    const { mail } = serverAnswering({ 'Mailbox/set': { created: { m0: { id: 'mb-new' } } } })
+
+    await expect(
+      mail.editMailbox({ create: { name: 'Archive', parentId: null, role: 'archive' } }),
+    ).resolves.toEqual({ id: 'mb-new', failure: null })
+  })
+
+  it('reports a refused creation instead of a null id on its own', async () => {
+    const { mail } = serverAnswering({
+      'Mailbox/set': { notCreated: { m0: { type: 'invalidProperties', description: 'taken' } } },
+    })
+
+    await expect(mail.editMailbox({ create: { name: 'Archive' } as never })).resolves.toMatchObject(
+      {
+        id: null,
+        failure: { type: 'invalidProperties', permanent: true },
+      },
+    )
+  })
+
+  it('does not send the id as a field when renaming under it', async () => {
+    // The id keys the update; repeating it inside the patch asks the server to
+    // change a property it treats as immutable.
+    const { mail, sent } = serverAnswering({ 'Mailbox/set': {} })
+
+    await expect(mail.editMailbox({ update: { id: 'mb-1', name: 'Bills' } })).resolves.toEqual({
+      id: 'mb-1',
+      failure: null,
+    })
+
+    const update = sent[0]![1]['update'] as Record<string, Record<string, unknown>>
+    expect(update['mb-1']).toMatchObject({ name: 'Bills' })
+    expect(update['mb-1']!['id']).toBeUndefined()
+  })
+
+  it('only removes the messages with a folder when asked to', async () => {
+    /*
+     * Deleting a folder that still holds mail is refused by default, which is
+     * the safe answer — the destructive one has to be chosen explicitly.
+     */
+    const kept = serverAnswering({ 'Mailbox/set': { destroyed: ['mb-1'] } })
+    await kept.mail.editMailbox({ destroy: 'mb-1' })
+    expect(kept.sent[0]![1]['onDestroyRemoveEmails']).toBe(false)
+
+    const withMail = serverAnswering({ 'Mailbox/set': { destroyed: ['mb-1'] } })
+    await withMail.mail.editMailbox({ destroy: 'mb-1', destroyWithEmails: true })
+    expect(withMail.sent[0]![1]['onDestroyRemoveEmails']).toBe(true)
+  })
+
+  it('reports a refused delete against the folder it was asked about', async () => {
+    const { mail } = serverAnswering({
+      'Mailbox/set': { notDestroyed: { 'mb-1': { type: 'mailboxHasEmail' } } },
+    })
+
+    await expect(mail.editMailbox({ destroy: 'mb-1' })).resolves.toMatchObject({
+      id: 'mb-1',
+      failure: { type: 'mailboxHasEmail' },
+    })
+  })
+})
+
+describe('the addresses a message can be sent from', () => {
+  it('reads them from the server, with a missing name as an empty one', async () => {
+    // The compose form puts this straight into a From line; undefined there
+    // would render as the word "undefined".
+    const { mail } = serverAnswering({
+      'Identity/get': { list: [{ id: 'i1', email: 'alice@example.test' }] },
+    })
+
+    await expect(mail.identities()).resolves.toEqual([
+      { id: 'i1', name: '', email: 'alice@example.test', replyTo: null },
+    ])
+  })
+})
+
+describe('blobs', () => {
+  it('fills the download template with escaped values', async () => {
+    /*
+     * Every one of these goes into a URL path. A blob id containing a slash,
+     * or an attachment named with a space, used to produce a URL pointing
+     * somewhere else entirely — a 404 on opening the attachment.
+     */
+    const { mail, fetchRaw } = serverAnswering(
+      {},
+      {
+        accountId: 'acc/1',
+        download: 'https://x.test/{accountId}/{blobId}/{type}/{name}',
+      },
+    )
+    fetchRaw.mockResolvedValue({ blob: () => Promise.resolve(new Blob(['x'])) })
+
+    await mail.downloadBlob('b/2', 'application/pdf', 'Rechnung Mai.pdf')
+
+    expect(fetchRaw).toHaveBeenCalledWith(
+      'https://x.test/acc%2F1/b%2F2/application%2Fpdf/Rechnung%20Mai.pdf',
+    )
+  })
+
+  it('posts an upload with the type the file actually has', async () => {
+    const { mail, fetchRaw } = serverAnswering(
+      {},
+      { accountId: 'acc', upload: 'https://x.test/{accountId}' },
+    )
+    fetchRaw.mockResolvedValue({
+      json: () => Promise.resolve({ blobId: 'b1', size: 3 }),
+    })
+
+    await expect(mail.uploadBlob(new Uint8Array([1, 2, 3]).buffer, 'image/png')).resolves.toEqual({
+      blobId: 'b1',
+      size: 3,
+    })
+    expect(fetchRaw.mock.calls[0]![1]).toMatchObject({
+      method: 'POST',
+      headers: { 'Content-Type': 'image/png' },
+    })
+  })
+
+  it('falls back to a generic type rather than sending none', async () => {
+    // A blob staged from the clipboard may arrive without one, and a missing
+    // Content-Type is not a valid upload.
+    const { mail, fetchRaw } = serverAnswering({}, { upload: 'https://x.test/{accountId}' })
+    fetchRaw.mockResolvedValue({ json: () => Promise.resolve({ blobId: 'b1', size: 0 }) })
+
+    await mail.uploadBlob(new ArrayBuffer(0), '')
+
+    expect(fetchRaw.mock.calls[0]![1]).toMatchObject({
+      headers: { 'Content-Type': 'application/octet-stream' },
+    })
+  })
+})
+
+describe('searching', () => {
+  it('asks for the matches and their snippets in one request', async () => {
+    const { mail, sent } = serverAnswering({
+      'Email/query': { ids: ['e1'] },
+      'SearchSnippet/get': {
+        list: [{ emailId: 'e1', subject: null, preview: 'a <mark>bill</mark>' }],
+      },
+    })
+
+    const r = await mail.searchEmails(parseSearch('bill')!, { limit: 10 })
+
+    expect(sent.map(([name]) => name)).toEqual(['Email/query', 'SearchSnippet/get'])
+    expect(r.ids).toEqual(['e1'])
+    expect(r.snippets['e1']).toEqual({ subject: null, preview: 'a <mark>bill</mark>' })
+  })
+
+  it('still returns the results when the server cannot do snippets', async () => {
+    // SearchSnippet is optional. Letting its refusal fail the whole search
+    // would turn a cosmetic gap into no results at all.
+    const { mail } = serverAnswering({
+      'Email/query': { ids: ['e1'] },
+      'SearchSnippet/get': { error: { type: 'unknownMethod' } },
+    })
+
+    const r = await mail.searchEmails(parseSearch('bill')!, { limit: 10 })
+
+    expect(r.ids).toEqual(['e1'])
+    expect(r.snippets).toEqual({})
+  })
+})
+
+describe('the vacation responder', () => {
+  it('reads it as off when the server has never had one set', async () => {
+    // VacationResponse is a singleton that may simply not exist yet; an empty
+    // list must not read as "enabled with no text".
+    const { mail } = serverAnswering({ 'VacationResponse/get': { list: [] } })
+
+    await expect(mail.getVacation()).resolves.toEqual({ enabled: false, subject: '', text: '' })
+  })
+
+  it('writes empty fields as null rather than as an empty string', async () => {
+    // An empty subject is "no subject", which JMAP spells null; "" would be
+    // stored and sent as a blank Subject header.
+    const { mail, sent } = serverAnswering({ 'VacationResponse/set': {} })
+
+    await mail.setVacation({ enabled: true, subject: '', text: 'away' })
+
+    const update = sent[0]![1]['update'] as Record<string, Record<string, unknown>>
+    expect(update['singleton']).toEqual({ isEnabled: true, subject: null, textBody: 'away' })
+  })
+
+  it('raises a refusal instead of reporting it as saved', async () => {
+    const { mail } = serverAnswering({
+      'VacationResponse/set': {
+        notUpdated: { singleton: { type: 'forbidden', description: 'not allowed here' } },
+      },
+    })
+
+    await expect(mail.setVacation({ enabled: true, subject: 's', text: 't' })).rejects.toThrow(
+      'not allowed here',
+    )
   })
 })
