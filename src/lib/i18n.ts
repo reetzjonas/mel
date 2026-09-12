@@ -136,6 +136,11 @@ const en = {
   'mail.details.showLess': 'Shorten again',
   'mail.details.hint':
     'Shown as plain text and never as a link — a header can contain anything the sender wrote.',
+  'settings.layout': 'Panel widths',
+  'settings.layout.reset': 'Reset to default widths',
+  'settings.layout.hint':
+    'The folder list and message list can be dragged wider on a large screen. Their widths are remembered on this device only.',
+  'settings.layout.done': 'Panel widths reset',
   'mail.resizeSidebar': 'Folder list width',
   'mail.resizeList': 'Message list width',
   'mail.archived': 'Archived',
@@ -292,6 +297,7 @@ const en = {
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
   'settings.tab.general': 'General',
+  'settings.tab.appearance': 'Appearance',
   'settings.tab.mail': 'Mail',
   'settings.tab.notifications': 'Notifications',
   'settings.tab.security': 'Security',
@@ -602,6 +608,11 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.details.showLess': 'Wieder kürzen',
   'mail.details.hint':
     'Wird als reiner Text gezeigt und nie als Link — in einem Header kann alles stehen, was der Absender geschrieben hat.',
+  'settings.layout': 'Bereichsbreiten',
+  'settings.layout.reset': 'Auf Standardbreiten zurücksetzen',
+  'settings.layout.hint':
+    'Ordnerliste und Nachrichtenliste lassen sich auf großen Bildschirmen breiter ziehen. Die Breiten merkt sich nur dieses Gerät.',
+  'settings.layout.done': 'Bereichsbreiten zurückgesetzt',
   'mail.resizeSidebar': 'Breite der Ordnerliste',
   'mail.resizeList': 'Breite der Nachrichtenliste',
   'mail.archived': 'Archiviert',
@@ -758,6 +769,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'settings.title': 'Einstellungen',
   'settings.close': 'Einstellungen schließen',
   'settings.tab.general': 'Allgemein',
+  'settings.tab.appearance': 'Darstellung',
   'settings.tab.mail': 'E-Mail',
   'settings.tab.notifications': 'Benachrichtigungen',
   'settings.tab.security': 'Sicherheit',

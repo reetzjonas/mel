@@ -18,6 +18,7 @@ import {
   EncryptionSetting,
   ImageSetting,
   LanguageSetting,
+  PanelWidthSetting,
   NotificationSetting,
   Section,
   ThemeSetting,
@@ -27,6 +28,7 @@ import {
 
 const tabLabels: Record<SettingsTab, MsgKey> = {
   general: 'settings.tab.general',
+  appearance: 'settings.tab.appearance',
   mail: 'settings.tab.mail',
   notifications: 'settings.tab.notifications',
   security: 'settings.tab.security',
@@ -143,12 +145,18 @@ export function SettingsDialog({
             className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-canvas p-4 sm:rounded-br-panel sm:p-5"
           >
             {active === 'general' && (
+              <Section title={t('settings.language')}>
+                <LanguageSetting />
+              </Section>
+            )}
+
+            {active === 'appearance' && (
               <>
-                <Section title={t('settings.language')}>
-                  <LanguageSetting />
-                </Section>
                 <Section title={t('settings.theme')}>
                   <ThemeSetting />
+                </Section>
+                <Section title={t('settings.layout')}>
+                  <PanelWidthSetting />
                 </Section>
               </>
             )}

@@ -110,6 +110,43 @@ test('the keyboard moves the boundary too', async ({ page }, testInfo) => {
   await handle.dblclick()
 })
 
+test('settings resets the widths without a reload', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Two panes side by side exist only from lg up')
+
+  await login(page)
+  await expect(
+    page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first(),
+  ).toBeVisible({ timeout: 15_000 })
+
+  const before = (await list(page).boundingBox())!
+  const handle = page.getByRole('separator', { name: 'Message list width' })
+  await handle.focus()
+  for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowRight')
+  const widened = (await list(page).boundingBox())!
+  expect(widened.width).toBeGreaterThan(before.width)
+
+  const reset = page.getByRole('button', { name: 'Reset to default widths' })
+  await page.goto('/mail?settings=appearance')
+  await expect(reset).toBeEnabled()
+  await reset.click()
+
+  /*
+   * The dialog opens *over* the mail screen rather than replacing it, so the
+   * panels behind it are mounted and have to hear about this directly. Per
+   * component state it would have taken a reload — which is why the widths
+   * live in a small store instead.
+   */
+  await page.keyboard.press('Escape')
+  await expect(async () => {
+    const after = (await list(page).boundingBox())!
+    expect(Math.abs(after.width - before.width)).toBeLessThan(4)
+  }).toPass()
+
+  // Nothing left to reset, so the button says so rather than doing nothing.
+  await page.goto('/mail?settings=appearance')
+  await expect(reset).toBeDisabled()
+})
+
 test('a phone has no boundary to drag', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'This is about the narrow layout')
 

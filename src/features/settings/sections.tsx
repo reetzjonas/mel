@@ -22,6 +22,7 @@ import {
   webPushSupported,
 } from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
+import { hasStoredWidths, resetPanelWidths } from '../mail/panelWidths'
 import { connectionFor } from '../../sync/connections'
 import type { Account } from '../../domain/account'
 import type { VacationSettings } from '../../providers/types'
@@ -70,6 +71,39 @@ export function ThemeSetting() {
       <option value="light">{t('settings.theme.light')}</option>
       <option value="dark">{t('settings.theme.dark')}</option>
     </Select>
+  )
+}
+
+/**
+ * Back to the widths the two draggable panels shipped with.
+ *
+ * Disabled while there is nothing stored, rather than doing nothing when
+ * pressed: a handler that returns early belongs behind a visible `disabled`
+ * (see docs/notes/e2e-stability.md — a dead button is dead for people and
+ * tests alike).
+ *
+ * The panels are mounted behind this dialog, so the reset reaches them
+ * directly; nothing here needs a reload.
+ */
+export function PanelWidthSetting() {
+  const [stored, setStored] = useState(() => hasStoredWidths())
+  const { showSnackbar } = useUi()
+  return (
+    <div className="space-y-1">
+      <button
+        type="button"
+        disabled={!stored}
+        className={secondaryButtonClass}
+        onClick={() => {
+          resetPanelWidths()
+          setStored(false)
+          showSnackbar({ message: t('settings.layout.done') })
+        }}
+      >
+        {t('settings.layout.reset')}
+      </button>
+      <p className="text-xs text-ink-subtle">{t('settings.layout.hint')}</p>
+    </div>
   )
 }
 
