@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import type { CoreCapability } from './client/types/core'
+import type { CoreCapability, Invocation, JmapRequest } from './client/types/core'
 import type { Transport } from './client/transport'
 import { parseSearch } from '../../lib/searchParser'
 import { createJmapMail, jmapSearchFilter } from './mail'
@@ -308,5 +308,145 @@ describe('jmapSearchFilter', () => {
         { operator: 'OR', conditions: [{ from: 'a' }, { from: 'b' }] },
       ],
     })
+  })
+})
+
+/** A transport answering each method call by name, recording what was sent. */
+function serverAnswering(byName: Record<string, unknown>) {
+  const sent: Array<[string, Record<string, unknown>]> = []
+  const transport: Transport = {
+    fetchRaw: vi.fn(),
+    request: async (req: JmapRequest) => ({
+      methodResponses: req.methodCalls.map(([name, args, id]: Invocation) => {
+        sent.push([name, args])
+        return [name, (byName[name] ?? {}) as never, id] as Invocation
+      }),
+      sessionState: 's',
+    }),
+  } as never
+  return { mail: createJmapMail(transport, 'acc', limits, 'u', 'd'), sent }
+}
+
+const outgoing = {
+  identityId: 'i1',
+  from: { name: 'Alice', email: 'alice@example.test' },
+  to: [{ name: null, email: 'bob@example.test' }],
+  cc: [],
+  bcc: [],
+  subject: 'Rechnung',
+  html: '<p>hi</p>',
+  text: 'hi',
+  attachments: [],
+  inReplyTo: null,
+  references: null,
+}
+
+describe('sending a message', () => {
+  const boxes = { drafts: 'mb-drafts', sent: 'mb-sent' }
+
+  it('creates it and submits it in one request', async () => {
+    // Two round trips would leave a window in which the draft exists and
+    // nothing has been sent — and a crash in between leaves it there.
+    const { mail, sent } = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { created: { sub: {} } },
+    })
+
+    await mail.sendEmail(outgoing as never, boxes)
+
+    expect(sent.map(([name]) => name)).toEqual(['Email/set', 'EmailSubmission/set'])
+  })
+
+  it('has the server move it out of drafts once the send succeeded', async () => {
+    /*
+     * onSuccessUpdateEmail, not a follow-up call: the move has to happen only
+     * if the submission actually went through, and only the server knows that
+     * in the same breath.
+     */
+    const { mail, sent } = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { created: { sub: {} } },
+    })
+
+    await mail.sendEmail(outgoing as never, boxes)
+
+    const submission = sent.find(([name]) => name === 'EmailSubmission/set')![1]
+    expect(submission['onSuccessUpdateEmail']).toEqual({
+      '#sub': {
+        'mailboxIds/mb-drafts': null,
+        'mailboxIds/mb-sent': true,
+        'keywords/$draft': null,
+      },
+    })
+  })
+
+  it('leaves out the recipient fields nobody filled in', async () => {
+    // An empty cc array is not the same as no cc; some servers reject it.
+    const { mail, sent } = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { created: { sub: {} } },
+    })
+
+    await mail.sendEmail(outgoing as never, boxes)
+
+    const draft = (sent[0]![1]['create'] as Record<string, Record<string, unknown>>)['draft']!
+    expect(draft['cc']).toBeUndefined()
+    expect(draft['bcc']).toBeUndefined()
+    expect(draft['to']).toHaveLength(1)
+  })
+
+  it('raises a refusal from either half, carrying whether it can be retried', async () => {
+    // The outbox reads `permanent` to decide between backing off and giving
+    // up loudly; a send that failed for good must not be retried for ever.
+    const rejected = serverAnswering({
+      'Email/set': { notCreated: { draft: { type: 'invalidProperties', description: 'no to' } } },
+      'EmailSubmission/set': {},
+    })
+    await expect(rejected.mail.sendEmail(outgoing as never, boxes)).rejects.toMatchObject({
+      message: expect.stringContaining('invalidProperties'),
+      permanent: true,
+    })
+
+    const refusedSubmission = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { notCreated: { sub: { type: 'forbiddenFrom' } } },
+    })
+    await expect(refusedSubmission.mail.sendEmail(outgoing as never, boxes)).rejects.toMatchObject({
+      permanent: false,
+    })
+  })
+})
+
+describe('saving a draft', () => {
+  it('replaces the previous one in the same set', async () => {
+    /*
+     * Create and destroy together: two calls would leave both copies in the
+     * folder if the second never ran, and autosave would breed a draft per
+     * keystroke.
+     */
+    const { mail, sent } = serverAnswering({ 'Email/set': { created: { draft: { id: 'new' } } } })
+
+    await expect(mail.saveDraft(outgoing as never, 'mb-drafts', 'old')).resolves.toBe('new')
+
+    expect(sent).toHaveLength(1)
+    expect(sent[0]![1]['destroy']).toEqual(['old'])
+  })
+
+  it('destroys nothing on the first save', async () => {
+    const { mail, sent } = serverAnswering({ 'Email/set': { created: { draft: { id: 'new' } } } })
+
+    await mail.saveDraft(outgoing as never, 'mb-drafts', null)
+
+    expect(sent[0]![1]['destroy']).toBeUndefined()
+  })
+
+  it('answers null when the server created nothing', async () => {
+    // The caller keeps the old draft id on null; claiming success would point
+    // autosave at a message that does not exist.
+    const { mail } = serverAnswering({
+      'Email/set': { notCreated: { draft: { type: 'overQuota' } } },
+    })
+
+    await expect(mail.saveDraft(outgoing as never, 'mb-drafts', 'old')).resolves.toBeNull()
   })
 })
