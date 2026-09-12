@@ -213,3 +213,114 @@ describe('createJmapCalendars provider', () => {
     expect(createMap['e0']!['uid']).toBe('u1')
   })
 })
+
+/** Records what was sent and answers with whatever a test supplies. */
+function capturing(response: Record<string, unknown> = {}) {
+  const sent: Array<Record<string, unknown>> = []
+  const transport: Transport = {
+    fetchRaw: vi.fn(),
+    request: async (req) => {
+      const [name, args, callId] = req.methodCalls[0]!
+      sent.push(args as Record<string, unknown>)
+      return { methodResponses: [[name, response, callId]], sessionState: 's' } as never
+    },
+  }
+  return { provider: createJmapCalendars(transport, 'acc1'), sent }
+}
+
+/*
+ * Every write carries sendSchedulingMessages, and each value is a decision
+ * about mail leaving the building: too eager and the server invites people to
+ * an event they were never part of, too shy and an invitation is stored where
+ * nobody is told about it.
+ */
+describe('when the server is told to send invitations', () => {
+  it('does so for an event that has participants', async () => {
+    const { provider, sent } = capturing({ created: { e0: { id: 'new' } } })
+
+    await provider.createEvent(domainEvent([organizer, attendee()]))
+
+    expect(sent[0]!['sendSchedulingMessages']).toBe(true)
+  })
+
+  it('stays quiet for an event with nobody but its owner', async () => {
+    // A private appointment: there is no one to invite, and a scheduling
+    // message would be mail from nowhere.
+    const { provider, sent } = capturing({ created: { e0: { id: 'new' } } })
+
+    await provider.createEvent(domainEvent([]))
+
+    expect(sent[0]!['sendSchedulingMessages']).toBe(false)
+  })
+
+  it('always does for a cancellation, so attendees hear it is off', async () => {
+    // Deleting silently leaves the meeting in everyone else's calendar.
+    const { provider, sent } = capturing({ destroyed: ['e1'] })
+
+    await provider.destroyEvents(['e1'])
+
+    expect(sent[0]!['sendSchedulingMessages']).toBe(true)
+  })
+
+  it('always does for a reply, which is the whole point of one', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+
+    await provider.rsvp('e1', 'p2', 'accepted')
+
+    expect(sent[0]!['sendSchedulingMessages']).toBe(true)
+  })
+})
+
+describe('answering an invitation', () => {
+  it('patches only the one participation status', async () => {
+    /*
+     * A patch rather than a whole-event update: sending the event back would
+     * overwrite whatever the organiser changed in the meantime with the copy
+     * this device happened to hold.
+     */
+    const { provider, sent } = capturing({ updated: { e1: null } })
+
+    await provider.rsvp('e1', 'p2', 'declined')
+
+    expect(sent[0]!['update']).toEqual({
+      e1: { 'participants/p2/participationStatus': 'declined' },
+    })
+  })
+
+  it('reports a refusal rather than pretending the reply went out', async () => {
+    const { provider } = capturing({ notUpdated: { e1: { type: 'forbidden' } } })
+
+    await expect(provider.rsvp('e1', 'p2', 'accepted')).resolves.toMatchObject({
+      type: 'forbidden',
+      permanent: true,
+    })
+  })
+})
+
+describe('failures from the calendar server', () => {
+  it('tells a refusal that will not change from one worth retrying', async () => {
+    const permanent = capturing({ notCreated: { e0: { type: 'invalidProperties' } } })
+    await expect(permanent.provider.createEvent(domainEvent([]))).resolves.toMatchObject({
+      id: null,
+      failure: { permanent: true },
+    })
+
+    const transient = capturing({ notCreated: { e0: { type: 'serverFail' } } })
+    await expect(transient.provider.createEvent(domainEvent([]))).resolves.toMatchObject({
+      failure: { permanent: false },
+    })
+  })
+
+  it('treats a create that says nothing as a failure', async () => {
+    // Neither created nor notCreated: reporting success would lose the event
+    // while the dialog closes as though it were saved.
+    const { provider } = capturing({})
+
+    await expect(provider.createEvent(domainEvent([]))).resolves.toMatchObject({ id: null })
+  })
+
+  it('is null when a destroy went through', async () => {
+    const { provider } = capturing({ destroyed: ['e1'] })
+    await expect(provider.destroyEvents(['e1'])).resolves.toBeNull()
+  })
+})
