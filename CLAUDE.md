@@ -42,7 +42,7 @@ Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=`, so deep links and the back button keep working and `/settings`
 redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 725 Vitest + 74 Playwright (desktop + mobile; state-mutating specs are
+Tests: 769 Vitest + 77 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -71,6 +71,8 @@ working on that specific feature, not on every session:
   `docs/notes/design-system.md`
 - **Drag and drop** (mail onto folders, folders into folders; pointer-only,
   menu stays the accessible path): `docs/notes/drag-and-drop.md`
+- **Theme editor** (guided OKLCH tuning, why lightness is never exposed, the
+  gamut and contrast maths): `docs/notes/theme-editor.md`
 - **Resizable panel widths** (two boundaries, lg and up only; why the handles
   cost no layout, and the pointercancel that collapsed a panel):
   `docs/notes/panel-widths.md`

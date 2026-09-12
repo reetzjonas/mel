@@ -136,6 +136,18 @@ const en = {
   'mail.details.showLess': 'Shorten again',
   'mail.details.hint':
     'Shown as plain text and never as a link — a header can contain anything the sender wrote.',
+  'settings.colors': 'Colours',
+  'theme.accentHue': 'Accent hue',
+  'theme.accentChroma': 'Accent intensity',
+  'theme.surfaceHue': 'Surface hue',
+  'theme.surfaceTint': 'Surface tint',
+  'theme.reset': 'Back to the default palette',
+  'theme.hint':
+    'Lightness is left alone, which is what keeps text readable. Warning, error and unread colours keep their own hues, because there the colour is the meaning. Remembered on this device only.',
+  'theme.contrast.body': 'Body text on the page',
+  'theme.contrast.muted': 'Secondary text on a panel',
+  'theme.contrast.subtle': 'Faint text on a panel',
+  'theme.contrast.accent': 'Label on an accent button',
   'settings.layout': 'Panel widths',
   'settings.layout.reset': 'Reset to default widths',
   'settings.layout.hint':
@@ -608,6 +620,18 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.details.showLess': 'Wieder kürzen',
   'mail.details.hint':
     'Wird als reiner Text gezeigt und nie als Link — in einem Header kann alles stehen, was der Absender geschrieben hat.',
+  'settings.colors': 'Farben',
+  'theme.accentHue': 'Akzent-Farbton',
+  'theme.accentChroma': 'Akzent-Intensität',
+  'theme.surfaceHue': 'Flächen-Farbton',
+  'theme.surfaceTint': 'Flächen-Färbung',
+  'theme.reset': 'Zurück zur Standardpalette',
+  'theme.hint':
+    'Die Helligkeit bleibt unangetastet — das hält den Text lesbar. Warn-, Fehler- und Ungelesen-Farben behalten ihren Farbton, denn dort ist die Farbe die Bedeutung. Nur dieses Gerät merkt sich die Einstellung.',
+  'theme.contrast.body': 'Fließtext auf der Seite',
+  'theme.contrast.muted': 'Sekundärtext auf einer Fläche',
+  'theme.contrast.subtle': 'Blasser Text auf einer Fläche',
+  'theme.contrast.accent': 'Beschriftung auf Akzent-Knopf',
   'settings.layout': 'Bereichsbreiten',
   'settings.layout.reset': 'Auf Standardbreiten zurücksetzen',
   'settings.layout.hint':

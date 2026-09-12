@@ -10,6 +10,7 @@ import { t, type MsgKey } from '../../lib/i18n'
 import { Icon } from '../../ui/Icon'
 import { overlayPanelClass, scrimClass } from '../../ui/styles'
 import { OutboxQueue } from './OutboxQueue'
+import { ThemeEditor } from './ThemeEditor'
 import { ServerCapabilities } from './ServerCapabilities'
 import { settingsTabs, type SettingsTab } from './tabs'
 import {
@@ -154,6 +155,9 @@ export function SettingsDialog({
               <>
                 <Section title={t('settings.theme')}>
                   <ThemeSetting />
+                </Section>
+                <Section title={t('settings.colors')}>
+                  <ThemeEditor />
                 </Section>
                 <Section title={t('settings.layout')}>
                   <PanelWidthSetting />
