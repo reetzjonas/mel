@@ -1,6 +1,41 @@
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmailBody, EmailHeader } from '../domain/email'
-import { buildDraftInit, buildReply, parseAddresses, quoteBlock } from './send'
+import type { Identity } from '../domain/identity'
+import { db } from '../storage/db'
+import { openEnvelope, sealPlain } from '../storage/envelope'
+
+/** Everything that was queued, with the options it was queued under. */
+const enqueued: Array<[Record<string, unknown>, Record<string, unknown> | undefined]> = []
+const cancelled: number[] = []
+vi.mock('../sync/outbox', () => ({
+  enqueue: (_a: string, action: Record<string, unknown>, opts?: Record<string, unknown>) => {
+    enqueued.push([action, opts])
+    return Promise.resolve(enqueued.length)
+  },
+  cancel: (seq: number) => {
+    cancelled.push(seq)
+    return Promise.resolve(true)
+  },
+}))
+
+const identities = vi.fn(async () => [{ id: 'i1', email: 'alice@example.test' }] as unknown[])
+const saveDraftOnServer = vi.fn(async (..._a: unknown[]) => 'new-draft' as string | null)
+let mailProvider: unknown
+vi.mock('../sync/connections', () => ({
+  connectionFor: () => Promise.resolve({ mail: mailProvider }),
+}))
+
+const {
+  buildDraftInit,
+  buildReply,
+  discardDraft,
+  getIdentities,
+  parseAddresses,
+  quoteBlock,
+  saveDraft,
+  sendMail,
+  stageAttachment,
+} = await import('./send')
 
 const header = (over: Partial<EmailHeader> = {}): EmailHeader =>
   ({
@@ -113,8 +148,6 @@ describe('buildDraftInit', () => {
     expect(init.draftId).toBe('draft-1')
   })
 })
-
-const ACC = 'a1'
 
 describe('buildReply', () => {
   const incoming = (over: Partial<EmailHeader> = {}) =>
@@ -253,5 +286,207 @@ describe('parseAddresses', () => {
 
   it('leaves an address with no display name unnamed rather than blank', () => {
     expect(parseAddresses('<ada@example.com>')).toEqual([{ name: null, email: 'ada@example.com' }])
+  })
+})
+
+const ACC = 'a1'
+
+const identity = { id: 'i1', name: 'Alice', email: 'alice@example.test' } as Identity
+
+const fields = {
+  to: [{ name: null, email: 'bob@example.test' }],
+  cc: [],
+  bcc: [],
+  subject: 'Rechnung',
+  html: '<p>hi</p>',
+  text: 'hi',
+  attachments: [],
+}
+
+async function putMailbox(id: string, role: string) {
+  await db.mailboxes.put({
+    accountId: ACC,
+    id,
+    role: role as never,
+    parentId: null,
+    sortOrder: 0,
+    payload: sealPlain({ id, name: role, role, parentId: null } as never),
+  })
+}
+
+beforeEach(async () => {
+  enqueued.length = 0
+  cancelled.length = 0
+  vi.clearAllMocks()
+  identities.mockImplementation(async () => [{ id: 'i1', email: 'alice@example.test' }])
+  saveDraftOnServer.mockImplementation(async () => 'new-draft')
+  mailProvider = {
+    identities: () => identities(),
+    saveDraft: (...a: unknown[]) => saveDraftOnServer(...a),
+  }
+  Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+  await db.mailboxes.where('accountId').equals(ACC).delete()
+  await db.emails.where('accountId').equals(ACC).delete()
+  await db.blobCache.where('accountId').equals(ACC).delete()
+})
+
+describe('the addresses this account may send from', () => {
+  it('asks the server once per account', async () => {
+    // The compose form opens often and these do not change within a session;
+    // a round trip each time delays the form for nothing.
+    await getIdentities('cache-me')
+    await getIdentities('cache-me')
+
+    expect(identities).toHaveBeenCalledTimes(1)
+  })
+
+  it('is an empty list, not a failure, without a mail provider', async () => {
+    // A contacts-only server: compose is hidden, and nothing here should throw
+    // on the way to finding that out.
+    mailProvider = null
+
+    await expect(getIdentities('no-mail')).resolves.toEqual([])
+  })
+})
+
+describe('attaching a file', () => {
+  it('keeps the bytes on the device and uploads only at send time', async () => {
+    /*
+     * Composing has to work offline, so the file goes into the blob cache and
+     * the attachment carries a local key instead of a server blob id. The
+     * outbox swaps one for the other when the message actually goes out.
+     */
+    const file = new File([new Uint8Array([1, 2, 3])], 'Rechnung.pdf', { type: 'application/pdf' })
+
+    const att = await stageAttachment(ACC, file)
+
+    expect(att).toMatchObject({
+      blobId: null,
+      name: 'Rechnung.pdf',
+      type: 'application/pdf',
+      size: 3,
+    })
+    const row = await db.blobCache.get([ACC, att.localKey!])
+    expect(new Uint8Array(openEnvelope(row!.payload).data)).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('gives a file with no type one rather than sending none', async () => {
+    // A drag from some file managers arrives without a type, and an upload
+    // without a Content-Type is not a valid one.
+    const att = await stageAttachment(ACC, new File(['x'], 'notes'))
+
+    expect(att.type).toBe('application/octet-stream')
+  })
+})
+
+describe('sending', () => {
+  it('refuses when the account has no Drafts or Sent folder', async () => {
+    /*
+     * The send is built as a draft that the server moves to Sent on success.
+     * Without both ids there is nowhere to put it, and queueing anyway would
+     * lose the message inside a failing outbox action.
+     */
+    await putMailbox('mb-drafts', 'drafts')
+
+    await expect(sendMail(ACC, identity, fields)).rejects.toThrow(/Drafts\/Sent/)
+    expect(enqueued).toEqual([])
+  })
+
+  it('queues it behind an undo window instead of sending at once', async () => {
+    // The ten seconds are the whole feature: until they pass, the message can
+    // still be taken back, and nothing has left the device.
+    await putMailbox('mb-drafts', 'drafts')
+    await putMailbox('mb-sent', 'sent')
+
+    const { undo } = await sendMail(ACC, identity, fields)
+
+    expect(enqueued[0]![0]).toMatchObject({
+      kind: 'email.send',
+      mailboxIds: { drafts: 'mb-drafts', sent: 'mb-sent' },
+    })
+    expect(enqueued[0]![1]).toEqual({ delayMs: 10_000 })
+
+    await undo()
+    expect(cancelled).toEqual([1])
+  })
+
+  it('sends from the identity, not from whatever the account is labelled', async () => {
+    // Stalwart matches the submission against the identity; a From built from
+    // the account label is refused as forbiddenFrom.
+    await putMailbox('mb-drafts', 'drafts')
+    await putMailbox('mb-sent', 'sent')
+
+    await sendMail(ACC, identity, fields)
+
+    expect(enqueued[0]![0]['mail']).toMatchObject({
+      identityId: 'i1',
+      from: { name: 'Alice', email: 'alice@example.test' },
+    })
+  })
+})
+
+describe('autosaving a draft', () => {
+  beforeEach(() => putMailbox('mb-drafts', 'drafts'))
+
+  it('reports the new id and that the server took it', async () => {
+    await expect(saveDraft(ACC, identity, fields, 'old')).resolves.toEqual({
+      id: 'new-draft',
+      ok: true,
+    })
+  })
+
+  it('keeps the old id and says it did not save, rather than looking identical', async () => {
+    /*
+     * Replacing a draft answers with an id either way, so `ok` is the only
+     * thing that can tell a save from a failure. The Save button draws
+     * "saved" off it; autosave ignores it and tries again on the next change.
+     */
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    await expect(saveDraft(ACC, identity, fields, 'old')).resolves.toEqual({ id: 'old', ok: false })
+
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+    saveDraftOnServer.mockRejectedValue(new Error('server said no'))
+    await expect(saveDraft(ACC, identity, fields, 'old')).resolves.toEqual({ id: 'old', ok: false })
+
+    saveDraftOnServer.mockResolvedValue(null)
+    await expect(saveDraft(ACC, identity, fields, 'old')).resolves.toEqual({ id: 'old', ok: false })
+  })
+
+  it('does not try without a Drafts folder to put it in', async () => {
+    await db.mailboxes.where('accountId').equals(ACC).delete()
+
+    await expect(saveDraft(ACC, identity, fields, null)).resolves.toEqual({ id: null, ok: false })
+    expect(saveDraftOnServer).not.toHaveBeenCalled()
+  })
+
+  it('never queues an attachment with a draft', async () => {
+    // Autosave runs on a timer; uploading the staged files on every keystroke
+    // would put a copy of each on the server per save.
+    await saveDraft(ACC, identity, fields, null)
+
+    expect(saveDraftOnServer.mock.calls[0]![0]).toMatchObject({ attachments: [] })
+  })
+})
+
+describe('discarding the autosaved draft after a send', () => {
+  it('takes the local row away at once and the server copy through the queue', async () => {
+    // The row has to go immediately or the sent message sits in Drafts on
+    // screen; the server side can wait for the outbox like any other write.
+    await db.emails.put({
+      accountId: ACC,
+      id: 'draft-1',
+      threadId: 't',
+      receivedAt: 0,
+      mailboxIds: ['mb-drafts'],
+      mailboxDates: [],
+      unread: 0,
+      flagged: 0,
+      payload: sealPlain({ id: 'draft-1' } as never),
+    })
+
+    await discardDraft(ACC, 'draft-1')
+
+    expect(await db.emails.get([ACC, 'draft-1'])).toBeUndefined()
+    expect(enqueued[0]![0]).toEqual({ kind: 'email.destroy', ids: ['draft-1'] })
   })
 })
