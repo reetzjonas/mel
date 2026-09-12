@@ -1,5 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getSyncStatus, startScheduler, stopScheduler, subscribeSyncStatus } from './scheduler'
+import { db } from '../storage/db'
+import { sealPlain } from '../storage/envelope'
+import {
+  getSyncStatus,
+  inboxUnreadSince,
+  startScheduler,
+  stopScheduler,
+  subscribeSyncStatus,
+} from './scheduler'
 
 /*
  * The sync bar reads all of this, and it is the only evidence anyone has that
@@ -8,8 +16,10 @@ import { getSyncStatus, startScheduler, stopScheduler, subscribeSyncStatus } fro
  *
  * Driven through startScheduler rather than a hook added for the test: the
  * tick is internal on purpose, and an export made for convenience here would
- * be a seam the app itself never uses. The SSE and polling machinery is left
- * to the e2e suite, which can watch a real connection.
+ * be a seam the app itself never uses. The SSE side is driven through the
+ * handlers the scheduler hands the library, which is the same surface a real
+ * connection delivers on; whether the connection itself holds up is left to
+ * the e2e suite.
  */
 const syncAccount = vi.fn(async (_id: string) => {})
 const flush = vi.fn(async (_id: string) => {})
@@ -18,8 +28,35 @@ const notifyNewMail = vi.fn(async (_id: string) => {})
 vi.mock('./engine', () => ({ syncAccount: (id: string) => syncAccount(id) }))
 vi.mock('./outbox', () => ({ flush: (id: string) => flush(id) }))
 vi.mock('../services/notifications', () => ({ notifyNewMail: (id: string) => notifyNewMail(id) }))
-// No push: startSse falls through to polling, whose timer stopScheduler clears.
-vi.mock('./connections', () => ({ connectionFor: () => Promise.resolve({ push: null }) }))
+/**
+ * What connectionFor answers with. Null push makes startSse fall through to
+ * polling, whose timer stopScheduler clears — the default for the tests that
+ * are not about the push pipe.
+ */
+let push: unknown = null
+let connectionFails: Error | null = null
+vi.mock('./connections', () => ({
+  connectionFor: () =>
+    connectionFails ? Promise.reject(connectionFails) : Promise.resolve({ push }),
+}))
+
+/** The SSE handlers the scheduler installed, so a test can drive them. */
+let sse: {
+  url: string
+  onopen?: (res: { ok: boolean; status: number }) => Promise<void>
+  onmessage?: (ev: { event: string; data: string }) => void
+  onerror?: (e: unknown) => void
+} | null = null
+/** Ends the fetchEventSource call, the way a dropped connection would. */
+let endSse: (e?: Error) => void = () => {}
+vi.mock('@microsoft/fetch-event-source', () => ({
+  fetchEventSource: (url: string, opts: Record<string, unknown>) => {
+    sse = { url, ...(opts as object) } as typeof sse
+    return new Promise<void>((resolve, reject) => {
+      endSse = (e) => (e ? reject(e) : resolve())
+    })
+  },
+}))
 
 const ACC = 'acc-1'
 
@@ -107,6 +144,123 @@ describe('the status the sync bar renders', () => {
   })
 })
 
+describe('live updates over the push pipe', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sse = null
+    connectionFails = null
+    push = {
+      eventSourceUrl: 'https://jmap.test/events?types={types}&closeafter={closeafter}&ping={ping}',
+      credentials: { method: 'basic', username: 'alice', secret: 'pw' },
+    }
+  })
+  afterEach(async () => {
+    await stopScheduler(ACC)
+    push = null
+    endSse()
+  })
+
+  /** Start and wait until the scheduler has opened the event stream. */
+  async function connected() {
+    startScheduler(ACC)
+    await vi.waitFor(() => expect(sse).not.toBeNull())
+    await sse!.onopen!({ ok: true, status: 200 })
+  }
+
+  it('asks for every type, a connection that stays open, and a keepalive', async () => {
+    /*
+     * The URL is a template the server hands out. Leaving {closeafter} unfilled
+     * gives a stream that ends after one event, and without a ping an idle
+     * connection is dropped by proxies with nothing to notice it.
+     */
+    await connected()
+
+    expect(sse!.url).toBe('https://jmap.test/events?types=*&closeafter=no&ping=30')
+    expect(getSyncStatus(ACC).mode).toBe('push')
+    expect(getSyncStatus(ACC).intervalMs).toBe(0)
+  })
+
+  it('syncs when the server says something changed', async () => {
+    await connected()
+    const before = syncAccount.mock.calls.length
+
+    sse!.onmessage!({ event: 'state', data: JSON.stringify({ changed: { a1: { Email: 's2' } } }) })
+
+    await vi.waitFor(() => expect(syncAccount.mock.calls.length).toBeGreaterThan(before))
+  })
+
+  it('ignores the keepalives and anything it cannot read', async () => {
+    /*
+     * Pings arrive every thirty seconds and carry no state. Syncing on those,
+     * or throwing on a malformed payload out of the stream, would turn push
+     * into a poll — or end the connection outright.
+     */
+    await connected()
+    const before = syncAccount.mock.calls.length
+
+    sse!.onmessage!({ event: 'ping', data: '{}' })
+    sse!.onmessage!({ event: 'state', data: '' })
+    sse!.onmessage!({ event: 'state', data: 'not json' })
+    sse!.onmessage!({ event: 'state', data: JSON.stringify({ changed: null }) })
+
+    await Promise.resolve()
+    expect(syncAccount.mock.calls.length).toBe(before)
+  })
+
+  it('treats a refused stream as a failure rather than an open one', async () => {
+    // A 401 answers the request but not with a stream; reporting "push" there
+    // leaves the bar claiming live updates that never arrive.
+    startScheduler(ACC)
+    await vi.waitFor(() => expect(sse).not.toBeNull())
+
+    await expect(sse!.onopen!({ ok: false, status: 401 })).rejects.toThrow('401')
+  })
+
+  it('rides out a couple of drops before giving up on push', async () => {
+    /*
+     * A reconnect is normal — a laptop lid, a proxy timeout. Falling back to
+     * polling on the first one would abandon push for the whole session.
+     */
+    await connected()
+
+    expect(() => sse!.onerror!(new Error('dropped'))).not.toThrow()
+    expect(() => sse!.onerror!(new Error('dropped'))).not.toThrow()
+    // The third is the library's cue to stop retrying.
+    expect(() => sse!.onerror!(new Error('dropped'))).toThrow('dropped')
+  })
+
+  it('falls back to polling when the stream finally fails', async () => {
+    await connected()
+    endSse(new Error('gone'))
+
+    await vi.waitFor(() => expect(getSyncStatus(ACC).mode).toBe('poll'))
+    expect(getSyncStatus(ACC).intervalMs).toBeGreaterThan(0)
+  })
+
+  it('polls when the server offers no push at all', async () => {
+    push = null
+
+    startScheduler(ACC)
+
+    await vi.waitFor(() => expect(getSyncStatus(ACC).mode).toBe('poll'))
+  })
+
+  it('says why rather than sitting on "connecting" when the session cannot be fetched', async () => {
+    /*
+     * Opening the connection fetches the session document, which is exactly
+     * where a missing CORS header bites. That rejection used to go nowhere and
+     * the bar stayed on "connecting" for ever.
+     */
+    connectionFails = new TypeError('Failed to fetch')
+
+    startScheduler(ACC)
+
+    // Polling, not "connecting" for ever. The reason reaches the bar through
+    // the tick, which fails against the same server for the same cause.
+    await vi.waitFor(() => expect(getSyncStatus(ACC).mode).toBe('poll'))
+  })
+})
+
 describe('waiting for a tick to finish', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(() => stopScheduler(ACC))
@@ -134,5 +288,56 @@ describe('waiting for a tick to finish', () => {
     finish()
     await stopping
     expect(stopped).toBe(true)
+  })
+})
+
+describe('what notifications are allowed to announce', () => {
+  const put = (id: string, receivedAt: number, unread: 0 | 1) =>
+    db.emails.put({
+      accountId: ACC,
+      id,
+      threadId: `t-${id}`,
+      receivedAt,
+      mailboxIds: ['inbox'],
+      mailboxDates: [],
+      unread,
+      flagged: 0,
+      payload: sealPlain({ id, subject: id } as never),
+    })
+
+  beforeEach(() => db.emails.clear())
+
+  it('is only what arrived after the last check, and only what is unread', async () => {
+    /*
+     * Both halves matter. Without the cutoff, every message in the mailbox is
+     * announced on the first sync after a reload; without the unread filter,
+     * a message read on the phone is announced again here.
+     */
+    await put('old', 1_000, 1)
+    await put('new', 3_000, 1)
+    await put('read-elsewhere', 4_000, 0)
+
+    const fresh = await inboxUnreadSince(ACC, 2_000)
+
+    expect(fresh.map((m) => m.id)).toEqual(['new'])
+  })
+
+  it('never reaches into another account on the same device', async () => {
+    await put('mine', 3_000, 1)
+    await db.emails.put({
+      accountId: 'other',
+      id: 'theirs',
+      threadId: 't',
+      receivedAt: 3_000,
+      mailboxIds: ['inbox'],
+      mailboxDates: [],
+      unread: 1,
+      flagged: 0,
+      payload: sealPlain({ id: 'theirs' } as never),
+    })
+
+    const fresh = await inboxUnreadSince(ACC, 0)
+
+    expect(fresh.map((m) => m.id)).toEqual(['mine'])
   })
 })
