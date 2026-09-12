@@ -80,3 +80,36 @@ One *other* race in the same test was fixed alongside: it waited for
 `[aria-label$="messages"]` across the whole list, which any conversation left
 over from another spec satisfies immediately, leaving the real wait to a 5s
 default timeout. The badge is now scoped to the row under test.
+
+## The inbox redirect had one window left (2026-09-12)
+
+CI went red on `navigation.spec.ts` → "switching apps during the first sync is not
+undone by the inbox redirect", with the URL sitting on `/mail/a` after the click on
+Calendar — i.e. the exact symptom of bug 2 above, which the `pathname` guard was
+supposed to have closed.
+
+It looked like a regression from the commit it landed on (the previous run was
+green). It was not: **re-running the same job on the same commit came back green**,
+and the full suite against the built image passes locally. So it is intermittent,
+and the moral from the threading flake applies again — measure before attributing.
+
+What the measuring did show is a real window, and it is not the one you would
+guess. Clicking a link updates the URL *synchronously* (instrumented: the URL is
+already `/calendar` while that route's chunk is still held in flight), so a pending
+navigation is not the problem. The problem is that the guard read `pathname` from
+`useRouterState`, i.e. **this render's snapshot**. The mailboxes arriving and the
+navigation leaving are two independent updates with no ordering between them, so a
+render carrying the new mailboxes can commit while still closing over the old
+pathname — and the effect then redirects after the user has already left.
+
+`mail.tsx` now reads `router.latestLocation.pathname` inside the effect instead, so
+the decision is made on the live location at the moment it runs rather than on
+whatever this render happened to capture. `pathname` stays in the deps so arriving
+back on `/mail` still re-runs it.
+
+Honest limit: the interleaving could not be forced from outside the app — holding
+the `Mailbox/get` response and the calendar route chunk in every combination did
+not reproduce it. So the fix is reasoned from the mechanism, not demonstrated by a
+red-then-green test. The e2e test remains the guard; if it flickers again, it is
+worth instrumenting *which* of the two updates committed first rather than
+widening a timeout.

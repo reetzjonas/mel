@@ -3,6 +3,7 @@ import {
   createFileRoute,
   useNavigate,
   useParams,
+  useRouter,
   useRouterState,
 } from '@tanstack/react-router'
 import { useEffect } from 'react'
@@ -28,6 +29,7 @@ function MailLayout() {
   const mailboxes = useMailboxes(accountId)
   const params = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
   const navigate = useNavigate()
+  const router = useRouter()
   const { compose, openCompose, setFolderDrawerOpen } = useUi()
   const canSend = account?.capabilities.submission ?? false
   const pathname = useRouterState({ select: (s) => s.location.pathname })
@@ -39,12 +41,23 @@ function MailLayout() {
     if (accountId) startScheduler(accountId)
   }, [accountId])
 
-  // /mail without mailbox → jump to inbox once it is synced. The pathname
-  // guard matters: mailboxes arrive asynchronously, and without it a click on
-  // Calendar/Contacts during the first sync gets yanked back here the moment
-  // the sync lands.
+  /*
+   * /mail without mailbox → jump to inbox once it is synced.
+   *
+   * The guard matters: mailboxes arrive asynchronously, and without it a click
+   * on Calendar/Contacts during the first sync gets yanked back here the
+   * moment the sync lands.
+   *
+   * It reads the router's *live* location rather than `pathname`, which is
+   * this render's snapshot of it. The mailboxes arriving and the navigation
+   * leaving are two separate updates, and nothing orders them: a render
+   * carrying the new mailboxes can commit while still closing over the old
+   * pathname, and then this fires right after the user has left. `pathname`
+   * stays in the deps so a plain arrival back on /mail still re-runs it.
+   */
   useEffect(() => {
-    if (params.mailboxId || !mailboxes?.length || pathname !== '/mail') return
+    if (params.mailboxId || !mailboxes?.length) return
+    if (router.latestLocation.pathname !== '/mail') return
     const inbox = mailboxes.find((m) => m.role === 'inbox') ?? mailboxes[0]!
     // Carries the search along: a deep link like /settings redirects through
     // /mail, and dropping the params here would close the settings dialog
@@ -55,7 +68,7 @@ function MailLayout() {
       search: (prev) => prev,
       replace: true,
     })
-  }, [params.mailboxId, mailboxes, navigate, pathname])
+  }, [params.mailboxId, mailboxes, navigate, pathname, router])
 
   // Leaving mail altogether closes the drawer: it is bound to this layout, and
   // coming back from Calendar to a drawer left standing open is a surprise.
