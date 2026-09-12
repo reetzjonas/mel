@@ -30,6 +30,37 @@ export default defineConfig({
         'src/vite-env.d.ts',
       ],
       reporter: ['text-summary', 'json-summary', 'html'],
+      /*
+       * Per area, not one number for everything.
+       *
+       * These layers are not equally worth testing and averaging them hides
+       * exactly the thing worth knowing: `domain` is pure decisions and
+       * should stay near total, while `services` is mostly a wrapper around
+       * connectionFor → provider → Dexie that the Playwright suite drives
+       * against a real server — unit tests there would largely assert the
+       * mock. A single global figure would let a drop in the first be paid
+       * for by growth in the second.
+       *
+       * Each sits a few points under what the suite manages today: tight
+       * enough to catch a real regression, loose enough that deleting a
+       * well-covered file does not turn the build red on its own. Raise them
+       * when the work raises the number, rather than leaving slack to grow.
+       */
+      thresholds: {
+        // The whole tree, UI included. A floor against a collapse, no more:
+        // most of what it measures is components the e2e suite covers and
+        // this metric cannot see.
+        statements: 30,
+        branches: 28,
+        functions: 22,
+        lines: 30,
+        'src/domain/**': { statements: 95, branches: 88, functions: 95, lines: 95 },
+        'src/lib/**': { statements: 86, branches: 77, functions: 86, lines: 88 },
+        'src/storage/**': { statements: 85, branches: 78, functions: 80, lines: 86 },
+        'src/providers/**': { statements: 52, branches: 52, functions: 50, lines: 51 },
+        'src/sync/**': { statements: 40, branches: 33, functions: 40, lines: 42 },
+        'src/services/**': { statements: 23, branches: 22, functions: 24, lines: 24 },
+      },
     },
   },
 })

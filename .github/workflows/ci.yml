@@ -35,7 +35,9 @@ jobs:
       # build is also the typecheck: it runs vite build (which generates
       # routeTree.gen.ts) and only then tsc, and that order matters.
       - run: npm run build
-      - run: npm test
+      # Coverage, not a bare test run: the per-area thresholds in
+      # vitest.config.ts are only a guard if something enforces them.
+      - run: npm run test:coverage
 
   e2e:
     name: End-to-end against the built image
