@@ -156,12 +156,40 @@ export async function discardDraft(accountId: string, draftId: string): Promise<
   await db.emails.delete([accountId, draftId])
 }
 
+/**
+ * What someone typed — or pasted — in a recipient field, as addresses.
+ *
+ * `Ada Lovelace <ada@example.com>` is the form every other mail client puts
+ * on the clipboard, and it used to travel into the message whole: the display
+ * name ended up inside the address. The server does not refuse that, it
+ * writes it down — a message went out addressed to
+ * `Ada Lovelace <ada@example.com` with the stray `>` as the name, and nothing
+ * said so until it bounced.
+ *
+ * Separators inside quotes are left alone, so `"Lovelace, Ada" <ada@x>` stays
+ * one recipient rather than becoming two broken ones.
+ */
 export function parseAddresses(input: string): EmailAddress[] {
-  return input
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter((s) => s.includes('@'))
-    .map((email) => ({ name: null, email }))
+  const parts = input.match(/(?:"[^"]*"|[^,;])+/g) ?? []
+  const out: EmailAddress[] = []
+  for (const part of parts) {
+    const segment = part.trim()
+    if (!segment.includes('@')) continue
+    const angled = /^(.*)<([^<>]+)>$/.exec(segment)
+    if (angled) {
+      const email = angled[2]!.trim()
+      if (!email.includes('@')) continue
+      // Quotes are the header's own escaping, not part of the name.
+      const name = angled[1]!
+        .trim()
+        .replace(/^"(.*)"$/, '$1')
+        .trim()
+      out.push({ name: name || null, email })
+    } else {
+      out.push({ name: null, email: segment })
+    }
+  }
+  return out
 }
 
 function quoteHeaderLine(h: EmailHeader): string {
