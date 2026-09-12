@@ -42,9 +42,17 @@ Mail, Notifications, Security, Account) with the open one in `?settings=`, so
 deep links and the back button keep working and `/settings` redirects in.
 See `docs/notes/settings-modal.md`.
 
-Tests: 234 Vitest + 66 Playwright (desktop + mobile; state-mutating specs are
+Tests: 665 Vitest + 69 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
+
+Coverage runs with `npm run test:coverage` and is enforced per area in
+`vitest.config.ts` — `domain`/`lib`/`storage` near total, `providers` ~93%,
+`sync` ~85%, `services` ~92%, plus a low global floor. The global number
+(~55%) counts every component as well, and those are covered by Playwright,
+which contributes nothing to this metric: read it as "what the unit tests
+reach", never as how well the app is tested. Raise the thresholds when the
+work raises the number rather than leaving slack to grow.
 
 ## Feature deep-dives (read the file when you touch that area)
 
