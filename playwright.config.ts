@@ -20,9 +20,21 @@ export default defineConfig({
   // without letting that many mutations overlap, and stops eight Chromium
   // instances from starving the dev server into timeout territory.
   workers: 2,
+  /*
+   * A failure has to leave evidence behind. This used to say `on-first-retry`
+   * with `retries` at its default of 0, so the trace it asked for could never
+   * be produced — and with no html reporter, the `playwright-report/` the CI
+   * job uploads was never written either ("No files were found with the
+   * provided path"). Every red run therefore had to be diagnosed by guessing.
+   *
+   * Deliberately still no retries: the flakes in this suite have had real
+   * causes every time (docs/notes/e2e-stability.md), so a red run stays red.
+   * `retain-on-failure` is what makes that red run answerable.
+   */
+  reporter: [['list'], ['html', { open: 'never' }]],
   use: {
     baseURL,
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
   },
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },

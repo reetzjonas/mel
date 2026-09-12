@@ -74,11 +74,16 @@ jobs:
       - name: Container logs on failure
         if: failure()
         run: docker logs mel-ci
+      # Both, and neither is optional: the report is the readable summary, and
+      # test-results/ carries the traces it links to. Uploading only the report
+      # leaves every "why did that fail" unanswerable.
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
-          path: playwright-report/
+          path: |
+            playwright-report/
+            test-results/
           retention-days: 7
 
   publish:
