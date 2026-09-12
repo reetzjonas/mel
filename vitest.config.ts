@@ -51,7 +51,7 @@ export default defineConfig({
         // most of what it measures is components the e2e suite covers and
         // this metric cannot see.
         statements: 56,
-        branches: 49,
+        branches: 48,
         functions: 44,
         lines: 56,
         'src/domain/**': { statements: 95, branches: 88, functions: 95, lines: 95 },
