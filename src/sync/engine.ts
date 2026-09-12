@@ -1,5 +1,4 @@
 import type { Table } from 'dexie'
-import type { Calendar, CalendarEvent } from '../domain/calendar'
 import { contactSortKey, type AddressBook, type Contact } from '../domain/contact'
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
@@ -12,9 +11,9 @@ import {
 } from '../providers/types'
 import {
   db,
+  type AccountScopedKey,
   type AddressBookRow,
   type ContactRow,
-  type EmailRow,
   type MailboxRow,
 } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
@@ -37,47 +36,26 @@ async function getState(accountId: string, collection: string): Promise<string |
   return (await db.syncState.get([accountId, collection]))?.state
 }
 
-async function applyPage<T>(
-  accountId: string,
-  collection: 'Mailbox' | 'Email',
-  page: SyncPage<T>,
-  toRow: (accountId: string, v: T) => MailboxRow | EmailRow,
-) {
-  const table = (collection === 'Mailbox' ? db.mailboxes : db.emails) as Table<
-    MailboxRow | EmailRow,
-    [string, string]
-  >
-  await db.transaction('rw', [table, db.syncState], async () => {
-    const rows = [...page.created, ...page.updated].map((v) => toRow(accountId, v))
-    if (rows.length) await table.bulkPut(rows)
+/**
+ * Write one page of email headers and remember where it got to.
+ *
+ * Only email: every other collection goes through syncCollection below. Email
+ * is the exception because its first pass cannot be a single fetch — see
+ * fullEmailSync — so the page comes from two different places.
+ */
+async function applyEmailPage(accountId: string, page: SyncPage<EmailHeader>) {
+  await db.transaction('rw', [db.emails, db.syncState], async () => {
+    const rows = [...page.created, ...page.updated].map((h) => toEmailRow(accountId, h))
+    if (rows.length) await db.emails.bulkPut(rows)
     if (page.destroyedIds.length)
-      await table.bulkDelete(page.destroyedIds.map((id) => [accountId, id]))
-    await db.syncState.put({ accountId, collection, state: page.newState, updatedAt: Date.now() })
+      await db.emails.bulkDelete(page.destroyedIds.map((id) => [accountId, id]))
+    await db.syncState.put({
+      accountId,
+      collection: 'Email',
+      state: page.newState,
+      updatedAt: Date.now(),
+    })
   })
-}
-
-async function syncMailboxes(accountId: string, mail: MailProvider) {
-  let state = await getState(accountId, 'Mailbox')
-  for (;;) {
-    let page: SyncPage<Mailbox>
-    try {
-      page = await mail.syncMailboxes(state)
-    } catch (e) {
-      if (e instanceof CannotCalculateChanges) {
-        await db.mailboxes.where('accountId').equals(accountId).delete()
-        page = await mail.syncMailboxes(undefined)
-      } else throw e
-    }
-    // Full fetch replaces everything that vanished server-side.
-    if (state === undefined) {
-      const serverIds = new Set(page.created.map((m) => m.id))
-      const local = await db.mailboxes.where('accountId').equals(accountId).toArray()
-      page.destroyedIds = local.filter((r) => !serverIds.has(r.id)).map((r) => r.id)
-    }
-    await applyPage(accountId, 'Mailbox', page, mailboxRow)
-    if (!page.hasMore) return
-    state = page.newState
-  }
 }
 
 /**
@@ -98,12 +76,13 @@ async function fullEmailSync(accountId: string, mail: MailProvider) {
   try {
     const finalState = await mail.listAllEmailHeaders(async ({ headers, state, total }) => {
       for (const h of headers) seen.add(h.id)
-      await applyPage(
-        accountId,
-        'Email',
-        { created: headers, updated: [], destroyedIds: [], newState: state, hasMore: false },
-        toEmailRow,
-      )
+      await applyEmailPage(accountId, {
+        created: headers,
+        updated: [],
+        destroyedIds: [],
+        newState: state,
+        hasMore: false,
+      })
       // After the write, not before: what it reports is what is readable.
       done += headers.length
       setFullSyncProgress(accountId, { done, total })
@@ -137,23 +116,37 @@ async function syncEmails(accountId: string, mail: MailProvider) {
       if (e instanceof CannotCalculateChanges) return fullEmailSync(accountId, mail)
       throw e
     }
-    await applyPage(accountId, 'Email', page, toEmailRow)
+    await applyEmailPage(accountId, page)
     if (!page.hasMore) return
     since = page.newState
   }
 }
 
+/** What every synced row has; each table adds its own index columns to it. */
 type SyncRow = { accountId: string; id: string; payload: unknown }
 
-/** Generic delta sync for the simple id-keyed collections (contacts, calendars …). */
-async function syncCollection<T extends { id: string }>(
+/**
+ * Delta sync for one id-keyed collection: mailboxes, address books, contact
+ * cards, calendars, events.
+ *
+ * Mailboxes used to have their own copy of this, which differed in one place:
+ * after wiping the table on a forgotten state it left `state` pointing at the
+ * dead cursor, so the prune below was skipped on the refetch. That was
+ * harmless only because the wipe had just emptied the table — the two are one
+ * function now rather than two that agree by luck.
+ *
+ * Generic over the row as well as the object, so each caller passes its own
+ * table unchanged; typing the parameter as `Table<SyncRow, …>` is what forced
+ * four `as unknown as` casts at the call sites.
+ */
+async function syncCollection<T extends { id: string }, R extends SyncRow>(
   accountId: string,
   collection: string,
-  table: Table<SyncRow, [string, string]>,
+  table: Table<R, AccountScopedKey>,
   fetch: (sinceState?: string) => Promise<SyncPage<T>>,
-  toRow: (v: T) => SyncRow,
+  toRow: (v: T) => R,
 ) {
-  let state = (await db.syncState.get([accountId, collection]))?.state
+  let state = await getState(accountId, collection)
   for (;;) {
     let page: SyncPage<T>
     try {
@@ -197,35 +190,45 @@ function contactRow(accountId: string, c: Contact): ContactRow {
   }
 }
 
+function syncMailboxes(accountId: string, mail: MailProvider) {
+  return syncCollection(
+    accountId,
+    'Mailbox',
+    db.mailboxes,
+    (s) => mail.syncMailboxes(s),
+    (m) => mailboxRow(accountId, m),
+  )
+}
+
 async function syncContacts(accountId: string, contacts: ContactsProvider) {
-  await syncCollection<AddressBook>(
+  await syncCollection(
     accountId,
     'AddressBook',
-    db.addressBooks as unknown as Table<SyncRow, [string, string]>,
+    db.addressBooks,
     (s) => contacts.syncAddressBooks(s),
     (b) => addressBookRow(accountId, b),
   )
-  await syncCollection<Contact>(
+  await syncCollection(
     accountId,
     'ContactCard',
-    db.contacts as unknown as Table<SyncRow, [string, string]>,
+    db.contacts,
     (s) => contacts.syncContacts(s),
     (c) => contactRow(accountId, c),
   )
 }
 
 async function syncCalendarData(accountId: string, calendars: CalendarProvider) {
-  await syncCollection<Calendar>(
+  await syncCollection(
     accountId,
     'Calendar',
-    db.calendars as unknown as Table<SyncRow, [string, string]>,
+    db.calendars,
     (s) => calendars.syncCalendars(s),
     (c) => ({ accountId, id: c.id, payload: sealPlain(c) }),
   )
-  await syncCollection<CalendarEvent>(
+  await syncCollection(
     accountId,
     'CalendarEvent',
-    db.events as unknown as Table<SyncRow, [string, string]>,
+    db.events,
     (s) => calendars.syncEvents(s),
     (e) => ({
       accountId,
