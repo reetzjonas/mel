@@ -217,3 +217,118 @@ describe('an action with no provider for it', () => {
     vi.doUnmock('./connections')
   })
 })
+
+describe('the writes that go to contacts and calendars', () => {
+  it('reports a refused update under the type the server gave it', async () => {
+    /*
+     * The reason is stored in a plain column beside the encrypted payload, so
+     * it has to stay a token — a server's description can quote what was
+     * submitted, and that would put the contact's own data in the clear.
+     */
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    answers = {
+      updateContact: { type: 'invalidProperties', description: 'bad email', permanent: true },
+    }
+
+    expect(await run({ kind: 'contact.update', contact: { id: 'c1' } })).toMatchObject({
+      status: 'failed',
+      reason: 'invalidProperties',
+    })
+  })
+
+  it('carries an event update and an RSVP through to the calendar', async () => {
+    await run({ kind: 'event.update', event: { id: 'e1' } })
+    expect(calls).toContain('updateEvent')
+
+    calls.length = 0
+    await run({
+      kind: 'event.rsvp',
+      eventId: 'e1',
+      participantId: 'p2',
+      status: 'accepted',
+    })
+    expect(calls).toContain('rsvp')
+  })
+
+  it('holds an RSVP the server refused instead of dropping the answer', async () => {
+    // The organiser's copy is only updated by the reply reaching them; a
+    // silently dropped one leaves the invitation looking unanswered.
+    answers = { rsvp: { type: 'serverFail', permanent: false } }
+
+    expect(
+      await run({ kind: 'event.rsvp', eventId: 'e1', participantId: 'p2', status: 'accepted' }),
+    ).toMatchObject({ status: 'pending', attempts: 1 })
+  })
+
+  it('records an action with no provider for its kind rather than retrying at nothing', async () => {
+    /*
+     * A server offering mail but no contacts: retrying forever would keep a
+     * queue the user can see from ever draining, with nothing explaining it.
+     */
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.doMock('./connections', () => ({
+      connectionFor: () => Promise.resolve({ mail: {}, contacts: null, calendars: null }),
+    }))
+    vi.resetModules()
+    const { flush: freshFlush } = await import('./outbox')
+
+    for (const action of [
+      { kind: 'contact.update', contact: { id: 'c1' } },
+      { kind: 'event.update', event: { id: 'e1' } },
+    ]) {
+      await db.outbox.clear()
+      await db.outbox.add({
+        accountId: ACC,
+        kind: action.kind,
+        status: 'pending',
+        attempts: 0,
+        notBefore: 0,
+        payload: sealPlain(action),
+      })
+      await freshFlush(ACC)
+      expect((await db.outbox.toArray())[0], action.kind).toMatchObject({ reason: 'noProvider' })
+    }
+    vi.doUnmock('./connections')
+  })
+})
+
+describe('a set the server answered in parts', () => {
+  it('gives up only when every id failed for good', async () => {
+    /*
+     * A bulk move of a thousand messages can come back with one id refused
+     * for good and the rest merely overloaded. Treating the whole action as
+     * permanent would abandon the messages that would have gone through next
+     * time.
+     */
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    answers = {
+      setEmails: {
+        updated: [],
+        destroyed: [],
+        failed: {
+          a: { type: 'forbidden', permanent: true },
+          b: { type: 'serverFail', permanent: false },
+        },
+      },
+    }
+
+    const mixed = await run({ kind: 'email.update', updates: { a: {}, b: {} } })
+    expect(mixed).toMatchObject({ status: 'pending', attempts: 1 })
+
+    answers = {
+      setEmails: {
+        updated: [],
+        destroyed: [],
+        failed: { a: { type: 'forbidden', permanent: true } },
+      },
+    }
+    expect(await run({ kind: 'email.update', updates: { a: {} } })).toMatchObject({
+      status: 'failed',
+      reason: 'forbidden',
+    })
+  })
+
+  it('is done when the server refused nothing', async () => {
+    expect(await run({ kind: 'email.destroy', ids: ['m1'] })).toBeUndefined()
+  })
+})

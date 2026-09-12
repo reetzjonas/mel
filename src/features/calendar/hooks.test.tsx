@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import type { Account } from '../../domain/account'
 import type { Identity } from '../../domain/identity'
+import { db } from '../../storage/db'
+import { sealPlain } from '../../storage/envelope'
 
 let identities: Identity[] | Error = []
 vi.mock('../../services/send', () => ({
@@ -9,7 +11,7 @@ vi.mock('../../services/send', () => ({
     identities instanceof Error ? Promise.reject(identities) : Promise.resolve(identities),
 }))
 
-const { useSelfIdentity } = await import('./hooks')
+const { useCalendars, useEvents, useSelfIdentity } = await import('./hooks')
 
 const account = (over: Partial<Account> = {}): Account =>
   ({ id: 'acc', label: 'alice@example.test', ...over }) as unknown as Account
@@ -74,5 +76,58 @@ describe('the address invitations go out as', () => {
   it('answers with an empty address when there is no account yet', async () => {
     const { result } = renderHook(() => useSelfIdentity(undefined))
     expect(result.current).toEqual({ name: '', email: '' })
+  })
+})
+
+describe('what the calendar reads out of storage', () => {
+  const ACC = 'acc'
+
+  beforeEach(async () => {
+    await db.calendars.clear()
+    await db.events.clear()
+  })
+
+  it('opens the stored payloads rather than handing back index rows', async () => {
+    // The month view draws from the payload — colour, name, title. The index
+    // columns hold ids only, by design (everything else may be encrypted).
+    await db.calendars.put({
+      accountId: ACC,
+      id: 'c1',
+      payload: sealPlain({ id: 'c1', name: 'Privat', color: '#f00' } as never),
+    })
+    await db.events.put({
+      accountId: ACC,
+      id: 'e1',
+      calendarIds: ['c1'],
+      payload: sealPlain({ id: 'e1', title: 'Standup' } as never),
+    })
+
+    const calendars = renderHook(() => useCalendars(ACC))
+    const events = renderHook(() => useEvents(ACC))
+
+    await waitFor(() => expect(calendars.result.current?.[0]?.name).toBe('Privat'))
+    await waitFor(() => expect(events.result.current?.[0]?.title).toBe('Standup'))
+  })
+
+  it('never reaches into another account on the same device', async () => {
+    await db.events.put({
+      accountId: 'other',
+      id: 'theirs',
+      calendarIds: ['c9'],
+      payload: sealPlain({ id: 'theirs', title: 'Not mine' } as never),
+    })
+
+    const { result } = renderHook(() => useEvents(ACC))
+
+    await waitFor(() => expect(result.current).toEqual([]))
+  })
+
+  it('is an empty list, not undefined, before an account exists', async () => {
+    // The views map over this on the first render, before login has finished.
+    const calendars = renderHook(() => useCalendars(undefined))
+    const events = renderHook(() => useEvents(undefined))
+
+    await waitFor(() => expect(calendars.result.current).toEqual([]))
+    await waitFor(() => expect(events.result.current).toEqual([]))
   })
 })
