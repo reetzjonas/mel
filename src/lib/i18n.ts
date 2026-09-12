@@ -136,6 +136,8 @@ const en = {
   'mail.details.showLess': 'Shorten again',
   'mail.details.hint':
     'Shown as plain text and never as a link — a header can contain anything the sender wrote.',
+  'mail.resizeSidebar': 'Folder list width',
+  'mail.resizeList': 'Message list width',
   'mail.archived': 'Archived',
   'mail.archiveFailed': 'Could not create an Archive folder',
   'mail.deleted': 'Deleted',
@@ -600,6 +602,8 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.details.showLess': 'Wieder kürzen',
   'mail.details.hint':
     'Wird als reiner Text gezeigt und nie als Link — in einem Header kann alles stehen, was der Absender geschrieben hat.',
+  'mail.resizeSidebar': 'Breite der Ordnerliste',
+  'mail.resizeList': 'Breite der Nachrichtenliste',
   'mail.archived': 'Archiviert',
   'mail.archiveFailed': 'Archiv-Ordner konnte nicht angelegt werden',
   'mail.deleted': 'Gelöscht',

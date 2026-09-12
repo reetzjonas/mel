@@ -2,6 +2,8 @@ import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchesFilter, type MailFilter } from '../../domain/email'
 import { InitialSync } from '../../features/mail/InitialSync'
+import { ResizeHandle } from '../../features/mail/ResizeHandle'
+import { PANEL_WIDTH_VAR, usePanelWidth } from '../../features/mail/panelWidths'
 import { SelectionToolbar } from '../../features/mail/SelectionToolbar'
 import { ThreadList } from '../../features/mail/ThreadList'
 import {
@@ -79,6 +81,8 @@ function MailboxView() {
   const [refreshing, setRefreshing] = useState(false)
   const mailboxes = useMailboxes(accountId)
   const { selection, selectionMailboxId, clearSelection, setFolderDrawerOpen } = useUi()
+  const listPanel = usePanelWidth('list')
+  const listRef = useRef<HTMLElement | null>(null)
   const hasSelection = selectionMailboxId === mailboxId && selection.length > 0
 
   // A selection belongs to one folder *and* one filter; leaving either drops it
@@ -161,9 +165,14 @@ function MailboxView() {
   return (
     <div className="flex h-full gap-0 sm:gap-3">
       <section
+        ref={listRef}
         onTouchStart={onTouchStart}
         onTouchEnd={onTouchEnd}
-        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-96 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
+        // Only from lg up, where the list and the message are side by side.
+        // Below that they take turns and w-full wins, so a width dragged on a
+        // desktop cannot reach the phone layout.
+        style={{ [PANEL_WIDTH_VAR]: `${listPanel.width}px` } as React.CSSProperties}
+        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-[var(--mel-panel-w)] lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
         {hasSelection && account ? (
           <SelectionToolbar
@@ -276,6 +285,14 @@ function MailboxView() {
           )}
         </div>
       </section>
+      <ResizeHandle
+        panel="list"
+        label={t('mail.resizeList')}
+        width={listPanel.width}
+        targetRef={listRef}
+        onCommit={listPanel.commit}
+        onReset={listPanel.reset}
+      />
       <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
         <div className="panel h-full overflow-hidden max-sm:rounded-none max-sm:shadow-none">
           <Outlet />

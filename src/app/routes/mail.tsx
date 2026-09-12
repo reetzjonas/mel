@@ -6,11 +6,13 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AddAccountForm } from '../../features/auth/AddAccountForm'
 import { MailboxDrawer } from '../../features/mail/MailboxDrawer'
 import { MailboxSidebar } from '../../features/mail/MailboxSidebar'
 import { useAccounts, useMailboxes } from '../../features/mail/hooks'
+import { ResizeHandle } from '../../features/mail/ResizeHandle'
+import { PANEL_WIDTH_VAR, usePanelWidth } from '../../features/mail/panelWidths'
 import { useMailShortcuts } from '../../features/mail/shortcuts'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
@@ -33,6 +35,8 @@ function MailLayout() {
   const { compose, openCompose, setFolderDrawerOpen } = useUi()
   const canSend = account?.capabilities.submission ?? false
   const pathname = useRouterState({ select: (s) => s.location.pathname })
+  const sidebar = usePanelWidth('sidebar')
+  const sidebarRef = useRef<HTMLElement | null>(null)
 
   // Depends only on the id, not the account object: switching accounts should
   // restart the scheduler, but other account field changes (label, caps)
@@ -97,9 +101,24 @@ function MailLayout() {
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       {/* The sidebar rides directly on the canvas; only content panes float. */}
-      <aside className={`w-full shrink-0 lg:block lg:w-56 ${inList ? 'hidden' : ''}`}>
+      <aside
+        ref={sidebarRef}
+        // The width only applies from lg up, where both panes are on screen at
+        // once. Narrower than that the panels take turns and w-full wins, so
+        // the phone layout is untouched by whatever was dragged on a desktop.
+        style={{ [PANEL_WIDTH_VAR]: `${sidebar.width}px` } as React.CSSProperties}
+        className={`w-full shrink-0 lg:block lg:w-[var(--mel-panel-w)] ${inList ? 'hidden' : ''}`}
+      >
         <MailboxSidebar account={account} mailboxes={mailboxes ?? []} />
       </aside>
+      <ResizeHandle
+        panel="sidebar"
+        label={t('mail.resizeSidebar')}
+        width={sidebar.width}
+        targetRef={sidebarRef}
+        onCommit={sidebar.commit}
+        onReset={sidebar.reset}
+      />
       <div className={`min-w-0 flex-1 lg:block ${inList ? '' : 'hidden'}`}>
         <Outlet />
       </div>
