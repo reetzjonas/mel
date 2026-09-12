@@ -64,6 +64,38 @@ light and dark share their hues but not their lightness, so the overrides are
 built from whichever palette is in force. `ThemeProvider` does that; carrying
 the light values into dark mode would wash the whole app out.
 
+## The authored palette is not the shipped palette
+
+The source writes `oklch(0.48 0.2 292)`. The production stylesheet, after
+minification, writes `oklch(48% .2 292)` — lightness as a percentage, leading
+zeros dropped. `parseOklch` originally rejected percentages, with a comment
+claiming "the stylesheet does not use them": true of the source, false of the
+thing that ships.
+
+The consequence was not cosmetic. In a built app the editor found **no readable
+tokens at all**, so it silently did nothing — and every unit test stayed green,
+because they all fed it the authored strings.
+
+What caught it is that **the e2e suite runs against the built image**, not the
+dev server (`MEL_E2E_BASE_URL`, see `playwright.config.ts`). Worth remembering
+as a property of the suite rather than an implementation detail: it is the only
+thing in this repo that sees what users get.
+
+To reproduce that locally without Docker:
+
+```sh
+npm run build && npx vite preview --port 4173 &
+MEL_E2E_BASE_URL=http://localhost:4173 npx playwright test e2e/theme-editor.spec.ts
+```
+
+One more trap in the same fix: the spec had its own hand-written regex for
+pulling a hue out of a token, carrying the *same* wrong assumption as the
+parser. It imports `parseOklch` now. A test that reimplements the thing it
+tests can only catch the mistakes its author did not make twice.
+
+Percentages are scaled by each component's own range, per the CSS colour spec:
+100% is lightness 1 but chroma **0.4**.
+
 ## Resetting
 
 Forgets the tuning rather than storing today's defaults — "no opinion" has to

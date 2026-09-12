@@ -21,19 +21,45 @@ export interface Oklch {
 }
 
 /**
- * Reads `oklch(L C H)` and `oklch(L C H / A)`.
+ * One component, written as a number or as a percentage.
  *
- * Only the form this project's stylesheet actually uses. A percentage or a
- * `none` component would parse to NaN, which is why the caller gets null
- * instead of a colour it cannot trust.
+ * CSS allows either for lightness, chroma and alpha, and a percentage means a
+ * fraction of that component's own range: 100% is lightness 1, chroma 0.4,
+ * alpha 1.
+ */
+function component(raw: string, fullScale: number): number {
+  const percent = raw.endsWith('%')
+  const value = Number(percent ? raw.slice(0, -1) : raw)
+  return percent ? (value / 100) * fullScale : value
+}
+
+const NUMBER = String.raw`[\d.]+%?`
+
+/**
+ * Reads the forms this palette appears in — including the ones it is *built*
+ * into, which are not the ones it is written in.
+ *
+ * The source says `oklch(0.48 0.2 292)`; the production stylesheet, after
+ * minification, says `oklch(48% .2 292)`. An earlier version of this rejected
+ * percentages on the grounds that "the stylesheet does not use them", which
+ * was true of the source and false of the thing that ships — so the theme
+ * editor found no colours at all in a built app. Caught by the e2e suite,
+ * which runs against the built image and not against the dev server.
+ *
+ * Anything still unreadable answers null, so a caller leaves the token alone
+ * rather than writing a guess into the page.
  */
 export function parseOklch(input: string): Oklch | null {
-  const m = /^\s*oklch\(\s*([\d.]+)\s+([\d.]+)\s+([\d.]+)\s*(?:\/\s*([\d.]+)\s*)?\)\s*$/i.exec(
-    input,
-  )
+  const m = new RegExp(
+    String.raw`^\s*oklch\(\s*(${NUMBER})\s+(${NUMBER})\s+(${NUMBER})(?:deg)?\s*(?:/\s*(${NUMBER})\s*)?\)\s*$`,
+    'i',
+  ).exec(input)
   if (!m) return null
-  const [l, c, h] = [Number(m[1]), Number(m[2]), Number(m[3])]
-  const alpha = m[4] === undefined ? undefined : Number(m[4])
+  const l = component(m[1]!, 1)
+  // 100% chroma is 0.4 per the CSS colour spec, not 1.
+  const c = component(m[2]!, 0.4)
+  const h = Number(m[3]!.endsWith('%') ? NaN : m[3])
+  const alpha = m[4] === undefined ? undefined : component(m[4], 1)
   if (![l, c, h].every(Number.isFinite)) return null
   if (alpha !== undefined && !Number.isFinite(alpha)) return null
   return { l, c, h, alpha }

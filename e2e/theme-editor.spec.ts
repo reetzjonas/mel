@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { parseOklch } from '../src/lib/oklch'
 
 /*
  * The editor reads the shipped palette back out of the stylesheet with
@@ -20,8 +21,16 @@ async function login(page: Page) {
 const token = (page: Page, name: string) =>
   page.evaluate((n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), name)
 
-/** The hue component of an `oklch(L C H)` value. */
-const hueOf = (value: string) => Number(/oklch\(\s*[\d.]+\s+[\d.]+\s+([\d.]+)/.exec(value)?.[1])
+/*
+ * Read through the app's own parser rather than a regex of this file's own.
+ *
+ * The first version had one, and it carried the same bug the parser did: both
+ * assumed `oklch(0.48 0.2 292)` and neither read the minifier's
+ * `oklch(48% .2 292)`. A test that reimplements the thing it is testing can
+ * only catch the mistakes its author did not make twice.
+ */
+const hueOf = (value: string) => parseOklch(value)?.h ?? NaN
+const lightnessOf = (value: string) => parseOklch(value)?.l ?? NaN
 
 test('a hue chosen in settings reaches the app, survives a reload, and resets', async ({
   page,
@@ -98,7 +107,7 @@ test('the tuning is re-derived for the other theme, not carried over', async ({ 
     const darkCanvas = await token(page, '--mel-canvas')
     // Dark really is dark: the lightness came from the dark palette.
     expect(darkCanvas).not.toBe(lightCanvas)
-    expect(Number(/oklch\(\s*([\d.]+)/.exec(darkCanvas)?.[1])).toBeLessThan(0.3)
+    expect(lightnessOf(darkCanvas)).toBeLessThan(0.3)
   }).toPass()
 
   // The chosen hue came along, even though the lightness did not.

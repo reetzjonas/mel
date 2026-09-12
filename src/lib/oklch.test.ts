@@ -31,15 +31,46 @@ describe('reading a colour out of the stylesheet', () => {
     expect(parseOklch('  oklch( 0.48  0.2  292 )  ')).toMatchObject({ l: 0.48 })
   })
 
+  it('reads the form the *built* stylesheet uses, not only the authored one', () => {
+    /*
+     * The one that got away. The source says `oklch(0.48 0.2 292)`, and this
+     * parser used to reject percentages with a comment claiming the stylesheet
+     * did not use them — true of the source, false of what ships: the minifier
+     * rewrites lightness as a percentage and drops leading zeros.
+     *
+     *   authored:  oklch(0.48 0.2 292)
+     *   built:     oklch(48% .2 292)
+     *
+     * So the theme editor found no colours at all in a production build, and
+     * the unit tests were green throughout. The e2e suite runs against the
+     * built image and caught it; these are the exact strings from dist/.
+     */
+    expect(parseOklch('oklch(48% .2 292)')).toMatchObject({ l: 0.48, c: 0.2, h: 292 })
+    expect(parseOklch('oklch(96.8% .004 300)')).toMatchObject({ l: 0.968, c: 0.004, h: 300 })
+    expect(parseOklch('oklch(24.5% .017 300/.18)')).toMatchObject({ l: 0.245, alpha: 0.18 })
+  })
+
+  it('scales a percentage by that component’s own range', () => {
+    // 100% is lightness 1 but chroma 0.4, per the CSS colour spec — treating
+    // them alike would make every tinted token wildly oversaturated.
+    expect(parseOklch('oklch(50% 50% 200)')).toMatchObject({ l: 0.5, c: 0.2 })
+    expect(parseOklch('oklch(0.5 0.2 200 / 50%)')).toMatchObject({ alpha: 0.5 })
+  })
+
   it('answers null for anything it cannot be sure of', () => {
     /*
-     * Percentages, `none`, colour functions and empty strings all reach here
-     * eventually — a custom property is whatever someone typed. Null lets the
-     * caller leave the token alone instead of writing a guess into the page.
+     * `none`, colour functions and empty strings all reach here eventually — a
+     * custom property is whatever someone typed. Null lets the caller leave
+     * the token alone instead of writing a guess into the page.
      */
-    for (const input of ['', 'red', '#ff0000', 'oklch(50% 0.2 292)', 'oklch(none 0.2 292)']) {
+    for (const input of ['', 'red', '#ff0000', 'oklch(none 0.2 292)', 'oklch(0.5 0.2)']) {
       expect(parseOklch(input), input).toBeNull()
     }
+  })
+
+  it('refuses a percentage where one makes no sense', () => {
+    // Hue is an angle; "50%" of a circle is not a thing CSS defines.
+    expect(parseOklch('oklch(0.5 0.2 50%)')).toBeNull()
   })
 
   it('round-trips through the formatter', () => {
