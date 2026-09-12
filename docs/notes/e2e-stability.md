@@ -113,3 +113,51 @@ not reproduce it. So the fix is reasoned from the mechanism, not demonstrated by
 red-then-green test. The e2e test remains the guard; if it flickers again, it is
 worth instrumenting *which* of the two updates committed first rather than
 widening a timeout.
+
+## The 429 that read as "server unreachable" (2026-09-12)
+
+CI went red on `mail-actions.spec.ts` → "hovering a row leaves the sender avatar
+alone", with the shell rendered, `alice@localhost` in the sidebar, no folder list,
+and **"Server unreachable — Network, TLS or CORS"** where the sync status goes.
+Re-running the same job on the same commit came back green, so it is intermittent
+— but this time the trace named the cause outright.
+
+The trace holds 112 responses with status 200 and **two with 429**, both on
+`GET /jmap/session`:
+
+```
+ratelimit: "requests";r=0;t=2
+ratelimit-policy: "requests";q=1000
+retry-after: 2
+```
+
+That is Stalwart's `x:Http.rateLimitAuthenticated`, which defaults to
+`{count: 1000, period: 60000}`. A full run — two workers, a fresh login and full
+sync per spec, plus the pollers and SSE reconnects — reaches a thousand requests a
+minute during a burst. Class 3 of the list above (server limits), the same shape as
+the SMTP throttle, in a limiter nobody had turned off. `seed.sh` now raises both
+HTTP limiters alongside the CORS settings.
+
+Three app bugs came out of reading it, and each is worse than the flake:
+
+1. **`fetchSession` had its own, shorter error taxonomy.** It mapped anything
+   non-OK that was not 401/403 to `protocol` — so a 429 was **permanent**, never
+   retried, and a 500 with it. It now goes through the transport's `toError`, the
+   same one every other response uses, so a rate limit is `ratelimit` carrying the
+   server's `Retry-After` and a server error is `server`. Both transient.
+2. **The sidebar called it unreachable.** `SyncStatus` rendered everything that was
+   not `auth` as "Server unreachable", which is the opposite of what happened: the
+   server answered every request and said when to come back. `ConnectionErrorKind`
+   has a `ratelimit` member now, with its own label and without the offline icon —
+   someone reading "unreachable" goes looking at DNS and certificates instead of at
+   their request rate.
+3. **Nothing honoured `Retry-After`.** The next attempt was whenever the poll came
+   round: thirty seconds after a server asked for two, which is long enough for the
+   list to look broken rather than busy. The scheduler now polls at the wait the
+   server named (floored at 1s, held until a tick succeeds, so a server that keeps
+   refusing keeps being obeyed).
+
+Worth stressing for the next one: the green re-run would have been enough to file
+this under "intermittent, moving on", and the trace was sitting in the CI artefacts
+either way. **Download it.** Two 429s among 112 responses is not something load
+produces.

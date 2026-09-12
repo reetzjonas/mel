@@ -71,9 +71,16 @@ if [ ! -f etc/config.json ]; then
 
   # usePermissiveCors only answers OPTIONS on some routes; actual responses
   # (and e.g. OPTIONS /jmap/session) need the static responseHeaders too.
-  echo "Enabling CORS + disabling spam filter (dev)..."
+  # rateLimitAuthenticated defaults to 1000 requests/minute, which a full e2e
+  # run exhausts: two workers, a fresh login and full sync per spec, plus the
+  # pollers. Symptom is a 429 on /jmap/session — the shell renders, the folder
+  # list never arrives, and the spec fails looking for a mail row. Raised for
+  # dev; it is a real limit and the app honours the Retry-After either way.
+  echo "Enabling CORS, lifting HTTP rate limits, disabling spam filter (dev)..."
   jmap "$ADMIN_AUTH" '[["x:Http/set",{"update":{"singleton":{
     "usePermissiveCors":true,
+    "rateLimitAuthenticated":{"count":1000000,"period":60000},
+    "rateLimitAnonymous":{"count":1000000,"period":60000},
     "responseHeaders":{
       "Access-Control-Allow-Origin":"*",
       "Access-Control-Allow-Methods":"POST, GET, PATCH, PUT, DELETE, HEAD, OPTIONS",

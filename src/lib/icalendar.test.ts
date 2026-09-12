@@ -228,4 +228,88 @@ describe('parseIcs', () => {
     expect(parseIcs(ics('BEGIN:VTODO', 'DTSTART:20260812T120000Z', 'END:VTODO'))).toBeNull()
     expect(parseIcs(ics('BEGIN:VEVENT', 'SUMMARY:No when', 'END:VEVENT'))).toBeNull()
   })
+
+  it('falls back to an hour when the end is before the start', () => {
+    /*
+     * A negative duration is not storable and would render as an event that
+     * ends before it begins. Senders do produce these — a timezone applied to
+     * one end and not the other is enough.
+     */
+    const parsed = parseIcs(
+      ics(
+        'BEGIN:VEVENT',
+        'UID:backwards',
+        'DTSTART:20260812T150000Z',
+        'DTEND:20260812T140000Z',
+        'END:VEVENT',
+      ),
+    )
+
+    expect(parsed?.event.duration).toBe('PT1H')
+  })
+
+  it('measures a zoned event across a DST switch as the time it really takes', () => {
+    /*
+     * 01:30 to 04:30 on the night the clocks go forward in Berlin is two
+     * hours of real time, not the three the wall clock shows. The expected
+     * value is deliberately neither: PT3H would mean wall clock, PT1H the
+     * fallback used when the measurement throws.
+     */
+    const parsed = parseIcs(
+      ics(
+        'BEGIN:VEVENT',
+        'UID:dst',
+        'DTSTART;TZID=Europe/Berlin:20260329T013000',
+        'DTEND;TZID=Europe/Berlin:20260329T043000',
+        'END:VEVENT',
+      ),
+    )
+
+    expect(parsed?.event.duration).toBe('PT2H')
+  })
+
+  it('ignores a duration that is zero or backwards', () => {
+    for (const value of ['PT0S', '-PT1H', 'nonsense']) {
+      const parsed = parseIcs(
+        ics('BEGIN:VEVENT', 'UID:d', 'DTSTART:20260812T140000Z', `DURATION:${value}`, 'END:VEVENT'),
+      )
+      expect(parsed?.event.duration, value).toBe('PT1H')
+    }
+  })
+
+  it('skips an attendee line that carries no address', () => {
+    // Some senders write a directory entry or a bare name there; adding it as
+    // a participant would put a row in the invitation nobody can reply as.
+    const parsed = parseIcs(
+      ics(
+        'BEGIN:VEVENT',
+        'UID:u',
+        'DTSTART:20260812T140000Z',
+        'ATTENDEE;CN=Room 2:Conference Room 2',
+        'ATTENDEE;CN=Bob:mailto:bob@example.com',
+        'END:VEVENT',
+      ),
+    )
+
+    expect(parsed?.attendees).toEqual([{ name: 'Bob', email: 'bob@example.com' }])
+  })
+
+  it('takes an address written without the mailto scheme', () => {
+    const parsed = parseIcs(
+      ics(
+        'BEGIN:VEVENT',
+        'UID:u',
+        'DTSTART:20260812T140000Z',
+        'ORGANIZER:alice@example.com',
+        'END:VEVENT',
+      ),
+    )
+
+    expect(parsed?.organizer).toEqual({ name: '', email: 'alice@example.com' })
+  })
+
+  it('ignores a start it cannot read at all', () => {
+    // A malformed DTSTART is the one field there is no sensible default for.
+    expect(parseIcs(ics('BEGIN:VEVENT', 'UID:u', 'DTSTART:not-a-date', 'END:VEVENT'))).toBeNull()
+  })
 })
