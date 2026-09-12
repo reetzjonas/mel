@@ -3,6 +3,7 @@
 # and getting the caching right, because a stale service worker pins users to
 # an old build far more stubbornly than a stale asset does.
 
+# Keep in step with .nvmrc, which CI and local development read.
 FROM node:22-alpine AS build
 WORKDIR /app
 
