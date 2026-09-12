@@ -50,16 +50,16 @@ export default defineConfig({
         // The whole tree, UI included. A floor against a collapse, no more:
         // most of what it measures is components the e2e suite covers and
         // this metric cannot see.
-        statements: 32,
-        branches: 29,
-        functions: 24,
-        lines: 32,
+        statements: 33,
+        branches: 30,
+        functions: 25,
+        lines: 33,
         'src/domain/**': { statements: 95, branches: 88, functions: 95, lines: 95 },
         'src/lib/**': { statements: 86, branches: 77, functions: 86, lines: 88 },
         'src/storage/**': { statements: 85, branches: 78, functions: 80, lines: 86 },
-        'src/providers/**': { statements: 52, branches: 52, functions: 50, lines: 51 },
+        'src/providers/**': { statements: 58, branches: 58, functions: 55, lines: 56 },
         'src/sync/**': { statements: 56, branches: 45, functions: 53, lines: 60 },
-        'src/services/**': { statements: 26, branches: 25, functions: 27, lines: 27 },
+        'src/services/**': { statements: 29, branches: 30, functions: 29, lines: 30 },
       },
     },
   },

@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { CoreCapability } from './client/types/core'
 import type { Transport } from './client/transport'
-import { createJmapMail } from './mail'
+import { parseSearch } from '../../lib/searchParser'
+import { createJmapMail, jmapSearchFilter } from './mail'
 
 const limits = {
   maxSizeUpload: 1,
@@ -238,5 +239,74 @@ describe('setEmails when the server is stingy about its limits', () => {
     // Silence here used to read as success, so the outbox dropped the action.
     expect(outcome.updated).toEqual([])
     expect(outcome.failed['mail-1']).toMatchObject({ permanent: false })
+  })
+})
+
+/*
+ * What someone types in the search box, as the server will read it. Tested
+ * through parseSearch rather than hand-built query objects: the pair is what
+ * ships, and a mistranslation here returns the wrong mail without any sign
+ * that a translation happened at all.
+ */
+describe('jmapSearchFilter', () => {
+  const filterFor = (input: string, mailboxId?: string) =>
+    jmapSearchFilter(parseSearch(input)!, mailboxId)
+
+  it('passes a bare term through as a full-text condition', () => {
+    expect(filterFor('rechnung')).toEqual({ text: 'rechnung' })
+  })
+
+  it('does not wrap a single condition in an AND it does not need', () => {
+    // Servers are entitled to their own query planning; handing them a
+    // one-element conjunction is noise they then have to see through.
+    expect(filterFor('from:ada@example.test')).toEqual({ from: 'ada@example.test' })
+  })
+
+  it('combines several terms into one conjunction', () => {
+    expect(filterFor('from:ada subject:rechnung')).toEqual({
+      operator: 'AND',
+      conditions: [{ from: 'ada' }, { subject: 'rechnung' }],
+    })
+  })
+
+  it('turns is:unread and is:read into opposite keyword tests', () => {
+    // The inversion is the whole meaning of the word and nothing downstream
+    // would notice it flipping: both spellings return mail either way.
+    expect(filterFor('is:unread')).toEqual({ notKeyword: '$seen' })
+    expect(filterFor('is:read')).toEqual({ hasKeyword: '$seen' })
+  })
+
+  it('maps the other flags people search by', () => {
+    expect(filterFor('is:flagged')).toEqual({ hasKeyword: '$flagged' })
+    expect(filterFor('has:attachment')).toEqual({ hasAttachment: true })
+  })
+
+  it('gives a bare date the time of day JMAP expects', () => {
+    // `before:2026-09-01` is a date; the filter takes an instant, and without
+    // one the server has to guess which.
+    expect(filterFor('before:2026-09-01')).toEqual({ before: '2026-09-01T00:00:00Z' })
+    expect(filterFor('after:2026-01-31')).toEqual({ after: '2026-01-31T00:00:00Z' })
+  })
+
+  it('keeps the shape of an OR, nesting and all', () => {
+    expect(filterFor('urgent from:a OR from:b')).toEqual({
+      operator: 'AND',
+      conditions: [
+        { text: 'urgent' },
+        { operator: 'OR', conditions: [{ from: 'a' }, { from: 'b' }] },
+      ],
+    })
+  })
+
+  it('scopes the whole query to a folder when one is being listed', () => {
+    // The folder is not part of what was typed, so it is added around the
+    // query rather than into it — an OR inside must not escape the folder.
+    expect(filterFor('from:a OR from:b', 'mb-1')).toEqual({
+      operator: 'AND',
+      conditions: [
+        { inMailbox: 'mb-1' },
+        { operator: 'OR', conditions: [{ from: 'a' }, { from: 'b' }] },
+      ],
+    })
   })
 })
