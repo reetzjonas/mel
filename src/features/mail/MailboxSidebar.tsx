@@ -17,7 +17,13 @@ import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
 import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
-import { dragKind, readMailDrag, setFolderDrag } from './dragAndDrop'
+import {
+  dragKind,
+  draggableTouchClass,
+  readMailDrag,
+  setFolderDrag,
+  suppressContextMenu,
+} from './dragAndDrop'
 import { mailboxTree, moveTargets } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
 
@@ -293,14 +299,21 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
             e.dataTransfer.dropEffect = 'move'
             setDropTarget(TOP_DROP)
           }}
-          onDragLeave={() => setDropTarget((id) => (id === TOP_DROP ? null : id))}
+          // dragleave bubbles like dragenter, so moving onto a child (the
+          // label, the icon buttons) fires it too — relatedTarget says
+          // whether the pointer actually left the row or just crossed a
+          // child inside it, so the highlight does not flicker off mid-hover.
+          onDragLeave={(e) => {
+            if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+            setDropTarget((id) => (id === TOP_DROP ? null : id))
+          }}
           onDrop={(e) => {
             e.preventDefault()
             const folder = dragging
             endDrag()
             if (folder) void moveMailbox(accountId, folder.id, null).then(report)
           }}
-          className={`mb-1.5 flex items-center justify-between rounded-control pr-1 pl-2.5 ${
+          className={`mb-1.5 flex min-h-[34px] items-center justify-between rounded-control pr-1 pl-2.5 ${
             dropTarget === TOP_DROP ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
           }`}
         >
@@ -337,51 +350,61 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           </span>
         </div>
         <div className="space-y-px">
-          {mailboxTree(mailboxes).map(({ mailbox: m, depth }) => (
-            <Link
-              key={m.id}
-              to="/mail/$mailboxId"
-              params={{ mailboxId: m.id }}
-              // Only what the menu would also offer to move. Setting it false
-              // elsewhere also stops the browser dragging the link's URL,
-              // which is never what someone reaching for a folder meant.
-              draggable={m.role === null && m.mayRename}
-              onDragStart={(e) => {
-                setFolderDrag(e, m.id)
-                setDragging(m)
-              }}
-              onDragEnd={endDrag}
-              onDragOver={(e) => {
-                if (!takes(e, m)) return
-                e.preventDefault()
-                e.dataTransfer.dropEffect = 'move'
-                setDropTarget(m.id)
-              }}
-              onDragLeave={() => setDropTarget((id) => (id === m.id ? null : id))}
-              onDrop={(e) => onDropOn(e, m)}
-              /*
-               * Spelled out rather than computed from the contents: the row
-               * holds an action button, and a labelled button folds its own
-               * name into the link's. The link would then be called something
-               * different while the pointer is over it, since that button only
-               * appears on hover.
-               */
-              aria-label={m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name}
-              className={`group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent ${
-                dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
-              }`}
-              style={depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined}
-            >
-              <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
-              <span className="min-w-0 flex-1 truncate">{m.name}</span>
-              {m.unreadEmails > 0 && (
-                <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted">
-                  {m.unreadEmails}
-                </span>
-              )}
-              <FolderMenu mailbox={m} onAction={(a) => void onMenuAction(m, a)} />
-            </Link>
-          ))}
+          {mailboxTree(mailboxes).map(({ mailbox: m, depth }) => {
+            // Only what the menu would also offer to move. Setting it false
+            // elsewhere also stops the browser dragging the link's URL,
+            // which is never what someone reaching for a folder meant.
+            const canDrag = m.role === null && m.mayRename
+            return (
+              <Link
+                key={m.id}
+                to="/mail/$mailboxId"
+                params={{ mailboxId: m.id }}
+                draggable={canDrag}
+                // A long press to start the drag on touch is also the gesture
+                // for the browser's own context menu, so a draggable folder
+                // needs it suppressed or the two show up on top of each other.
+                onContextMenu={canDrag ? suppressContextMenu : undefined}
+                onDragStart={(e) => {
+                  setFolderDrag(e, m.id, m.name)
+                  setDragging(m)
+                }}
+                onDragEnd={endDrag}
+                onDragOver={(e) => {
+                  if (!takes(e, m)) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  setDropTarget(m.id)
+                }}
+                onDragLeave={(e) => {
+                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                  setDropTarget((id) => (id === m.id ? null : id))
+                }}
+                onDrop={(e) => onDropOn(e, m)}
+                /*
+                 * Spelled out rather than computed from the contents: the row
+                 * holds an action button, and a labelled button folds its own
+                 * name into the link's. The link would then be called something
+                 * different while the pointer is over it, since that button only
+                 * appears on hover.
+                 */
+                aria-label={m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name}
+                className={`group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent ${
+                  dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
+                } ${canDrag ? draggableTouchClass : ''}`}
+                style={depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined}
+              >
+                <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
+                <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                {m.unreadEmails > 0 && (
+                  <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted">
+                    {m.unreadEmails}
+                  </span>
+                )}
+                <FolderMenu mailbox={m} onAction={(a) => void onMenuAction(m, a)} />
+              </Link>
+            )
+          })}
         </div>
       </div>
 

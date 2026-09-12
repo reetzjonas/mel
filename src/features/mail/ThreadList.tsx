@@ -11,7 +11,7 @@ import { cleanPreview } from '../../lib/preview'
 import { useMailboxes } from './hooks'
 import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
-import { setMailDrag } from './dragAndDrop'
+import { draggableTouchClass, setMailDrag, suppressContextMenu } from './dragAndDrop'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
@@ -205,10 +205,19 @@ function Row({
        * of it — the same scope its archive and delete already use.
        */
       draggable
-      onDragStart={(e) => setMailDrag(e, { mailboxId, ids: checked ? selection : ids })}
+      onDragStart={(e) =>
+        setMailDrag(
+          e,
+          { mailboxId, ids: checked ? selection : ids },
+          checked && selection.length > 1
+            ? `${selection.length} ${t('bulk.selected')}`
+            : email.subject || t('mail.noSubject'),
+        )
+      }
+      onContextMenu={suppressContextMenu}
       {...handlers}
       style={dx ? { transform: `translateX(${dx}px)` } : undefined}
-      className="group relative mb-1 flex w-full cursor-pointer gap-3 rounded-control px-3 py-3.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash"
+      className={`group relative mb-1 flex w-full cursor-pointer gap-3 rounded-control px-3 py-3.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash ${draggableTouchClass}`}
     >
       {/* The avatar doubles as the selection checkbox, but only reacts to the
           pointer being on the avatar itself — hovering anywhere in the row used
