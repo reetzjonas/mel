@@ -1,13 +1,9 @@
 import type { AddressBook, Contact } from '../../domain/contact'
-import {
-  CannotCalculateChanges,
-  type ContactsProvider,
-  type SetFailure,
-  type SyncPage,
-} from '../types'
+import { type ContactsProvider, type SetFailure } from '../types'
 import { Batch } from './client/request'
 import type { Transport } from './client/transport'
-import { Cap, type ChangesResponse, type GetResponse, type SetError, type SetResponse } from './client/types/core'
+import { Cap, type SetError, type SetResponse } from './client/types/core'
+import { syncCollection } from './collectionSync'
 import {
   fromContact,
   toAddressBook,
@@ -17,7 +13,6 @@ import {
 } from './mappers/contacts'
 
 const USING = [Cap.core, Cap.contacts]
-const MAX_CHANGES = 256
 
 const PERMANENT = new Set(['invalidProperties', 'invalidPatch', 'notFound', 'forbidden', 'overQuota'])
 
@@ -32,50 +27,20 @@ function toFailure(e: SetError | undefined): SetFailure {
 export function createJmapContacts(transport: Transport, accountId: string): ContactsProvider {
   const batch = () => new Batch(transport, USING)
 
-  async function sync<TJmap, TOut>(
-    type: 'AddressBook' | 'ContactCard',
-    sinceState: string | undefined,
-    map: (v: TJmap) => TOut,
-  ): Promise<SyncPage<TOut>> {
-    if (!sinceState) {
-      const b = batch()
-      const g = b.call<GetResponse<TJmap>>(`${type}/get`, { accountId, ids: null })
-      await b.send()
-      const r = g.result
-      return { created: r.list.map(map), updated: [], destroyedIds: [], newState: r.state, hasMore: false }
-    }
-    const b = batch()
-    const ch = b.call<ChangesResponse>(`${type}/changes`, {
-      accountId,
-      sinceState,
-      maxChanges: MAX_CHANGES,
-    })
-    const created = b.call<GetResponse<TJmap>>(`${type}/get`, {
-      accountId,
-      '#ids': ch.ref('/created'),
-    })
-    const updated = b.call<GetResponse<TJmap>>(`${type}/get`, {
-      accountId,
-      '#ids': ch.ref('/updated'),
-    })
-    await b.send()
-    if (ch.error?.type === 'cannotCalculateChanges') throw new CannotCalculateChanges()
-    const changes = ch.result
-    return {
-      created: created.result.list.map(map),
-      updated: updated.result.list.map(map),
-      destroyedIds: changes.destroyed,
-      newState: changes.newState,
-      hasMore: changes.hasMoreChanges,
-    }
-  }
-
   return {
     syncAddressBooks(sinceState) {
-      return sync<JmapAddressBook, AddressBook>('AddressBook', sinceState, toAddressBook)
+      return syncCollection<JmapAddressBook, AddressBook>(
+        batch,
+        { type: 'AddressBook', accountId, map: toAddressBook },
+        sinceState,
+      )
     },
     syncContacts(sinceState) {
-      return sync<JmapContactCard, Contact>('ContactCard', sinceState, toContact)
+      return syncCollection<JmapContactCard, Contact>(
+        batch,
+        { type: 'ContactCard', accountId, map: toContact },
+        sinceState,
+      )
     },
 
     async createContact(contact: Contact): Promise<{ id: string | null; failure: SetFailure | null }> {

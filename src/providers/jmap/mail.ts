@@ -2,18 +2,11 @@ import { Keyword, type EmailHeader } from '../../domain/email'
 import type { Identity } from '../../domain/identity'
 import type { Mailbox } from '../../domain/mailbox'
 import { isGroup, type SearchQuery } from '../../domain/search'
-import {
-  CannotCalculateChanges,
-  type MailProvider,
-  type SetFailure,
-  type SetOutcome,
-  type SyncPage,
-} from '../types'
+import { type MailProvider, type SetFailure, type SetOutcome } from '../types'
 import { Batch, chunkIds } from './client/request'
 import type { Transport } from './client/transport'
 import {
   Cap,
-  type ChangesResponse,
   type CoreCapability,
   type GetResponse,
   type QueryResponse,
@@ -29,10 +22,10 @@ import {
   type JmapMailbox,
 } from './client/types/mail'
 import { toEmailBody, toEmailHeader, toMailbox } from './mappers/mail'
+import { fetchChanges, syncCollection } from './collectionSync'
 
 const USING = [Cap.core, Cap.mail]
 const USING_SUBMIT = [Cap.core, Cap.mail, Cap.submission]
-const MAX_CHANGES = 256
 /** Page size when walking a whole mailbox for a bulk selection. */
 const BULK_QUERY_PAGE = 1000
 
@@ -111,65 +104,32 @@ export function createJmapMail(
 ): MailProvider {
   const batch = () => new Batch(transport, USING)
 
-  async function changesWithGet<TJmap, TOut>(
-    type: 'Mailbox' | 'Email',
-    sinceState: string,
-    // undefined → all properties; an empty array would mean "only id"!
-    properties: readonly string[] | undefined,
-    map: (v: TJmap) => TOut,
-  ): Promise<SyncPage<TOut>> {
-    const b = batch()
-    const ch = b.call<ChangesResponse>(`${type}/changes`, {
-      accountId,
-      sinceState,
-      maxChanges: MAX_CHANGES,
-    })
-    const created = b.call<GetResponse<TJmap>>(`${type}/get`, {
-      accountId,
-      '#ids': ch.ref('/created'),
-      properties,
-    })
-    const updated = b.call<GetResponse<TJmap>>(`${type}/get`, {
-      accountId,
-      '#ids': ch.ref('/updated'),
-      properties,
-    })
-    await b.send()
-    if (ch.error?.type === 'cannotCalculateChanges') throw new CannotCalculateChanges()
-    const changes = ch.result
-    return {
-      created: created.result.list.map(map),
-      updated: updated.result.list.map(map),
-      destroyedIds: changes.destroyed,
-      newState: changes.newState,
-      hasMore: changes.hasMoreChanges,
-    }
-  }
-
   return {
-    async syncMailboxes(sinceState) {
-      if (!sinceState) {
-        const b = batch()
-        const get = b.call<GetResponse<JmapMailbox>>('Mailbox/get', { accountId, ids: null })
-        await b.send()
-        const r = get.result
-        return {
-          created: r.list.map(toMailbox),
-          updated: [],
-          destroyedIds: [],
-          newState: r.state,
-          hasMore: false,
-        }
-      }
-      return changesWithGet<JmapMailbox, Mailbox>('Mailbox', sinceState, undefined, toMailbox)
+    syncMailboxes(sinceState) {
+      return syncCollection<JmapMailbox, Mailbox>(
+        batch,
+        { type: 'Mailbox', accountId, map: toMailbox },
+        sinceState,
+      )
     },
 
-    async syncEmailHeaders(sinceState) {
-      return changesWithGet<JmapEmail, EmailHeader>(
-        'Email',
+    /*
+     * Deltas only — never a full fetch. A mailbox holding tens of thousands of
+     * messages cannot be asked for in one `Email/get`, so the engine falls back
+     * to listAllEmailHeaders() instead, which pages.
+     */
+    syncEmailHeaders(sinceState) {
+      return fetchChanges<JmapEmail, EmailHeader>(
+        batch,
+        {
+          type: 'Email',
+          accountId,
+          // Headers only: letting these default to everything would pull every
+          // body along with a delta of thousands of messages.
+          properties: EMAIL_HEADER_PROPS,
+          map: toEmailHeader,
+        },
         sinceState,
-        EMAIL_HEADER_PROPS,
-        toEmailHeader,
       )
     },
 

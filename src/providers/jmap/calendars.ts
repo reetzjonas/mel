@@ -5,18 +5,13 @@ import type {
   ParticipationStatus,
   RecurrenceRule,
 } from '../../domain/calendar'
-import {
-  CannotCalculateChanges,
-  type CalendarProvider,
-  type SetFailure,
-  type SyncPage,
-} from '../types'
+import { type CalendarProvider, type SetFailure } from '../types'
 import { Batch } from './client/request'
 import type { Transport } from './client/transport'
-import { Cap, type ChangesResponse, type GetResponse, type SetError, type SetResponse } from './client/types/core'
+import { Cap, type SetError, type SetResponse } from './client/types/core'
+import { syncCollection } from './collectionSync'
 
 const USING = [Cap.core, Cap.calendars]
-const MAX_CHANGES = 256
 
 const PERMANENT = new Set(['invalidProperties', 'invalidPatch', 'notFound', 'forbidden', 'overQuota'])
 
@@ -212,40 +207,20 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
 export function createJmapCalendars(transport: Transport, accountId: string): CalendarProvider {
   const batch = () => new Batch(transport, USING)
 
-  async function sync<TJmap, TOut>(
-    type: 'Calendar' | 'CalendarEvent',
-    sinceState: string | undefined,
-    map: (v: TJmap) => TOut,
-  ): Promise<SyncPage<TOut>> {
-    if (!sinceState) {
-      const b = batch()
-      const g = b.call<GetResponse<TJmap>>(`${type}/get`, { accountId, ids: null })
-      await b.send()
-      const r = g.result
-      return { created: r.list.map(map), updated: [], destroyedIds: [], newState: r.state, hasMore: false }
-    }
-    const b = batch()
-    const ch = b.call<ChangesResponse>(`${type}/changes`, { accountId, sinceState, maxChanges: MAX_CHANGES })
-    const created = b.call<GetResponse<TJmap>>(`${type}/get`, { accountId, '#ids': ch.ref('/created') })
-    const updated = b.call<GetResponse<TJmap>>(`${type}/get`, { accountId, '#ids': ch.ref('/updated') })
-    await b.send()
-    if (ch.error?.type === 'cannotCalculateChanges') throw new CannotCalculateChanges()
-    const changes = ch.result
-    return {
-      created: created.result.list.map(map),
-      updated: updated.result.list.map(map),
-      destroyedIds: changes.destroyed,
-      newState: changes.newState,
-      hasMore: changes.hasMoreChanges,
-    }
-  }
-
   return {
     syncCalendars(sinceState) {
-      return sync<JmapCalendar, Calendar>('Calendar', sinceState, toCalendar)
+      return syncCollection<JmapCalendar, Calendar>(
+        batch,
+        { type: 'Calendar', accountId, map: toCalendar },
+        sinceState,
+      )
     },
     syncEvents(sinceState) {
-      return sync<JmapCalendarEvent, CalendarEvent>('CalendarEvent', sinceState, toEvent)
+      return syncCollection<JmapCalendarEvent, CalendarEvent>(
+        batch,
+        { type: 'CalendarEvent', accountId, map: toEvent },
+        sinceState,
+      )
     },
 
     async createEvent(event) {
