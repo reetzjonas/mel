@@ -3,7 +3,16 @@ import type { EmailHeader } from '../domain/email'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { mailboxDateRange } from '../storage/emailRow'
-import { bulkDelete, bulkMove, bulkSetKeyword } from './mailActions'
+import {
+  archiveEmail,
+  bulkDelete,
+  bulkMove,
+  bulkSetKeyword,
+  deleteEmail,
+  markNotSpam,
+  moveEmail,
+  setKeyword,
+} from './mailActions'
 
 const enqueued: Array<Record<string, unknown>> = []
 vi.mock('../sync/outbox', () => ({
@@ -13,15 +22,27 @@ vi.mock('../sync/outbox', () => ({
   },
 }))
 
+/** What the server says when asked to create the Archive mailbox. */
+let created: { id: string } | null = { id: 'mb-archive' }
+const editMailbox = vi.fn(() => Promise.resolve(created))
+vi.mock('../sync/connections', () => ({
+  connectionFor: () => Promise.resolve({ mail: { editMailbox: () => editMailbox() } }),
+}))
+/** Standing in for the resync, which may make an Archive mailbox appear. */
+let onSync: () => Promise<void> = () => Promise.resolve()
+const syncAccount = vi.fn(() => onSync())
+vi.mock('../sync/engine', () => ({ syncAccount: () => syncAccount() }))
+
 const ACC = 'acc'
 const INBOX = 'mb-inbox'
 const TRASH = 'mb-trash'
+const ARCHIVE = 'mb-archive'
 
-const header = (id: string, mailboxId: string): EmailHeader =>
+const header = (id: string, mailboxIds: string[]): EmailHeader =>
   ({
     id,
     threadId: `t-${id}`,
-    mailboxIds: { [mailboxId]: true },
+    mailboxIds: Object.fromEntries(mailboxIds.map((m) => [m, true])),
     keywords: {},
     from: [],
     to: [],
@@ -33,33 +54,36 @@ const header = (id: string, mailboxId: string): EmailHeader =>
     size: 0,
   }) as unknown as EmailHeader
 
-async function seed(ids: Array<[string, string]>) {
+async function putMailbox(id: string, role: string) {
+  await db.mailboxes.put({
+    accountId: ACC,
+    id,
+    role: role as never,
+    parentId: null,
+    sortOrder: 0,
+    payload: sealPlain({ id, name: role, role, parentId: null } as never),
+  })
+}
+
+/** Each message given the folder, or folders, it sits in. */
+async function seed(ids: Array<[string, string | string[]]>) {
   await db.emails.clear()
   await db.mailboxes.clear()
-  for (const [id, role] of [
-    [INBOX, 'inbox'],
-    [TRASH, 'trash'],
-  ] as const) {
-    await db.mailboxes.put({
-      accountId: ACC,
-      id,
-      role,
-      parentId: null,
-      sortOrder: 0,
-      payload: sealPlain({ id, name: role, role, parentId: null } as never),
-    })
-  }
-  for (const [id, mailboxId] of ids) {
+  await db.bodyCache.clear()
+  await putMailbox(INBOX, 'inbox')
+  await putMailbox(TRASH, 'trash')
+  for (const [id, where] of ids) {
+    const mailboxIds = typeof where === 'string' ? [where] : where
     await db.emails.put({
       accountId: ACC,
       id,
       threadId: `t-${id}`,
       receivedAt: 0,
-      mailboxIds: [mailboxId],
+      mailboxIds,
       mailboxDates: [],
       unread: 1,
       flagged: 0,
-      payload: sealPlain(header(id, mailboxId)),
+      payload: sealPlain(header(id, mailboxIds)),
     })
   }
 }
@@ -141,6 +165,143 @@ describe('bulk actions', () => {
     await bulkSetKeyword(ACC, [], '$seen', true)
     expect(await bulkDelete(ACC, [])).toBeNull()
     expect(enqueued).toHaveLength(0)
+  })
+})
+
+describe('acting on a single message', () => {
+  beforeEach(() => {
+    enqueued.length = 0
+  })
+
+  it('writes the keyword locally and queues the same patch', async () => {
+    await seed([['m1', INBOX]])
+
+    await setKeyword(ACC, 'm1', '$seen', true)
+
+    expect((await db.emails.get([ACC, 'm1']))!.unread).toBe(0)
+    expect(enqueued).toEqual([
+      { kind: 'email.update', updates: { m1: { 'keywords/$seen': true } } },
+    ])
+  })
+
+  it('replaces every folder the message was in, and puts them all back on undo', async () => {
+    /*
+     * A JMAP message can sit in several mailboxes at once, and a move replaces
+     * the whole set. An undo that restored only the folder it was moved from
+     * would quietly drop the others.
+     */
+    await seed([['m1', [INBOX, 'mb-label']]])
+
+    const undo = await moveEmail(ACC, 'm1', TRASH)
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds).toEqual([TRASH])
+
+    await undo()
+
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds.sort()).toEqual([INBOX, 'mb-label'])
+    expect(enqueued.at(-1)).toEqual({
+      kind: 'email.update',
+      updates: { m1: { mailboxIds: { [INBOX]: true, 'mb-label': true } } },
+    })
+  })
+
+  it('moves a message to trash, and destroys it when it is already there', async () => {
+    await seed([
+      ['keep', INBOX],
+      ['gone', TRASH],
+    ])
+    await db.bodyCache.put({
+      accountId: ACC,
+      emailId: 'gone',
+      lastAccess: 0,
+      payload: sealPlain({} as never),
+    })
+
+    expect(await deleteEmail(ACC, 'keep')).toBeInstanceOf(Function)
+    expect((await db.emails.get([ACC, 'keep']))!.mailboxIds).toEqual([TRASH])
+
+    // The second press is the permanent one, so there is nothing left to undo.
+    expect(await deleteEmail(ACC, 'gone')).toBeNull()
+    expect(await db.emails.get([ACC, 'gone'])).toBeUndefined()
+    // The cached body goes with it, or a deleted message keeps its text on disk.
+    expect(await db.bodyCache.get([ACC, 'gone'])).toBeUndefined()
+    expect(enqueued.at(-1)).toEqual({ kind: 'email.destroy', ids: ['gone'] })
+  })
+
+  it('destroys outright when the account has no trash at all', async () => {
+    await seed([['m1', INBOX]])
+    await db.mailboxes.delete([ACC, TRASH])
+
+    expect(await deleteEmail(ACC, 'm1')).toBeNull()
+    expect(enqueued.at(-1)).toEqual({ kind: 'email.destroy', ids: ['m1'] })
+  })
+
+  it('moves a message out of junk back to the inbox', async () => {
+    await seed([['m1', 'mb-junk']])
+
+    await markNotSpam(ACC, 'm1')
+
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds).toEqual([INBOX])
+  })
+
+  it('does nothing rather than guess when there is no inbox to return to', async () => {
+    await seed([['m1', 'mb-junk']])
+    await db.mailboxes.delete([ACC, INBOX])
+
+    expect(await markNotSpam(ACC, 'm1')).toBeNull()
+    expect(enqueued).toEqual([])
+  })
+})
+
+describe('archiving when the server has no Archive mailbox', () => {
+  beforeEach(async () => {
+    enqueued.length = 0
+    editMailbox.mockClear()
+    syncAccount.mockClear()
+    created = { id: ARCHIVE }
+    onSync = () => Promise.resolve()
+    await seed([['m1', INBOX]])
+  })
+
+  it('creates one and uses the id it got straight back', async () => {
+    /*
+     * Stalwart provisions no Archive mailbox, so the first archive has to make
+     * one. Waiting for a full account sync to find its id afterwards is by far
+     * the slowest thing in this path, and the move needs nothing else from it.
+     */
+    await archiveEmail(ACC, 'm1')
+
+    expect(editMailbox).toHaveBeenCalledOnce()
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds).toEqual([ARCHIVE])
+  })
+
+  it('reuses the existing one instead of making a second', async () => {
+    await putMailbox(ARCHIVE, 'archive')
+
+    await archiveEmail(ACC, 'm1')
+
+    expect(editMailbox).not.toHaveBeenCalled()
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds).toEqual([ARCHIVE])
+  })
+
+  it('looks again after a resync when the create came back empty', async () => {
+    // Another client may have created the mailbox a moment earlier, in which
+    // case the server refuses ours and the sync is what finds theirs.
+    created = null
+    onSync = () => putMailbox('mb-theirs', 'archive')
+
+    await archiveEmail(ACC, 'm1')
+
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds).toEqual(['mb-theirs'])
+  })
+
+  it('reports failure rather than moving the message somewhere else', async () => {
+    // The caller shows "archived" on a non-null answer; silently leaving the
+    // message where it is while saying otherwise is the worse outcome.
+    created = null
+
+    expect(await archiveEmail(ACC, 'm1')).toBeNull()
+    expect((await db.emails.get([ACC, 'm1']))!.mailboxIds).toEqual([INBOX])
+    expect(enqueued).toEqual([])
   })
 })
 
