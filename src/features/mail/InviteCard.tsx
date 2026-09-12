@@ -73,23 +73,34 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
  * retyped by hand.
  */
 export function InviteCard({ accountId, part }: { accountId: string; part: EmailBodyPart }) {
-  const [invite, setInvite] = useState<IcsInvitation | null | 'loading'>('loading')
+  /*
+   * Tagged with the attachment it came from, so switching messages needs no
+   * reset: the derivation answers 'loading' until this invitation's own text
+   * has been read. Clearing it in an effect spent a render offering the
+   * previous message's invitation under this one.
+   */
+  const [fetched, setFetched] = useState<{
+    blobId: string
+    invite: IcsInvitation | null
+  } | null>(null)
   const [calendarId, setCalendarId] = useState('')
   const [busy, setBusy] = useState(false)
-  const [added, setAdded] = useState(false)
+  const [addedFor, setAddedFor] = useState<string | null>(null)
   const calendars = useCalendars(accountId)
   const events = useEvents(accountId)
   const { showSnackbar } = useUi()
   const blobId = part.blobId
+  const invite: IcsInvitation | null | 'loading' =
+    fetched && fetched.blobId === blobId ? fetched.invite : 'loading'
+  /** Added *this* invitation, not merely some invitation earlier. */
+  const added = addedFor === blobId
 
   useEffect(() => {
     if (!blobId) return
     let alive = true
-    setInvite('loading')
-    setAdded(false)
     getAttachmentText(accountId, blobId, part.type, part.name ?? 'invite.ics')
-      .then((text) => alive && setInvite(text ? parseIcs(text) : null))
-      .catch(() => alive && setInvite(null))
+      .then((text) => alive && setFetched({ blobId, invite: text ? parseIcs(text) : null }))
+      .catch(() => alive && setFetched({ blobId, invite: null }))
     return () => {
       alive = false
     }
@@ -123,7 +134,7 @@ export function InviteCard({ accountId, part }: { accountId: string; part: Email
     setBusy(true)
     try {
       await createEvent(accountId, { ...invite.event, calendarIds: { [selected]: true } })
-      setAdded(true)
+      setAddedFor(blobId)
       showSnackbar({ message: t('mail.invite.added') })
     } catch {
       showSnackbar({ message: t('mail.invite.failed') })

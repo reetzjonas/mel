@@ -109,6 +109,11 @@ export function Tooltip({ label, children }: { label: string; children: ReactEle
 
   return (
     <>
+      {/*
+        A ref callback, which React runs at commit time and not during render —
+        the rule cannot tell the two apart, so this one is a false positive.
+      */}
+      {/* oxlint-disable-next-line refs */}
       {cloneElement(children as ReactElement<Record<string, unknown>>, {
         ref: (node: HTMLElement | null) => {
           anchor.current = node

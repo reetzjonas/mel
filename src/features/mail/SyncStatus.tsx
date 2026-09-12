@@ -37,18 +37,20 @@ function useOnline(): boolean {
 
 /** Whether a Web Push subscription actually exists, not merely that it could. */
 function useWebPushActive(enabled: boolean): boolean {
-  const [active, setActive] = useState(false)
+  const [subscribed, setSubscribed] = useState(false)
   useEffect(() => {
-    if (!enabled) return setActive(false)
+    if (!enabled) return
     let cancelled = false
     void isSubscribed().then((v) => {
-      if (!cancelled) setActive(v)
+      if (!cancelled) setSubscribed(v)
     })
     return () => {
       cancelled = true
     }
   }, [enabled])
-  return active
+  // Switched off is a condition, not a state to be cleared: an effect that
+  // reset it spent a render still claiming push was live.
+  return enabled && subscribed
 }
 
 /** Re-render on a timer so "synced 2 min ago" doesn't go stale while idle. */

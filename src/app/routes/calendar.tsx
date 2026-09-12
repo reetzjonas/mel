@@ -82,8 +82,16 @@ function useHiddenCalendars(accountId: string | undefined) {
     if (!accountId) return
     try {
       const raw = localStorage.getItem(hiddenCalendarsKey(accountId))
+      /*
+       * localStorage is an external system and the account it is keyed by can
+       * change, so this is a synchronisation rather than derivable state. A
+       * lazy initialiser would read it once and then answer for the wrong
+       * account after a switch.
+       */
+      // oxlint-disable-next-line set-state-in-effect
       setHidden(new Set(raw ? (JSON.parse(raw) as string[]) : []))
     } catch {
+      // oxlint-disable-next-line set-state-in-effect
       setHidden(new Set())
     }
   }, [accountId])

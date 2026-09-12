@@ -73,16 +73,16 @@ export function ParticipantsField({
   self: { name: string; email: string }
 }) {
   const [input, setInput] = useState('')
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [found, setFound] = useState<Suggestion[]>([])
+  // Too short to search on shows nothing, whatever a longer input turned up a
+  // keystroke ago — a condition, not state that has to be cleared.
+  const suggestions = input.trim().length < 2 ? [] : found
 
   useEffect(() => {
-    if (input.trim().length < 2) {
-      setSuggestions([])
-      return
-    }
+    if (input.trim().length < 2) return
     let cancelled = false
     void suggestRecipients(accountId, input).then((s) => {
-      if (!cancelled) setSuggestions(s.filter((x) => !value.some((p) => p.email === x.email)))
+      if (!cancelled) setFound(s.filter((x) => !value.some((p) => p.email === x.email)))
     })
     return () => {
       cancelled = true
@@ -123,7 +123,7 @@ export function ParticipantsField({
       },
     ])
     setInput('')
-    setSuggestions([])
+    setFound([])
   }
 
   function remove(id: string) {

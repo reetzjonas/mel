@@ -361,12 +361,33 @@ export function ReadingPane({
     setRouted(focused.id)
     setExpandedId(focused.id)
     setShowAll(false)
+    // oxlint-disable-next-line refs
     known.current = null
   }
+  /*
+   * Seeded during render, which the rule is right to flag and which is kept
+   * anyway: the alternative is an effect, and then the first paint of a
+   * conversation marks *every* message as new before the effect corrects it.
+   *
+   * The honest caveat, recorded in issue #50: this file also has a Suspense
+   * boundary, and a render that is abandoned still leaves its seed behind. The
+   * cost would be wrong NEW markers until the conversation is reopened —
+   * visible, cosmetic, self-correcting. Not worth restructuring an 827-line
+   * component for until someone has actually seen it.
+   */
+  // oxlint-disable-next-line refs
   if (known.current === null && (!grouped || loaded !== undefined)) {
+    // oxlint-disable-next-line refs
     known.current = new Set(messages.map((m) => m.id))
   }
-  const arrived = (id: string) => known.current !== null && !known.current.has(id)
+  /*
+   * Read once per render rather than on every call: `arrived` is asked for
+   * each folded row, and one capture is both clearer and one flagged access
+   * instead of three.
+   */
+  // oxlint-disable-next-line refs
+  const knownIds = known.current
+  const arrived = (id: string) => knownIds !== null && !knownIds.has(id)
   const expanded = messages.find((m) => m.id === expandedId) ?? focused
   /** What a conversation-wide action applies to: this folder's messages. */
   const threadIds = messages.filter((m) => m.mailboxIds[mailboxId]).map((m) => m.id)
@@ -389,6 +410,9 @@ export function ReadingPane({
   const slots = foldThread({
     count: messages.length,
     expandedIndex,
+    // The rule follows `arrived` back to the ref it is seeded from; the
+    // reasoning for keeping that is where the seeding happens, above.
+    // oxlint-disable-next-line refs
     arrived: new Set(messages.flatMap((m, i) => (arrived(m.id) ? [i] : []))),
     showAll,
   })
@@ -411,10 +435,21 @@ export function ReadingPane({
         />
       ),
     )
-  const [body, setBody] = useState<EmailBody | null | 'loading'>('loading')
+  /*
+   * The body, tagged with the message it belongs to.
+   *
+   * Derived rather than reset: an effect that cleared this to 'loading' on
+   * every switch spent an extra render showing the *previous* message's body
+   * under the new message's header. Keyed like this, the answer is 'loading'
+   * until this message's own body lands, in the same render as the switch.
+   */
+  const [fetched, setFetched] = useState<{ id: string; body: EmailBody | null } | null>(null)
+  const body: EmailBody | null | 'loading' =
+    fetched && fetched.id === expanded.id ? fetched.body : 'loading'
   // Releasing remote content is per message, never sticky: the next message is
   // a different sender with a different reason to want your IP.
-  const [released, setReleased] = useState(false)
+  const [releasedId, setReleasedId] = useState<string | null>(null)
+  const released = releasedId === expanded.id
   const mailboxes = useMailboxes(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
   const inJunk = Boolean(junkId && expanded.mailboxIds[junkId])
@@ -431,11 +466,10 @@ export function ReadingPane({
   // re-fetch, or the reading pane flickers every time the row updates.
   useEffect(() => {
     let alive = true
-    setBody('loading')
-    setReleased(false)
-    getEmailBody(accountId, expanded.id)
-      .then((b) => alive && setBody(b))
-      .catch(() => alive && setBody(null))
+    const id = expanded.id
+    getEmailBody(accountId, id)
+      .then((b) => alive && setFetched({ id, body: b }))
+      .catch(() => alive && setFetched({ id, body: null }))
     return () => {
       alive = false
     }
@@ -688,6 +722,7 @@ export function ReadingPane({
        * reading sits below what it answers.
        */}
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto border-t border-line">
+        {/* oxlint-disable-next-line refs */}
         {renderSlots(slots.slice(0, splitAt))}
         <div className="flex shrink-0 items-center gap-3 px-4 py-3 lg:px-6">
           {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
@@ -749,7 +784,7 @@ export function ReadingPane({
               <span className="min-w-0 flex-1">{t('mail.imagesBlocked')}</span>
               <button
                 type="button"
-                onClick={() => setReleased(true)}
+                onClick={() => setReleasedId(expanded.id)}
                 className="shrink-0 font-medium text-accent hover:underline"
               >
                 {t('mail.loadImages')}
@@ -812,6 +847,7 @@ export function ReadingPane({
             )}
           </footer>
         )}
+        {/* oxlint-disable-next-line refs */}
         {renderSlots(slots.slice(splitAt + 1))}
       </div>
       {messageDetailsOpen && (

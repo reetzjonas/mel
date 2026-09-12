@@ -155,24 +155,38 @@ export function useMailboxEmails(
   filter?: MailFilter,
   grouped = false,
 ): MailboxList {
-  const [state, setState] = useState<{
+  /*
+   * Tagged with the listing it belongs to, so a switch needs no reset.
+   *
+   * An effect that blanked this first spent an extra render — with the whole
+   * virtualised list under it — showing the previous folder's rows while the
+   * new folder's were still being read. Derived, the answer is "not loaded
+   * yet" in the same render as the switch.
+   */
+  const listing = `${accountId ?? ''}|${mailboxId ?? ''}|${filter ?? ''}|${grouped}`
+  const [loaded, setLoaded] = useState<{
+    listing: string
     emails: EmailHeader[] | undefined
     conversations: Conversation[] | undefined
     total: number
-  }>({ emails: undefined, conversations: undefined, total: 0 })
+  } | null>(null)
+  /*
+   * Two different kinds of nothing, and the list renders them differently:
+   * with no account or folder there is nothing to show (an empty array), while
+   * a folder whose rows have not been read yet is `undefined` — "we have not
+   * looked", which is what keeps the skeleton up instead of claiming the
+   * folder is empty.
+   */
+  const state =
+    !accountId || !mailboxId
+      ? { emails: grouped ? undefined : [], conversations: grouped ? [] : undefined, total: 0 }
+      : loaded?.listing === listing
+        ? loaded
+        : { emails: undefined, conversations: undefined, total: 0 }
   const more = useRef<() => void>(() => {})
 
   useEffect(() => {
-    const empty = {
-      emails: grouped ? undefined : [],
-      conversations: grouped ? [] : undefined,
-      total: 0,
-    }
-    setState({ emails: undefined, conversations: undefined, total: 0 })
-    if (!accountId || !mailboxId) {
-      setState(empty)
-      return
-    }
+    if (!accountId || !mailboxId) return
 
     const account = accountId
     const mailbox = mailboxId
@@ -258,7 +272,8 @@ export function useMailboxEmails(
       if (grouped) {
         const threadIds = threadOrder.slice(0, windowSize)
         visibleThreads = new Set(threadIds)
-        setState({
+        setLoaded({
+          listing,
           emails: undefined,
           conversations: buildConversations({
             threadIds,
@@ -285,7 +300,7 @@ export function useMailboxEmails(
           emails.push(header)
         }
       }
-      setState({ emails, conversations: undefined, total: order.length })
+      setLoaded({ listing, emails, conversations: undefined, total: order.length })
     }
 
     async function refresh() {
@@ -450,6 +465,9 @@ export function useMailboxEmails(
       db.emails.hook('updating').unsubscribe(onUpdating)
       db.emails.hook('deleting').unsubscribe(onDeleting)
     }
+    // `listing` is derived from exactly these four, so it adds nothing to the
+    // list and would only obscure what this actually depends on.
+    // oxlint-disable-next-line exhaustive-deps
   }, [accountId, mailboxId, filter, grouped])
 
   return {

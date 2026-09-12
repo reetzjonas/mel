@@ -20,22 +20,24 @@ export function RecipientInput({
   className: string
   autoFocus?: boolean
 }) {
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([])
+  const [found, setFound] = useState<Suggestion[]>([])
   const [active, setActive] = useState(0)
   const wrapper = useRef<HTMLDivElement>(null)
 
   const currentSegment = value.split(',').pop()?.trim() ?? ''
+  // A segment too short to search on shows nothing, whatever a longer one
+  // turned up a keystroke ago — a condition rather than state to be cleared.
+  const suggestions = currentSegment.length < 2 ? [] : found
 
   useEffect(() => {
     let alive = true
-    if (currentSegment.length < 2) {
-      setSuggestions([])
-      return
-    }
+    // Too short to search on. Nothing to clear: the derivation below hides
+    // whatever was found for a longer segment.
+    if (currentSegment.length < 2) return
     void suggestRecipients(accountId, currentSegment).then((s) => {
       if (!alive) return
       // Hide once the typed segment is already a complete suggested address.
-      setSuggestions(s.filter((x) => x.email.toLowerCase() !== currentSegment.toLowerCase()))
+      setFound(s.filter((x) => x.email.toLowerCase() !== currentSegment.toLowerCase()))
       setActive(0)
     })
     return () => {
@@ -45,7 +47,7 @@ export function RecipientInput({
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
-      if (!wrapper.current?.contains(e.target as Node)) setSuggestions([])
+      if (!wrapper.current?.contains(e.target as Node)) setFound([])
     }
     document.addEventListener('mousedown', close)
     return () => document.removeEventListener('mousedown', close)
@@ -55,7 +57,7 @@ export function RecipientInput({
     const parts = value.split(',')
     parts[parts.length - 1] = ` ${s.email}`
     onChange(parts.join(',').replace(/^ /, '') + ', ')
-    setSuggestions([])
+    setFound([])
   }
 
   return (
@@ -89,7 +91,7 @@ export function RecipientInput({
             const s = suggestions[active]
             if (s) pick(s)
           } else if (e.key === 'Escape') {
-            setSuggestions([])
+            setFound([])
           }
         }}
       />

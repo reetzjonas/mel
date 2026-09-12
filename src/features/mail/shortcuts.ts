@@ -23,6 +23,17 @@ const CHORD_MS = 600
 export function useMailShortcuts(ctx: Ctx) {
   const navigate = useNavigate()
   const ctxRef = useRef(ctx)
+  /*
+   * The "latest ref" pattern, and it has to be during render. The listener
+   * below is registered once and must see the current context, not the one
+   * that was current when it was installed. Assigning in an effect instead
+   * leaves a window in which a keypress acts on the previous message.
+   *
+   * Idempotent, so StrictMode's double render is harmless. Judged per site,
+   * not by habit: the same pattern was *removed* from ResizeHandle, where the
+   * handlers are recreated every render and the ref bought nothing.
+   */
+  // oxlint-disable-next-line refs
   ctxRef.current = ctx
   const lastG = useRef(0)
 

@@ -76,8 +76,26 @@ function MailboxView() {
   const grouped = useUi((s) => s.conversationView)
   const mailbox = useMailboxEmails(accountId, mailboxId, filter, grouped)
   const fullSync = useFullSyncProgress(accountId)
-  const [results, setResults] = useState<SearchResult | null>(null)
+  /*
+   * Search results tagged with the query they answer, so a new query needs no
+   * reset: until its own results land, this is null and the folder's own list
+   * shows — rather than the previous query's hits sitting under the new one
+   * for a render.
+   */
+  const [found, setFound] = useState<{ q: string; result: SearchResult } | null>(null)
+  const results = q && found?.q === q ? found.result : null
   const [input, setInput] = useState(q ?? '')
+  /*
+   * The box follows the URL, adjusted during render rather than in an effect —
+   * React's own pattern for "reset state when a prop changes", and the same
+   * one ReadingPane uses for switching messages. An effect would paint the old
+   * query for a frame after a back button.
+   */
+  const [shownQuery, setShownQuery] = useState(q ?? '')
+  if (shownQuery !== (q ?? '')) {
+    setShownQuery(q ?? '')
+    setInput(q ?? '')
+  }
   const [refreshing, setRefreshing] = useState(false)
   const mailboxes = useMailboxes(accountId)
   const { selection, selectionMailboxId, clearSelection, setFolderDrawerOpen } = useUi()
@@ -94,14 +112,10 @@ function MailboxView() {
   // Depends only on the id, not the account object: only switching accounts
   // (or the query) should re-run the search.
   useEffect(() => {
-    setInput(q ?? '')
-    if (!q || !accountId) {
-      setResults(null)
-      return
-    }
+    if (!q || !accountId) return
     let alive = true
     void searchEmails(accountId, q).then((r) => {
-      if (alive) setResults(r ?? { headers: [], snippets: {} })
+      if (alive) setFound({ q, result: r ?? { headers: [], snippets: {} } })
     })
     return () => {
       alive = false

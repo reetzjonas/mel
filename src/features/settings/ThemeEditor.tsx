@@ -83,6 +83,13 @@ export function ThemeEditor() {
   useEffect(() => {
     const root = document.documentElement
     const palette = readBasePalette(root)
+    /*
+     * Synchronising with an external system, which is what effects are for:
+     * the palette lives in the stylesheet and can only be measured once the
+     * document exists. Reading it during render would touch the DOM mid-render
+     * — strictly worse than the extra pass this costs once per visit.
+     */
+    // oxlint-disable-next-line set-state-in-effect
     setBase(palette)
     // readBasePalette stripped the live overrides to read cleanly; put them
     // back, or opening settings would reset the screen behind it.
@@ -93,6 +100,7 @@ export function ThemeEditor() {
      * with the overrides just stripped, and the editor would fight itself.
      * The ThemeProvider is what re-derives on a theme change.
      */
+    // oxlint-disable-next-line exhaustive-deps
   }, [])
 
   if (base.size === 0) return null

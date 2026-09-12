@@ -117,16 +117,24 @@ export function MessageDetails({
   mailboxes: Mailbox[] | undefined
   onClose: () => void
 }) {
-  const [meta, setMeta] = useState<MessageMetadata | null | 'loading'>('loading')
+  /*
+   * Tagged with the message it describes, so switching needs no reset: the
+   * derivation answers 'loading' until this message's own headers land. An
+   * effect that cleared it spent a render showing the previous message's
+   * routing under the new message's subject.
+   */
+  const [fetched, setFetched] = useState<{ id: string; meta: MessageMetadata | null } | null>(null)
+  const meta: MessageMetadata | null | 'loading' =
+    fetched && fetched.id === email.id ? fetched.meta : 'loading'
   const { showSnackbar } = useUi()
   const closeRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
     let alive = true
-    setMeta('loading')
-    getMessageMetadata(accountId, email.id)
-      .then((m) => alive && setMeta(m))
-      .catch(() => alive && setMeta(null))
+    const id = email.id
+    getMessageMetadata(accountId, id)
+      .then((m) => alive && setFetched({ id, meta: m }))
+      .catch(() => alive && setFetched({ id, meta: null }))
     return () => {
       alive = false
     }

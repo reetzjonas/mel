@@ -87,6 +87,9 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   // compose is mounted by the shell and knows nothing about the route.
   const routeParams = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
   const routeRef = useRef(routeParams)
+  // Latest ref, during render on purpose — see shortcuts.ts for the reasoning.
+  // Compose is mounted by the shell and outlives any one route.
+  // oxlint-disable-next-line refs
   routeRef.current = routeParams
   const [identities, setIdentities] = useState<Identity[]>([])
   const [identityId, setIdentityId] = useState<string>('')
@@ -268,6 +271,9 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   // The timer below is armed by the deps, not re-armed on every render, so it
   // must not close over a stale copy of the function.
   const storeDraftRef = useRef(storeDraft)
+  // As above: the autosave timer is armed by its deps and not re-armed per
+  // render, so it must not close over a stale copy of this function.
+  // oxlint-disable-next-line refs
   storeDraftRef.current = storeDraft
 
   // Draft autosave: 2.5 s after the last change.
