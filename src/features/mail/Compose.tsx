@@ -21,6 +21,7 @@ import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { ComposeToolbar } from './ComposeToolbar'
+import { useCanSend } from './hooks'
 import { RecipientInput } from './RecipientInput'
 
 function addressesToString(list: ComposeInit['to']): string {
@@ -80,6 +81,7 @@ function RecipientRow({
 
 export function Compose({ accountId, init }: { accountId: string; init: ComposeInit }) {
   const { closeCompose, showSnackbar } = useUi()
+  const canSend = useCanSend()
   const navigate = useNavigate()
   // Whatever the app is showing behind this window; `strict: false` because
   // compose is mounted by the shell and knows nothing about the route.
@@ -516,15 +518,25 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         {error && <p className="px-4 py-1 text-sm text-danger">{error}</p>}
 
         <footer className="flex items-center gap-2 border-t border-line px-4 py-2.5">
+          {/*
+           * Reachable without the submission capability only by reopening a
+           * draft — every way of starting a new message is already gone by
+           * then. Disabled rather than hidden, because the reason belongs
+           * next to the button someone came here to press.
+           */}
           <button
             type="button"
             onClick={() => void send()}
-            disabled={busy}
+            disabled={busy || !canSend}
+            title={canSend ? undefined : t('caps.unsupported.submission')}
             className={`flex items-center gap-2 ${primaryButtonClass}`}
           >
             <Icon name="send" size={14} />
             {t('compose.send')}
           </button>
+          {!canSend && (
+            <span className="text-xs text-ink-muted">{t('caps.unsupported.submission')}</span>
+          )}
           {/* Secondary, next to Send: the same act the autosave performs, on
               demand. Disabled while one is running rather than queueing a
               second identical write behind it. */}

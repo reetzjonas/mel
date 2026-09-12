@@ -294,14 +294,16 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
   return (
     <nav className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-3 sm:px-0">
-        <button
-          type="button"
-          onClick={() => openCompose({})}
-          className="mb-4 hidden items-center justify-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] lg:flex"
-        >
-          <Icon name="compose" size={15} />
-          {t('compose.new')}
-        </button>
+        {account.capabilities.submission && (
+          <button
+            type="button"
+            onClick={() => openCompose({})}
+            className="mb-4 hidden items-center justify-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] lg:flex"
+          >
+            <Icon name="compose" size={15} />
+            {t('compose.new')}
+          </button>
+        )}
         {/*
          * The account row doubles as "top level" while a folder is in flight.
          * Every other destination is a folder, so without it a folder could be

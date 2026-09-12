@@ -27,6 +27,20 @@ export function useAccounts() {
   }, [unlockVersion])
 }
 
+/**
+ * Whether this server takes messages for delivery, which is what every
+ * "write a message" control hangs off.
+ *
+ * Defaults to false while the accounts query is still in flight: a control
+ * that appears a moment late is a great deal better than one that appears,
+ * gets pressed, and drops the message in the outbox for a server that was
+ * never going to send it.
+ */
+export function useCanSend(): boolean {
+  const accounts = useAccounts()
+  return accounts?.[0]?.capabilities.submission ?? false
+}
+
 const ROLE_ORDER: Record<string, number> = {
   inbox: 0,
   drafts: 1,

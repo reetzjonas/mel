@@ -4,7 +4,7 @@ import { Virtuoso } from 'react-virtuoso'
 import { displayName, type Contact } from '../../domain/contact'
 import { useAccounts } from '../../features/mail/hooks'
 import { useContacts } from '../../features/contacts/hooks'
-import { useSettingsRoute } from '../../features/settings/navigation'
+import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
@@ -21,7 +21,6 @@ function ContactsLayout() {
   const contacts = useContacts(account?.id)
   const params = useParams({ strict: false }) as { contactId?: string }
   const navigate = useNavigate()
-  const { open: openSettings } = useSettingsRoute()
   const [filter, setFilter] = useState('')
 
   const filtered = useMemo(() => {
@@ -33,20 +32,8 @@ function ContactsLayout() {
     )
   }, [contacts, filter])
 
-  if (!account?.capabilities.contacts) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-muted">
-        <p className="text-sm">{t('caps.unsupported.contacts')}</p>
-        <button
-          type="button"
-          onClick={() => openSettings('account')}
-          className="text-sm text-accent hover:underline"
-        >
-          {t('caps.showDetails')}
-        </button>
-      </div>
-    )
-  }
+  if (!account?.capabilities.contacts)
+    return <CapabilityNotice reason="caps.unsupported.contacts" />
 
   const inDetail = Boolean(params.contactId)
 

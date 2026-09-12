@@ -14,6 +14,8 @@ interface Ctx {
   mailboxId: string | undefined
   emailId: string | undefined
   mailboxes: Mailbox[] | undefined
+  /** Server takes messages for delivery; without it c/r/a/f do nothing. */
+  canSend: boolean
 }
 
 const CHORD_MS = 600
@@ -30,7 +32,7 @@ export function useMailShortcuts(ctx: Ctx) {
       if (e.target instanceof HTMLElement) {
         if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName) || e.target.isContentEditable) return
       }
-      const { accountId, ownEmail, mailboxId, emailId, mailboxes } = ctxRef.current
+      const { accountId, ownEmail, mailboxId, emailId, mailboxes, canSend } = ctxRef.current
       const ui = useUi.getState()
       // Anything modal swallows them: a single key acting on the message behind
       // an open dialog is never what the keypress meant.
@@ -42,7 +44,10 @@ export function useMailShortcuts(ctx: Ctx) {
 
       switch (e.key) {
         case 'c':
-          ui.openCompose({})
+          // Silent on a server that cannot send: the buttons for this are
+          // gone there too, and a key that opens an editor whose Send is
+          // disabled only wastes the message someone types into it.
+          if (canSend) ui.openCompose({})
           return
         case '/':
           e.preventDefault()
@@ -113,6 +118,7 @@ export function useMailShortcuts(ctx: Ctx) {
         case 'r':
         case 'a':
         case 'f': {
+          if (!canSend) return
           const row = await db.emails.get([accountId, emailId])
           if (!row) return
           const header = openEnvelope(row.payload)

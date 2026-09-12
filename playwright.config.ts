@@ -38,6 +38,7 @@ export default defineConfig({
       // State-mutating flows run on desktop only — both projects share one
       // Stalwart account and would race each other.
       testIgnore: [
+        '**/capabilities.spec.ts',
         '**/mail-actions.spec.ts',
         '**/contacts.spec.ts',
         '**/calendar.spec.ts',

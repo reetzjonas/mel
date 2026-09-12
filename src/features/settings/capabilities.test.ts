@@ -36,10 +36,14 @@ describe('capabilityRows', () => {
     expect(row(caps({ push: 'poll' }), 'push').value).toBe('caps.push.poll')
   })
 
-  it('says plainly that submission is not gated and mail is shown anyway', () => {
-    // mel acts on neither flag today; claiming a gate here would be a lie.
+  it('names the gate mail and submission each really have', () => {
+    // Both used to say "nothing is gated here" out loud. They are gated now —
+    // the Mail tab goes, and nothing offers to write a message — so the row
+    // has to say that instead.
     expect(row(caps({ submission: false }), 'submission').gate).toBe('caps.gate.submission')
+    expect(row(caps({ submission: true }), 'submission').gate).toBeUndefined()
     expect(row(caps({ mail: false }), 'mail').gate).toBe('caps.gate.mail')
+    expect(row(caps({ mail: true }), 'mail').gate).toBeUndefined()
   })
 
   it('flags sieve as supported-but-unimplemented rather than as a gate', () => {

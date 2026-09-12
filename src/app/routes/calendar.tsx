@@ -11,7 +11,7 @@ import { EventDialog } from '../../features/calendar/EventDialog'
 import { dayKey, TimeGrid } from '../../features/calendar/TimeGrid'
 import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
-import { useSettingsRoute } from '../../features/settings/navigation'
+import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
@@ -112,7 +112,6 @@ function colorFor(calendars: Calendar[], calendarId: string | undefined): string
 function CalendarApp() {
   const accounts = useAccounts()
   const account = accounts?.[0]
-  const { open: openSettings } = useSettingsRoute()
   const calendars = useCalendars(account?.id)
   const events = useEvents(account?.id)
   const { showSnackbar } = useUi()
@@ -152,20 +151,8 @@ function CalendarApp() {
     return map
   }, [visibleEvents, grid])
 
-  if (!account?.capabilities.calendars) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-muted">
-        <p className="text-sm">{t('caps.unsupported.calendar')}</p>
-        <button
-          type="button"
-          onClick={() => openSettings('account')}
-          className="text-sm text-accent hover:underline"
-        >
-          {t('caps.showDetails')}
-        </button>
-      </div>
-    )
-  }
+  if (!account?.capabilities.calendars)
+    return <CapabilityNotice reason="caps.unsupported.calendar" />
 
   const eventById = new Map((events ?? []).map((e) => [e.id, e]))
   const eventColor = (e: CalendarEvent) => colorFor(calendars ?? [], Object.keys(e.calendarIds)[0])

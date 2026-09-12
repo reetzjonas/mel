@@ -11,6 +11,7 @@ import { MailboxDrawer } from '../../features/mail/MailboxDrawer'
 import { MailboxSidebar } from '../../features/mail/MailboxSidebar'
 import { useAccounts, useMailboxes } from '../../features/mail/hooks'
 import { useMailShortcuts } from '../../features/mail/shortcuts'
+import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
 import { startScheduler } from '../../sync/scheduler'
 import { Icon } from '../../ui/Icon'
@@ -28,6 +29,7 @@ function MailLayout() {
   const params = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }
   const navigate = useNavigate()
   const { compose, openCompose, setFolderDrawerOpen } = useUi()
+  const canSend = account?.capabilities.submission ?? false
   const pathname = useRouterState({ select: (s) => s.location.pathname })
 
   // Depends only on the id, not the account object: switching accounts should
@@ -65,12 +67,16 @@ function MailLayout() {
     mailboxId: params.mailboxId,
     emailId: params.emailId,
     mailboxes,
+    canSend,
   })
 
   if (accounts === undefined) return null
   if (!account) {
     return <AddAccountForm onDone={() => void navigate({ to: '/mail' })} />
   }
+  // Reached by URL even with the tab gone from the switcher, and by everyone
+  // whose bookmark predates the server losing the capability.
+  if (!account.capabilities.mail) return <CapabilityNotice reason="caps.unsupported.mail" />
 
   const inDetail = Boolean(params.emailId)
   const inList = Boolean(params.mailboxId)
@@ -87,7 +93,7 @@ function MailLayout() {
       <MailboxDrawer account={account} mailboxes={mailboxes ?? []} />
 
       {/* Mobile compose FAB */}
-      {!inDetail && !compose && (
+      {canSend && !inDetail && !compose && (
         <button
           type="button"
           aria-label={t('compose.new')}

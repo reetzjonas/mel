@@ -20,10 +20,10 @@ export interface CapabilityRow {
 /**
  * Pair every server capability with the effect it has on this UI.
  *
- * Deliberately honest where mel does *not* act on a flag: `submission` gates
- * nothing yet (compose stays available and the send fails later in the outbox)
- * and the Mail tab is shown even without the mail capability. Saying so beats
- * implying a gate that isn't there.
+ * Every line here is a promise about what the app actually does, so a gate
+ * that changes has to change here in the same breath: `mail` and `submission`
+ * both used to say "nothing is hidden for this" and had to be rewritten the
+ * day they started hiding things.
  */
 export function capabilityRows(caps: AccountCapabilities): CapabilityRow[] {
   return [

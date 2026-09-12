@@ -42,6 +42,24 @@ offer a calendar" plus a link.
 `AccountCapabilities` in lockstep, so **a new capability must be added there** or it
 fails.
 
+Two flags were listed here for a while with a row that said, honestly, that nothing
+was gated on them — `mail` (the tab was shown regardless) and `submission` (compose
+stayed open and the send died later in the outbox). Both are real gates now (issue
+#15): no Mail tab and a notice on `/mail` without `mail`, and without `submission`
+nothing offers to write a message — sidebar button, mobile FAB, reply/forward, the
+`c`/`r`/`a`/`f` keys, the contact's "send mail", and Send itself in a reopened draft.
+Picking a draft back up stays, since that is an edit of a message that already
+exists and does not depend on delivery. **A row in `capabilityRows()` is a promise
+about behaviour**: when a gate changes, its text changes in the same commit.
+
+The capability list itself used to be frozen at `addAccount()`, so a flag the admin
+switched on was invisible until sign-out and back in (issue #16). `connectionFor()`
+now writes back what each fresh `open()` reports, and Settings has a "Check again"
+that drops the cached connection to force one. Worth knowing when writing tests:
+falsifying capabilities in IndexedDB no longer survives a reload — `e2e/capabilities.spec.ts`
+intercepts the *session response* instead, at both `.well-known/jmap` and the
+`/jmap/session` it redirects to (the redirected URL is the one that gets stored).
+
 **E. Bulk editing.** Selection by checkbox (the avatar becomes one on hover —
 costs no column), and while a selection exists a toolbar replaces the search row:
 read/unread, flag, move to folder, archive, delete — all with undo. Selection state

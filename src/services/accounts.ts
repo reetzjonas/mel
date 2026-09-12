@@ -1,10 +1,10 @@
-import type { Credentials } from '../domain/account'
+import type { Account, Credentials } from '../domain/account'
 import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { JmapError } from '../providers/jmap/client/transport'
 import { providerFor } from '../providers/registry'
 import { db } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
-import { dropConnection } from '../sync/connections'
+import { connectionFor, dropConnection } from '../sync/connections'
 import { syncAccount, syncSettled } from '../sync/engine'
 import { stopScheduler } from '../sync/scheduler'
 
@@ -110,6 +110,20 @@ export async function signOut(accountId: string): Promise<void> {
   dropConnection(accountId)
   await syncSettled(accountId)
   await removeAccount(accountId)
+}
+
+/**
+ * Ask the server what it can do right now, and store the answer.
+ *
+ * `connectionFor` already persists this for every connection it opens, but
+ * that is once per app start — this is the "I just turned it on, show me"
+ * button, so it drops the cached connection to force a fresh session rather
+ * than reporting what the cached one was told at startup.
+ */
+export async function refreshCapabilities(accountId: string): Promise<Account> {
+  dropConnection(accountId)
+  const { account } = await connectionFor(accountId)
+  return account
 }
 
 /**

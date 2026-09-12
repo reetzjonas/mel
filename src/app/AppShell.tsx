@@ -13,15 +13,10 @@ import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { Snackbar } from '../ui/Snackbar'
+import { visibleApps } from './apps'
 import { useTheme } from './ThemeProvider'
 import { UnlockGate } from './UnlockGate'
 import { useUi } from './store'
-
-const allApps = [
-  { to: '/mail', key: 'app.mail', cap: 'mail' },
-  { to: '/calendar', key: 'app.calendar', cap: 'calendars' },
-  { to: '/contacts', key: 'app.contacts', cap: 'contacts' },
-] as const
 
 function AppSwitcherLink({ to, label }: { to: string; label: string }) {
   return (
@@ -85,8 +80,7 @@ export function AppShell() {
   if (lockedIds === undefined) return null
   if (lockedIds.length > 0) return <UnlockGate accountIds={lockedIds} />
 
-  // Capability-gated app switcher; before login only Mail is shown.
-  const apps = allApps.filter((a) => a.cap === 'mail' || account?.capabilities[a.cap])
+  const apps = visibleApps(account)
   return (
     <div className="flex h-full flex-col bg-canvas">
       <header className="glass sticky top-0 z-30 hidden h-13 shrink-0 items-center gap-5 px-4 sm:flex">

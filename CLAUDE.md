@@ -42,7 +42,7 @@ Mail, Notifications, Security, Account) with the open one in `?settings=`, so
 deep links and the back button keep working and `/settings` redirects in.
 See `docs/notes/settings-modal.md`.
 
-Tests: 224 Vitest + 54 Playwright (desktop + mobile; state-mutating specs are
+Tests: 234 Vitest + 66 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 

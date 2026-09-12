@@ -6,7 +6,7 @@ import { formatFullDate, formatListDate } from '../../lib/dates'
 import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
 import { imagePolicy } from '../../lib/imagePolicy'
-import { useMailboxes, useThread } from './hooks'
+import { useCanSend, useMailboxes, useThread } from './hooks'
 import { MessageDetails } from './MessageDetails'
 import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
 import { t } from '../../lib/i18n'
@@ -324,6 +324,7 @@ export function ReadingPane({
   ownEmail: string
 }) {
   const grouped = useUi((s) => s.conversationView)
+  const canSend = useCanSend()
   // Only asked for while grouping is on, so the ungrouped pane costs no extra
   // query at all.
   const thread = useThread(accountId, grouped ? focused.threadId : undefined, mailboxId)
@@ -615,43 +616,51 @@ export function ReadingPane({
             }}
           />
         </span>
-        <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
-          {isDraft ? (
-            // Disabled rather than silently doing nothing while the body is
-            // still loading: opening the editor without it would drop the text
-            // the draft already holds on the next autosave.
-            <ActionButton
-              icon="compose"
-              label={t('mail.editDraft')}
-              labelled
-              disabled={body === 'loading'}
-              onClick={() =>
-                openCompose(buildDraftInit(expanded, body === 'loading' ? null : body))
-              }
-            />
-          ) : (
-            <>
+        {/*
+         * Answering is gated on the server taking mail for delivery; picking
+         * a draft back up is not, because that is an edit of a message that
+         * already exists here and the composer gates its own Send anyway.
+         * Rendered as nothing rather than an empty pill when neither applies.
+         */}
+        {(isDraft || canSend) && (
+          <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+            {isDraft ? (
+              // Disabled rather than silently doing nothing while the body is
+              // still loading: opening the editor without it would drop the
+              // text the draft already holds on the next autosave.
               <ActionButton
-                icon="reply"
-                label={t('mail.reply')}
+                icon="compose"
+                label={t('mail.editDraft')}
                 labelled
-                onClick={() => reply('reply')}
+                disabled={body === 'loading'}
+                onClick={() =>
+                  openCompose(buildDraftInit(expanded, body === 'loading' ? null : body))
+                }
               />
-              <ActionButton
-                icon="replyAll"
-                label={t('mail.replyAll')}
-                labelled
-                onClick={() => reply('replyAll')}
-              />
-              <ActionButton
-                icon="forward"
-                label={t('mail.forward')}
-                labelled
-                onClick={() => reply('forward')}
-              />
-            </>
-          )}
-        </span>
+            ) : (
+              <>
+                <ActionButton
+                  icon="reply"
+                  label={t('mail.reply')}
+                  labelled
+                  onClick={() => reply('reply')}
+                />
+                <ActionButton
+                  icon="replyAll"
+                  label={t('mail.replyAll')}
+                  labelled
+                  onClick={() => reply('replyAll')}
+                />
+                <ActionButton
+                  icon="forward"
+                  label={t('mail.forward')}
+                  labelled
+                  onClick={() => reply('forward')}
+                />
+              </>
+            )}
+          </span>
+        )}
         {/* On its own, pushed right: it opens a panel rather than acting on the
             message, and it is the one control here that never changes it. */}
         <span className="ml-auto flex items-center rounded-control bg-surface-2/60 p-0.5">

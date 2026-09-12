@@ -4,7 +4,7 @@ import { useUi } from '../../app/store'
 import { displayName, type LabeledValue } from '../../domain/contact'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
-import { useAccounts } from '../../features/mail/hooks'
+import { useAccounts, useCanSend } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
 import { deleteContact, updateContact } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
@@ -37,6 +37,7 @@ function ContactDetail() {
   const contact = useContact(account?.id, contactId)
   const navigate = useNavigate()
   const { openCompose, showSnackbar } = useUi()
+  const canSend = useCanSend()
   const [editing, setEditing] = useState(false)
 
   if (!account || contact === undefined) return null
@@ -93,7 +94,7 @@ function ContactDetail() {
         </button>
       </header>
 
-      {contact.emails.length > 0 && (
+      {canSend && contact.emails.length > 0 && (
         <button
           type="button"
           className={`flex items-center gap-2 ${primaryButtonClass}`}

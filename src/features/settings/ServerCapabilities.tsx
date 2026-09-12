@@ -1,7 +1,33 @@
+import { useState } from 'react'
 import type { Account } from '../../domain/account'
-import { t } from '../../lib/i18n'
+import { t, type MsgKey } from '../../lib/i18n'
+import { refreshCapabilities } from '../../services/accounts'
 import { Icon } from '../../ui/Icon'
+import { secondaryButtonClass } from '../../ui/styles'
 import { capabilityRows, type CapabilityState } from './capabilities'
+import { useSettingsRoute } from './navigation'
+
+/**
+ * What a screen shows instead of a feature this server does not offer.
+ *
+ * Always with the way to the full list: "no calendar here" invites the
+ * question of what else is missing, and the answer is one screen away.
+ */
+export function CapabilityNotice({ reason }: { reason: MsgKey }) {
+  const { open: openSettings } = useSettingsRoute()
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-2 text-ink-muted">
+      <p className="text-sm">{t(reason)}</p>
+      <button
+        type="button"
+        onClick={() => openSettings('account')}
+        className="text-sm text-accent hover:underline"
+      >
+        {t('caps.showDetails')}
+      </button>
+    </div>
+  )
+}
 
 function StateMark({ state }: { state: CapabilityState }) {
   // Value rows (the transport) have nothing to tick; an empty column keeps the
@@ -22,6 +48,15 @@ function StateMark({ state }: { state: CapabilityState }) {
  */
 export function ServerCapabilities({ account }: { account: Account }) {
   const rows = capabilityRows(account.capabilities)
+  /*
+   * The list itself needs no state — it re-renders from the stored account
+   * as soon as the refresh writes one, through the same live query the rest
+   * of the app reads. Only the button's own progress lives here, and "done"
+   * has to be said out loud: a server that changed nothing produces a
+   * refresh that looks exactly like one that never ran.
+   */
+  const [state, setState] = useState<'idle' | 'busy' | 'done' | 'failed'>('idle')
+
   return (
     <div className="space-y-2" id="server-capabilities">
       <p className="text-xs text-ink-subtle">{account.sessionUrl}</p>
@@ -43,6 +78,28 @@ export function ServerCapabilities({ account }: { account: Account }) {
           </li>
         ))}
       </ul>
+      <div className="flex items-center gap-2 pt-1">
+        <button
+          type="button"
+          disabled={state === 'busy'}
+          className={secondaryButtonClass}
+          onClick={() => {
+            setState('busy')
+            void refreshCapabilities(account.id).then(
+              () => setState('done'),
+              () => setState('failed'),
+            )
+          }}
+        >
+          {state === 'busy' ? t('caps.reload.running') : t('caps.reload')}
+        </button>
+        {state === 'done' && (
+          <span className="text-xs text-ink-muted">{t('caps.reload.done')}</span>
+        )}
+        {state === 'failed' && (
+          <span className="text-xs text-danger">{t('caps.reload.failed')}</span>
+        )}
+      </div>
     </div>
   )
 }
