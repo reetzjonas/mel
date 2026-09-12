@@ -151,7 +151,7 @@ describe('fetchSession', () => {
     expect(r.eventSourceUrl).toContain('{types}')
   })
 
-  it('tells apart the three ways asking for a session can fail', async () => {
+  it('tells apart the ways asking for a session can fail', async () => {
     // The login screen says something different for each, so flattening them
     // would send people hunting in the wrong place (see docs/notes).
     vi.stubGlobal(
@@ -168,7 +168,15 @@ describe('fetchSession', () => {
     )
     await expect(
       fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
-    ).rejects.toMatchObject({ kind: 'protocol', status: 500 })
+    ).rejects.toMatchObject({ kind: 'server', status: 500, transient: true })
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 400 })),
+    )
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'protocol', status: 400, transient: false })
 
     // A CORS rejection reaches the browser as a thrown TypeError, not a status.
     vi.stubGlobal(
@@ -180,6 +188,36 @@ describe('fetchSession', () => {
     await expect(
       fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
     ).rejects.toMatchObject({ kind: 'network' })
+  })
+
+  it('carries a throttled server’s own Retry-After, and calls it transient', async () => {
+    /*
+     * Stalwart's default is 1000 requests a minute, and a busy first sync can
+     * reach it. This used to come back as a `protocol` error: permanent, never
+     * retried, and rendered as "server unreachable" while the server was
+     * answering every request and saying exactly when to come back.
+     */
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 429, headers: { 'Retry-After': '2' } })),
+    )
+
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'ratelimit', status: 429, retryAfterMs: 2000, transient: true })
+  })
+
+  it('falls back to a sane wait when the server sends no Retry-After', async () => {
+    // The header is optional; without a wait of our own we would hammer a
+    // server that has just asked us to stop.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 429 })),
+    )
+
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'ratelimit', retryAfterMs: 30_000 })
   })
 })
 

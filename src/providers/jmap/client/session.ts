@@ -1,6 +1,6 @@
 import type { AccountCapabilities, Credentials } from '../../../domain/account'
 import { t } from '../../../lib/i18n'
-import { JmapError, authHeader } from './transport'
+import { JmapError, authHeader, toError } from './transport'
 import { Cap, type CoreCapability, type JmapSession } from './types/core'
 
 /**
@@ -117,7 +117,9 @@ export async function fetchSession(
   }
   if (res.status === 401 || res.status === 403)
     throw new JmapError(t('login.failed'), 'auth', undefined, res.status)
-  if (!res.ok) throw new JmapError(`HTTP ${res.status}`, 'protocol', undefined, res.status)
+  // Everything else through the shared taxonomy, so a 429 here means the same
+  // as a 429 anywhere else — transient, with the server's own Retry-After.
+  if (!res.ok) throw await toError(res)
   const session = (await res.json()) as JmapSession
   const base = res.url || sessionUrl
   // new URL() percent-encodes the {placeholders} of RFC 6570 URL templates

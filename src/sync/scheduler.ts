@@ -93,14 +93,39 @@ function runTick(accountId: string): Promise<void> {
   return p
 }
 
+/**
+ * What the server asked us to wait before the next attempt, when it said so.
+ *
+ * A 429 carries Retry-After, and it is usually far shorter than a poll
+ * interval — a server throttling us for two seconds should not leave the list
+ * empty for thirty, which is how a rate-limited first sync comes to look like
+ * a broken one. Held until a tick succeeds rather than consumed by one poll,
+ * so a server that keeps refusing keeps being obeyed.
+ */
+const askedToWait = new Map<string, number>()
+
+/** Never poll faster than this, however eager the server's Retry-After. */
+const MIN_RETRY_MS = 1_000
+
 async function tick(accountId: string) {
   setStatus(accountId, { syncing: true })
   try {
     await flush(accountId)
     await syncAccount(accountId)
     await notifyNewMail(accountId)
+    askedToWait.delete(accountId)
     setStatus(accountId, { lastSyncAt: Date.now(), error: null })
   } catch (e) {
+    const retryAfter = (e as { retryAfterMs?: number } | null)?.retryAfterMs
+    if (typeof retryAfter === 'number' && Number.isFinite(retryAfter)) {
+      askedToWait.set(accountId, Math.max(MIN_RETRY_MS, retryAfter))
+      // Re-arm now rather than leaving it to the poll already scheduled: the
+      // first tick runs *before* polling is set up, so the first refusal —
+      // the one that matters, at login — would otherwise take a full interval
+      // to act on the wait the server just named.
+      const ctl = controllers.get(accountId)
+      if (ctl) schedulePoll(accountId, ctl)
+    }
     // The next tick retries, but the failure must not stay invisible: a server
     // that rejects us on CORS otherwise looks exactly like a quiet mailbox.
     setStatus(accountId, { error: classifyConnectionError(e) })
@@ -112,7 +137,8 @@ async function tick(accountId: string) {
 function schedulePoll(accountId: string, ctl: Controller) {
   if (ctl.stopped) return
   if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
-  const interval = document.hidden ? POLL_HIDDEN_MS : POLL_FOREGROUND_MS
+  const interval =
+    askedToWait.get(accountId) ?? (document.hidden ? POLL_HIDDEN_MS : POLL_FOREGROUND_MS)
   setStatus(accountId, { mode: 'poll', intervalMs: interval })
   ctl.pollTimer = setTimeout(() => {
     void runTick(accountId).finally(() => schedulePoll(accountId, ctl))
@@ -204,6 +230,7 @@ export function stopScheduler(accountId: string): Promise<void> {
   if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
   controllers.delete(accountId)
   statuses.delete(accountId)
+  askedToWait.delete(accountId)
   for (const fn of listeners) fn()
   return settled
 }

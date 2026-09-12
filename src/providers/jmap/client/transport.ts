@@ -36,7 +36,16 @@ export function authHeader(creds: Credentials): string {
   return `Basic ${btoa(`${creds.username ?? ''}:${creds.secret}`)}`
 }
 
-async function toError(res: Response): Promise<JmapError> {
+/**
+ * A failed response as the error the caller acts on.
+ *
+ * Exported because the session fetch needs exactly this taxonomy and used to
+ * carry its own, shorter copy: it had no case for 429, so a rate-limited
+ * server came back as a `protocol` error — permanent, never retried, and
+ * rendered as "server unreachable" while the server was answering perfectly
+ * well and saying when to come back.
+ */
+export async function toError(res: Response): Promise<JmapError> {
   let problem: JmapProblem | undefined
   try {
     problem = (await res.json()) as JmapProblem

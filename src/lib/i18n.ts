@@ -283,7 +283,9 @@ const en = {
   'sync.lastSync': 'Last synced',
   'sync.error.unreachable': 'Server unreachable',
   'sync.error.auth': 'Sign-in rejected',
+  'sync.error.ratelimit': 'Server is throttling us',
   'sync.error.hint': 'Network, TLS or CORS — console has details',
+  'sync.error.ratelimitHint': 'Too many requests — backing off and retrying',
 
   'settings.title': 'Settings',
   'settings.close': 'Close settings',
@@ -745,7 +747,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'sync.lastSync': 'Zuletzt synchronisiert',
   'sync.error.unreachable': 'Server nicht erreichbar',
   'sync.error.auth': 'Anmeldung abgelehnt',
+  'sync.error.ratelimit': 'Server drosselt uns',
   'sync.error.hint': 'Netzwerk, TLS oder CORS — Details in der Konsole',
+  'sync.error.ratelimitHint': 'Zu viele Anfragen — wird verzögert erneut versucht',
 
   'settings.title': 'Einstellungen',
   'settings.close': 'Einstellungen schließen',

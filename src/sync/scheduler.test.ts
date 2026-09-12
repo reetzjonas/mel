@@ -261,6 +261,65 @@ describe('live updates over the push pipe', () => {
   })
 })
 
+describe('a server that asks us to slow down', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sse = null
+    connectionFails = null
+    push = null
+  })
+  afterEach(() => stopScheduler(ACC))
+
+  it('comes back when the server said to, not a poll interval later', async () => {
+    /*
+     * A 429 carries Retry-After, and it is usually far shorter than the poll
+     * interval. Waiting out the full thirty seconds leaves the list empty for
+     * half a minute because the server asked for two — which is how a
+     * rate-limited first sync looks like a broken one.
+     */
+    syncAccount.mockRejectedValueOnce(
+      Object.assign(new Error('HTTP 429'), { kind: 'ratelimit', retryAfterMs: 2_000 }),
+    )
+
+    await firstTick()
+
+    await vi.waitFor(() => expect(getSyncStatus(ACC).mode).toBe('poll'))
+    expect(getSyncStatus(ACC).intervalMs).toBe(2_000)
+  })
+
+  it('goes back to the ordinary interval once a tick gets through', async () => {
+    /*
+     * The wait belongs to the refusal, not to the session. Keeping it would
+     * let one 429 set the polling rate for good; dropping it after a single
+     * poll would stop obeying a server that is still saying no.
+     */
+    syncAccount.mockRejectedValueOnce(
+      Object.assign(new Error('HTTP 429'), { kind: 'ratelimit', retryAfterMs: 2_000 }),
+    )
+
+    await firstTick()
+    await vi.waitFor(() => expect(getSyncStatus(ACC).intervalMs).toBe(2_000))
+
+    // That poll fires two seconds later and succeeds (the mock rejected only
+    // once), which is what clears the wait.
+    await vi.waitFor(() => expect(getSyncStatus(ACC).error).toBeNull(), { timeout: 5_000 })
+    await vi.waitFor(() => expect(getSyncStatus(ACC).intervalMs).toBe(30_000), { timeout: 5_000 })
+  })
+
+  it('never polls faster than a second, whatever it is told', async () => {
+    // A misconfigured or hostile Retry-After of zero would turn the backoff
+    // into a tight loop against a server that has just asked for less traffic.
+    syncAccount.mockRejectedValueOnce(
+      Object.assign(new Error('HTTP 429'), { kind: 'ratelimit', retryAfterMs: 0 }),
+    )
+
+    await firstTick()
+
+    await vi.waitFor(() => expect(getSyncStatus(ACC).mode).toBe('poll'))
+    expect(getSyncStatus(ACC).intervalMs).toBe(1_000)
+  })
+})
+
 describe('waiting for a tick to finish', () => {
   beforeEach(() => vi.clearAllMocks())
   afterEach(() => stopScheduler(ACC))

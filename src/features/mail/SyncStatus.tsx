@@ -2,6 +2,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import type { Account } from '../../domain/account'
 import { t } from '../../lib/i18n'
+import type { ConnectionErrorKind } from '../../lib/netError'
 import { formatRelativePast } from '../../lib/dates'
 import { db } from '../../storage/db'
 import { isSubscribed } from '../../services/webPush'
@@ -66,6 +67,14 @@ const MODE_ICON: Record<SyncMode, IconName> = {
   stopped: 'refresh',
 }
 
+/** Read lazily: t() picks the language at call time, not at module load. */
+const ERROR_LABEL: Record<ConnectionErrorKind, () => string> = {
+  auth: () => t('sync.error.auth'),
+  ratelimit: () => t('sync.error.ratelimit'),
+  unreachable: () => t('sync.error.unreachable'),
+  other: () => t('sync.error.unreachable'),
+}
+
 /**
  * Pinned to the bottom of the folder sidebar: how updates are arriving right
  * now (push vs. polling), when we last heard from the server, and whether
@@ -105,8 +114,14 @@ export function SyncStatus({ account }: { account: Account }) {
     label = t('sync.offline')
     icon = 'offline'
   } else if (status.error) {
-    label = status.error.kind === 'auth' ? t('sync.error.auth') : t('sync.error.unreachable')
-    icon = 'offline'
+    /*
+     * A throttled server is not an unreachable one — it answered, and said
+     * when to come back. Calling it unreachable sends whoever reads this
+     * looking at DNS and certificates instead of at their request rate, so it
+     * gets its own wording and keeps the ordinary sync icon.
+     */
+    label = ERROR_LABEL[status.error.kind]()
+    icon = status.error.kind === 'ratelimit' ? MODE_ICON[status.mode] : 'offline'
     tone = 'text-danger'
   } else if (fullSync) {
     // Its own label rather than the generic "Syncing…": this one runs for
@@ -146,7 +161,8 @@ export function SyncStatus({ account }: { account: Account }) {
   } else if (queued > 0) {
     detail = queued === 1 ? t('sync.queued.one') : `${queued} ${t('sync.queued.many')}`
   } else if (status.error) {
-    detail = t('sync.error.hint')
+    detail =
+      status.error.kind === 'ratelimit' ? t('sync.error.ratelimitHint') : t('sync.error.hint')
   } else if (webPushActive) {
     detail = t('sync.webPush')
   } else if (status.lastSyncAt && status.mode !== 'push') {

@@ -15,7 +15,7 @@ export function isOpaqueNetworkFailure(e: unknown): boolean {
   return false
 }
 
-export type ConnectionErrorKind = 'unreachable' | 'auth' | 'other'
+export type ConnectionErrorKind = 'unreachable' | 'auth' | 'ratelimit' | 'other'
 
 export interface ConnectionError {
   kind: ConnectionErrorKind
@@ -26,7 +26,14 @@ export interface ConnectionError {
 export function classifyConnectionError(e: unknown): ConnectionError {
   const detail = e instanceof Error ? e.message : String(e)
   if (isOpaqueNetworkFailure(e)) return { kind: 'unreachable', detail }
-  if (e instanceof Error && (e as { kind?: string }).kind === 'auth')
-    return { kind: 'auth', detail }
+  const kind = e instanceof Error ? (e as { kind?: string }).kind : undefined
+  if (kind === 'auth') return { kind: 'auth', detail }
+  /*
+   * Its own kind, because it is the opposite of unreachable: the server
+   * answered, and said when to come back. Folding it into the others put
+   * "Server unreachable" in the sidebar of a server that was replying to every
+   * request — which sends whoever reads it looking at DNS and certificates.
+   */
+  if (kind === 'ratelimit') return { kind: 'ratelimit', detail }
   return { kind: 'other', detail }
 }
