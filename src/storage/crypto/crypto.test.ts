@@ -1,7 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { db } from '../db'
 import { sealPlain } from '../envelope'
-import { changePassphrase, dekFor, initKeyring, lock, unlock } from './keyring'
+import {
+  changePassphrase,
+  dekFor,
+  hasKeyring,
+  initKeyring,
+  lock,
+  removeKeyring,
+  unlock,
+} from './keyring'
 import { isAccountEncrypted, markAccountEncrypted } from './middleware'
 import { deserialize, serialize } from './serialize'
 
@@ -84,6 +92,71 @@ describe('keyring', () => {
     })
     const ctAfter = (rawAfter as { payload: { enc: { ct: Uint8Array } } }).payload.enc.ct
     expect(new Uint8Array(ctAfter)).toEqual(new Uint8Array(ctBefore))
+  })
+})
+
+describe('locking, and what a keyring refuses', () => {
+  beforeEach(async () => {
+    lock()
+    markAccountEncrypted(ACC, false)
+    await db.keyring.delete(ACC)
+  })
+
+  it('leaves nothing usable in memory after locking', async () => {
+    // The point of locking: a key still readable afterwards would make the
+    // lock a label rather than a measure.
+    await initKeyring(ACC, PASS)
+    expect(dekFor(ACC)).not.toBeNull()
+
+    lock(ACC)
+
+    expect(dekFor(ACC)).toBeNull()
+  })
+
+  it('locks every account at once when asked for none in particular', async () => {
+    const other = 'acc-2'
+    await initKeyring(ACC, PASS)
+    await initKeyring(other, PASS)
+
+    lock()
+
+    expect(dekFor(ACC)).toBeNull()
+    expect(dekFor(other)).toBeNull()
+    await db.keyring.delete(other)
+  })
+
+  it('refuses a passphrase change for an account that has no keyring', async () => {
+    // Nothing to re-wrap; answering true would report a change that did not
+    // happen and leave the caller believing the old passphrase is dead.
+    expect(await changePassphrase(ACC, PASS, 'neu-neu-neu')).toBe(false)
+  })
+
+  it('refuses a passphrase change under the wrong old passphrase', async () => {
+    await initKeyring(ACC, PASS)
+
+    expect(await changePassphrase(ACC, 'falsch-falsch-falsch', 'neu-neu-neu')).toBe(false)
+    // And the old one still opens it, since nothing was rewrapped.
+    lock(ACC)
+    expect(await unlock(ACC, PASS)).toBe(true)
+  })
+
+  it('knows whether an account has a keyring at all', async () => {
+    expect(await hasKeyring(ACC)).toBe(false)
+    await initKeyring(ACC, PASS)
+    expect(await hasKeyring(ACC)).toBe(true)
+  })
+
+  it('removes the keyring and locks in the same breath', async () => {
+    // Turning encryption off: a key left unlocked in memory would go on
+    // decrypting rows that are plaintext again.
+    await initKeyring(ACC, PASS)
+
+    await removeKeyring(ACC)
+
+    expect(await hasKeyring(ACC)).toBe(false)
+    expect(dekFor(ACC)).toBeNull()
+    // And unlocking is no longer possible, rather than quietly succeeding.
+    expect(await unlock(ACC, PASS)).toBe(false)
   })
 })
 

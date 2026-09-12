@@ -56,7 +56,7 @@ export default defineConfig({
         lines: 35,
         'src/domain/**': { statements: 95, branches: 88, functions: 95, lines: 95 },
         'src/lib/**': { statements: 86, branches: 77, functions: 86, lines: 88 },
-        'src/storage/**': { statements: 85, branches: 78, functions: 80, lines: 86 },
+        'src/storage/**': { statements: 92, branches: 85, functions: 87, lines: 93 },
         'src/providers/**': { statements: 58, branches: 58, functions: 55, lines: 56 },
         'src/sync/**': { statements: 56, branches: 45, functions: 53, lines: 60 },
         'src/services/**': { statements: 29, branches: 30, functions: 29, lines: 30 },
