@@ -5,6 +5,15 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/reetzjonas/mel/actions/workflows/ci.yml"><img
+    src="https://github.com/reetzjonas/mel/actions/workflows/ci.yml/badge.svg?branch=main"
+    alt="CI status"></a>
+  <a href="LICENSE"><img
+    src="https://img.shields.io/badge/license-MIT-blue.svg"
+    alt="MIT licensed"></a>
+</p>
+
 A JMAP webmail client — mail, calendar and contacts — that runs entirely in the
 browser. There is no backend of its own: the app talks to your JMAP server
 directly and keeps everything in IndexedDB on the device, optionally encrypted
