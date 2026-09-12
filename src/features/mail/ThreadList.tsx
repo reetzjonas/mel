@@ -11,7 +11,12 @@ import { cleanPreview } from '../../lib/preview'
 import { useMailboxes } from './hooks'
 import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
-import { draggableTouchClass, setMailDrag, suppressContextMenu } from './dragAndDrop'
+import {
+  clearDragState,
+  draggableTouchClass,
+  setMailDrag,
+  suppressContextMenu,
+} from './dragAndDrop'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
@@ -214,6 +219,7 @@ function Row({
             : email.subject || t('mail.noSubject'),
         )
       }
+      onDragEnd={clearDragState}
       onContextMenu={suppressContextMenu}
       {...handlers}
       style={dx ? { transform: `translateX(${dx}px)` } : undefined}

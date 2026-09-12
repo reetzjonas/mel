@@ -1,4 +1,4 @@
-import { Link } from '@tanstack/react-router'
+import { Link, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
@@ -18,6 +18,7 @@ import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
 import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
 import {
+  clearDragState,
   dragKind,
   draggableTouchClass,
   readMailDrag,
@@ -186,43 +187,60 @@ function MoveFolderDialog({
 
 export function MailboxSidebar({ account, mailboxes }: { account: Account; mailboxes: Mailbox[] }) {
   const accountId = account.id
+  const navigate = useNavigate()
+  // Not `Route.useParams()`: this sidebar renders next to any mail route,
+  // including ones with no mailboxId (the empty state), so the read has to
+  // tolerate not matching at all rather than assume the mailbox route.
+  const { mailboxId: activeMailboxId } = useParams({ strict: false }) as { mailboxId?: string }
   const [refreshing, setRefreshing] = useState(false)
   const [dialog, setDialog] = useState<Dialog>(null)
-  /** The folder being dragged, and the row the pointer is currently over. */
-  const [dragging, setDragging] = useState<Mailbox | null>(null)
+  /*
+   * The folder being dragged. A ref, not state: a touch-started drag can fire
+   * dragover on a target before React has re-rendered from the setState in
+   * onDragStart, so a closure reading state here can be stuck seeing null for
+   * the whole drag. A ref's `.current` is visible to every closure the moment
+   * it is written, render or no render — this is state that only decisions
+   * inside event handlers need, nothing here is ever rendered from it.
+   */
+  const draggingRef = useRef<Mailbox | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const { openCompose, showSnackbar, clearSelection } = useUi()
 
-  /*
-   * Where the folder in flight may land — the same rule the move dialog
-   * offers, so the two paths cannot disagree about what is allowed. Known up
-   * front because this component started the drag; the origin of *mail* is
-   * not, which is why that one is checked on arrival instead.
-   */
-  const folderTargets = dragging ? new Set(moveTargets(mailboxes, dragging).map((m) => m.id)) : null
+  // Where the folder in flight may land — the same rule the move dialog
+  // offers, so the two paths cannot disagree about what is allowed.
+  const folderTargetsFor = (dragged: Mailbox) =>
+    new Set(moveTargets(mailboxes, dragged).map((m) => m.id))
 
   const endDrag = () => {
-    setDragging(null)
+    draggingRef.current = null
     setDropTarget(null)
+    clearDragState()
   }
 
   /** Whether this row would take what is currently being dragged over it. */
   const takes = (e: React.DragEvent, m: Mailbox) => {
     const kind = dragKind(e)
-    if (kind === 'folder') return Boolean(folderTargets?.has(m.id))
+    if (kind === 'folder') {
+      const dragged = draggingRef.current
+      return Boolean(dragged && folderTargetsFor(dragged).has(m.id))
+    }
     return kind === 'mail' && m.mayAddItems
   }
 
   const onDropOn = (e: React.DragEvent, m: Mailbox) => {
     e.preventDefault()
     const kind = dragKind(e)
+    // Read before endDrag(): both the mail payload (dragAndDrop's module
+    // state, see readMailDrag) and `dragging` are cleared synchronously by
+    // endDrag, unlike a plain setState which only takes effect next render.
+    const payload = kind === 'mail' ? readMailDrag(e) : null
+    const folder = draggingRef.current
     endDrag()
     if (kind === 'folder') {
-      if (dragging && folderTargets?.has(m.id))
-        void moveMailbox(accountId, dragging.id, m.id).then(report)
+      if (folder && folderTargetsFor(folder).has(m.id))
+        void moveMailbox(accountId, folder.id, m.id).then(report)
       return
     }
-    const payload = readMailDrag(e)
     // Dropping mail back where it came from is a gesture, not a move: the
     // source folder is only readable now, so this is the first chance to say
     // so, and the quietest answer is to do nothing.
@@ -294,7 +312,8 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
          */}
         <div
           onDragOver={(e) => {
-            if (dragKind(e) !== 'folder' || !dragging || dragging.parentId === null) return
+            const dragged = draggingRef.current
+            if (dragKind(e) !== 'folder' || !dragged || dragged.parentId === null) return
             e.preventDefault()
             e.dataTransfer.dropEffect = 'move'
             setDropTarget(TOP_DROP)
@@ -309,7 +328,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           }}
           onDrop={(e) => {
             e.preventDefault()
-            const folder = dragging
+            const folder = draggingRef.current
             endDrag()
             if (folder) void moveMailbox(accountId, folder.id, null).then(report)
           }}
@@ -355,45 +374,23 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
             // elsewhere also stops the browser dragging the link's URL,
             // which is never what someone reaching for a folder meant.
             const canDrag = m.role === null && m.mayRename
-            return (
-              <Link
-                key={m.id}
-                to="/mail/$mailboxId"
-                params={{ mailboxId: m.id }}
-                draggable={canDrag}
-                // A long press to start the drag on touch is also the gesture
-                // for the browser's own context menu, so a draggable folder
-                // needs it suppressed or the two show up on top of each other.
-                onContextMenu={canDrag ? suppressContextMenu : undefined}
-                onDragStart={(e) => {
-                  setFolderDrag(e, m.id, m.name)
-                  setDragging(m)
-                }}
-                onDragEnd={endDrag}
-                onDragOver={(e) => {
-                  if (!takes(e, m)) return
-                  e.preventDefault()
-                  e.dataTransfer.dropEffect = 'move'
-                  setDropTarget(m.id)
-                }}
-                onDragLeave={(e) => {
-                  if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
-                  setDropTarget((id) => (id === m.id ? null : id))
-                }}
-                onDrop={(e) => onDropOn(e, m)}
-                /*
-                 * Spelled out rather than computed from the contents: the row
-                 * holds an action button, and a labelled button folds its own
-                 * name into the link's. The link would then be called something
-                 * different while the pointer is over it, since that button only
-                 * appears on hover.
-                 */
-                aria-label={m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name}
-                className={`group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent-wash [&.active]:font-medium [&.active]:text-accent ${
-                  dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
-                } ${canDrag ? draggableTouchClass : ''}`}
-                style={depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined}
-              >
+            const isActive = m.id === activeMailboxId
+            /*
+             * Spelled out rather than computed from the contents: the row
+             * holds an action button, and a labelled button folds its own
+             * name into the link's. The link would then be called something
+             * different while the pointer is over it, since that button only
+             * appears on hover.
+             */
+            const ariaLabel = m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name
+            const className = `group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink ${
+              isActive ? 'bg-accent-wash font-medium text-accent' : ''
+            } ${dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''} ${
+              canDrag ? draggableTouchClass : ''
+            }`
+            const style = depth ? { paddingLeft: `${0.625 + depth * 0.85}rem` } : undefined
+            const content = (
+              <>
                 <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{m.name}</span>
                 {m.unreadEmails > 0 && (
@@ -402,6 +399,75 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
                   </span>
                 )}
                 <FolderMenu mailbox={m} onAction={(a) => void onMenuAction(m, a)} />
+              </>
+            )
+            const dragHandlers = {
+              onDragOver: (e: React.DragEvent) => {
+                if (!takes(e, m)) return
+                e.preventDefault()
+                e.dataTransfer.dropEffect = 'move' as const
+                setDropTarget(m.id)
+              },
+              onDragLeave: (e: React.DragEvent) => {
+                if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+                setDropTarget((id) => (id === m.id ? null : id))
+              },
+              onDrop: (e: React.DragEvent) => onDropOn(e, m),
+            }
+
+            /*
+             * A draggable folder cannot stay an <a>: WebKit's own long-press
+             * handling of links and images runs outside the page's drag
+             * events entirely, so a drag started from one never raises
+             * `dragover` on *any* other element, `-webkit-user-drag` or not —
+             * confirmed on tablet by dropping onto plain divs too. Rendering
+             * it as a div instead, with its own click/keyboard navigation,
+             * sidesteps that whole native path rather than fighting it.
+             */
+            if (canDrag) {
+              const go = () =>
+                void navigate({ to: '/mail/$mailboxId', params: { mailboxId: m.id } })
+              return (
+                <div
+                  key={m.id}
+                  role="link"
+                  tabIndex={0}
+                  onClick={go}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' && e.key !== ' ') return
+                    e.preventDefault()
+                    go()
+                  }}
+                  draggable
+                  // A long press to start the drag on touch is also the
+                  // gesture for the browser's own context menu, so it needs
+                  // suppressing or the two show up on top of each other.
+                  onContextMenu={suppressContextMenu}
+                  onDragStart={(e) => {
+                    setFolderDrag(e, m.id, m.name)
+                    draggingRef.current = m
+                  }}
+                  onDragEnd={endDrag}
+                  {...dragHandlers}
+                  aria-label={ariaLabel}
+                  className={`cursor-pointer ${className}`}
+                  style={style}
+                >
+                  {content}
+                </div>
+              )
+            }
+            return (
+              <Link
+                key={m.id}
+                to="/mail/$mailboxId"
+                params={{ mailboxId: m.id }}
+                {...dragHandlers}
+                aria-label={ariaLabel}
+                className={className}
+                style={style}
+              >
+                {content}
               </Link>
             )
           })}

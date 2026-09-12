@@ -30,61 +30,86 @@ export interface MailDrag {
 function setDragLabel(e: DragEvent, label: string): void {
   const el = document.createElement('div')
   el.textContent = label
+  // Sized and ringed to stay legible under a fingertip on touch, which a
+  // thumbnail-sized, borderless label was not: a fingertip covers far more
+  // of the screen than a mouse pointer does, so the label has to hold its
+  // own a short distance away rather than blend into whatever is under it.
   el.className =
-    'pointer-events-none fixed top-0 left-0 max-w-[180px] truncate rounded-control bg-surface-2 px-2.5 py-1.5 text-[13px] text-ink shadow-raised'
+    'pointer-events-none fixed top-0 left-0 max-w-[220px] truncate rounded-control bg-surface-2 px-3.5 py-2.5 text-[15px] font-medium text-ink shadow-raised ring-2 ring-accent'
   // Off-screen but still rendered, which is all setDragImage needs.
   el.style.transform = 'translate(-9999px, -9999px)'
   document.body.appendChild(el)
   // A negative hotspot places the image's top-left *past* the cursor, i.e.
   // down and to the right of it — the trailing side when dragging from the
   // mail list or a folder row towards the sidebar above and to the left.
-  e.dataTransfer.setDragImage(el, -12, -12)
+  e.dataTransfer.setDragImage(el, -16, -16)
   setTimeout(() => el.remove(), 0)
 }
 
+/*
+ * A touch-started drag cannot be trusted to carry either of these through
+ * `dataTransfer`: on tablet, `dragover` can see an empty `types` list (no way
+ * to tell mail from folder, so a folder never highlights and a drop never
+ * fires — the bug this fixes), and even where `types` does come through,
+ * `getData` on drop is not guaranteed to return what was set. dragstart
+ * itself is reliable on touch, so both the kind and the mail payload are
+ * kept here instead, the same way the folder side already keeps the folder
+ * being dragged in its own component state rather than round-tripping it
+ * through `dataTransfer`. `dataTransfer` still gets the MIME type set, since
+ * that is the one thing this module cannot fabricate for a *foreign* drag —
+ * dragging something from outside the app must keep reading as "nothing" —
+ * and it is tried first in `dragKind` so nothing changes on the engines
+ * where `types` was already reliable during dragover.
+ */
+let liveDragKind: 'mail' | 'folder' | null = null
+let mailPayload: MailDrag | null = null
+
 export function setMailDrag(e: DragEvent, payload: MailDrag, label: string): void {
-  const json = JSON.stringify(payload)
-  e.dataTransfer.setData(MAIL_DRAG, json)
-  // WebKit drops custom-type data set during a touch-started drag: getData
-  // comes back empty on read even though the type itself still shows up in
-  // `types`. text/plain survives the same drag, so the payload rides along
-  // there too and readMailDrag falls back to it.
-  e.dataTransfer.setData('text/plain', json)
+  liveDragKind = 'mail'
+  mailPayload = payload
+  e.dataTransfer.setData(MAIL_DRAG, '1')
   e.dataTransfer.effectAllowed = 'move'
   setDragLabel(e, label)
 }
 
 export function readMailDrag(e: DragEvent): MailDrag | null {
-  const raw = e.dataTransfer.getData(MAIL_DRAG) || e.dataTransfer.getData('text/plain')
-  if (!raw) return null
-  try {
-    const value = JSON.parse(raw) as MailDrag
-    return Array.isArray(value.ids) && value.ids.length ? value : null
-  } catch {
-    return null
-  }
+  return dragKind(e) === 'mail' ? mailPayload : null
 }
 
 export function setFolderDrag(e: DragEvent, mailboxId: string, label: string): void {
+  liveDragKind = 'folder'
   e.dataTransfer.setData(FOLDER_DRAG, mailboxId)
   e.dataTransfer.effectAllowed = 'move'
   setDragLabel(e, label)
+}
+
+/** Call on every dragend, so a later foreign drag cannot read as a stale one. */
+export function clearDragState(): void {
+  liveDragKind = null
+  mailPayload = null
 }
 
 /*
  * Starting a native drag on touch is a long press, which is the same gesture
  * that opens the browser's own text-selection/context menu — without both of
  * these, dragging a row on a tablet also pops that menu on top of the drag.
+ *
+ * Only ever applied to plain elements (a mail row, a draggable folder row),
+ * never to a real `<a>`: WebKit's own long-press handling of links and
+ * images runs outside the page's drag-and-drop entirely and a touch drag
+ * started from one never reaches other elements' `dragover` — no CSS switch
+ * talks it out of that, so a draggable folder is a `div` with its own
+ * navigation instead of a `Link`. See docs/notes/drag-and-drop.md.
  */
 export const draggableTouchClass = 'select-none [-webkit-touch-callout:none]'
 export function suppressContextMenu(e: MouseEvent): void {
   e.preventDefault()
 }
 
-/** What is being dragged, from the types alone — all a dragover may look at. */
+/** What is being dragged. `types` first; `liveDragKind` for when it comes up empty. */
 export function dragKind(e: DragEvent): 'mail' | 'folder' | null {
   const types = e.dataTransfer.types
   if (types.includes(MAIL_DRAG)) return 'mail'
   if (types.includes(FOLDER_DRAG)) return 'folder'
-  return null
+  return types.length === 0 ? liveDragKind : null
 }
