@@ -159,3 +159,49 @@ describe('suppressContextMenu', () => {
     expect(preventDefault).toHaveBeenCalled()
   })
 })
+
+describe('the label dragged under the pointer', () => {
+  /** The element setDragImage was handed, before it is cleaned up. */
+  function labelFor(run: (e: ReturnType<typeof dragEvent>) => void) {
+    let image: HTMLElement | null = null
+    const e = dragEvent()
+    e.dataTransfer.setDragImage = (el: Element) => void (image = el as HTMLElement)
+    run(e)
+    return image!
+  }
+
+  it('carries the subject, so what is being moved is legible', () => {
+    const el = labelFor((e) => setMailDrag(e, payload, 'Rechnung Mai'))
+    expect(el.textContent).toBe('Rechnung Mai')
+  })
+
+  it('outlines itself with a border rather than a ring', () => {
+    /*
+     * Not a style preference, and the reason is invisible in review — which
+     * is why it is pinned here. setDragImage takes a snapshot that clips at
+     * the border box, and Tailwind's `ring` is a box-shadow *outside* it: the
+     * straight edges were cut away while the rounded corners still caught a
+     * fragment, so the label dragged around four corner brackets and no
+     * frame. A shadow is clipped the same way and buys nothing here.
+     *
+     * `ring` is the idiom everywhere else in this codebase, so anyone
+     * tidying up will reach for it again.
+     */
+    const el = labelFor((e) => setFolderDrag(e, 'mb-1', 'Rechnungen'))
+
+    expect(el.className).toContain('border-2')
+    expect(el.className).not.toMatch(/\bring-/)
+    expect(el.className).not.toMatch(/\bshadow-/)
+  })
+
+  it('offsets the image so the drop target beside the pointer stays visible', () => {
+    // A negative hotspot puts the label down and to the right of the cursor —
+    // the trailing side when dragging towards the sidebar above and left.
+    let offset: [number, number] | null = null
+    const e = dragEvent()
+    e.dataTransfer.setDragImage = (_el: Element, x: number, y: number) => void (offset = [x, y])
+    setMailDrag(e, payload, 'Subject')
+
+    expect(offset).toEqual([-16, -16])
+  })
+})

@@ -30,12 +30,22 @@ export interface MailDrag {
 function setDragLabel(e: DragEvent, label: string): void {
   const el = document.createElement('div')
   el.textContent = label
-  // Sized and ringed to stay legible under a fingertip on touch, which a
-  // thumbnail-sized, borderless label was not: a fingertip covers far more
-  // of the screen than a mouse pointer does, so the label has to hold its
-  // own a short distance away rather than blend into whatever is under it.
+  /*
+   * Sized and outlined to stay legible under a fingertip on touch, which a
+   * thumbnail-sized, borderless label was not: a fingertip covers far more of
+   * the screen than a mouse pointer does, so the label has to hold its own a
+   * short distance away rather than blend into whatever is under it.
+   *
+   * A `border`, not a `ring`, and no shadow. setDragImage takes a snapshot
+   * that clips at the border box, and Tailwind's ring is a box-shadow *outside*
+   * it: the straight edges were cut away entirely while the rounded corners
+   * still caught a fragment, so the label dragged around four violet corner
+   * brackets and no frame. A border is part of the box and survives the
+   * snapshot; `shadow-raised` was being clipped just the same and did nothing
+   * here but cost a repaint.
+   */
   el.className =
-    'pointer-events-none fixed top-0 left-0 max-w-[220px] truncate rounded-control bg-surface-2 px-3.5 py-2.5 text-[15px] font-medium text-ink shadow-raised ring-2 ring-accent'
+    'pointer-events-none fixed top-0 left-0 max-w-[220px] truncate rounded-control border-2 border-accent bg-surface-2 px-3.5 py-2.5 text-[15px] font-medium text-ink'
   // Off-screen but still rendered, which is all setDragImage needs.
   el.style.transform = 'translate(-9999px, -9999px)'
   document.body.appendChild(el)

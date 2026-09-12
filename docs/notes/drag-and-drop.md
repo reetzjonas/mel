@@ -132,3 +132,20 @@ read directly instead of through the `<a>` it no longer is. With no draggable
 row left as an anchor, `-webkit-user-drag` went back out of
 `draggableTouchClass` — it never did anything for the mail row's plain `div`,
 and there is no longer a `Link` left for it to matter to.
+
+## The label's frame, and why it is a border (2026-09-12)
+
+The drag label carried a `ring-2 ring-accent`, and on screen that showed up as
+four violet corner brackets with no sides — reported as "the frame around the
+items I'm dragging looks odd", with a screenshot that made it obvious.
+
+`setDragImage` takes a snapshot that clips at the **border box**, and Tailwind's
+`ring` is a box-shadow *outside* it. The straight edges fell entirely outside
+and were cut away; only the rounded corners still reached far enough inward to
+leave a fragment. `shadow-raised` was clipped the same way and had been doing
+nothing there but costing a repaint.
+
+A `border` is part of the box and survives the snapshot. Pinned in
+`dragAndDrop.test.ts`, because the reason is invisible in review and `ring` is
+the idiom everywhere else in this codebase — the next person tidying up will
+reach for it again.
