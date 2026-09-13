@@ -187,6 +187,34 @@ export interface FilesProvider {
   readFile(node: import('../domain/file').FileNode): Promise<Blob | null>
 }
 
+export interface SieveScriptEdit {
+  /** Omitted to create a new script. */
+  id?: string
+  name: string
+  content: string
+  /** Make it the one script that runs, once the write succeeds. */
+  activate?: boolean
+}
+
+/**
+ * Server-side mail filtering (RFC 9661).
+ *
+ * Server-first like files and for the same reason: the script text has to
+ * reach the server to mean anything, and the server is also the only thing
+ * that can say whether it parses.
+ */
+export interface SieveProvider {
+  listScripts(): Promise<import('../domain/sieve').SieveScript[]>
+  /** The script text, fetched on demand. */
+  readScript(script: import('../domain/sieve').SieveScript): Promise<string>
+  /** null when it parses; otherwise the server's message, naming the line. */
+  validate(content: string): Promise<string | null>
+  saveScript(edit: SieveScriptEdit): Promise<{ id: string | null; failure: SetFailure | null }>
+  /** null switches filtering off rather than choosing another script. */
+  setActive(id: string | null): Promise<SetFailure | null>
+  destroyScript(id: string): Promise<SetFailure | null>
+}
+
 export interface PushInfo {
   eventSourceUrl: string
   credentials: Credentials
@@ -199,6 +227,7 @@ export interface ProviderConnection {
   contacts: ContactsProvider | null
   calendars: CalendarProvider | null
   files: FilesProvider | null
+  sieve: SieveProvider | null
   push: PushInfo | null
 }
 

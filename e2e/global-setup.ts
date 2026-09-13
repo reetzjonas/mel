@@ -25,6 +25,7 @@ const MAIL = 'urn:ietf:params:jmap:mail'
 const CALENDARS = 'urn:ietf:params:jmap:calendars'
 const CONTACTS = 'urn:ietf:params:jmap:contacts'
 const FILENODE = 'urn:ietf:params:jmap:filenode'
+const SIEVE = 'urn:ietf:params:jmap:sieve'
 
 /** File nodes grouped by depth, deepest level first. */
 function deepestFirst(nodes: Array<{ id: string; parentId: string | null }>): string[][] {
@@ -89,6 +90,7 @@ async function resetAccount(user: string, pass: string) {
   const calAcc = session.primaryAccounts[CALENDARS]
   const conAcc = session.primaryAccounts[CONTACTS]
   const fileAcc = session.primaryAccounts[FILENODE]
+  const sieveAcc = session.primaryAccounts[SIEVE]
   const removed: string[] = []
 
   if (mailAcc) {
@@ -296,9 +298,47 @@ async function resetAccount(user: string, pass: string) {
       // parent in the same call, so a folder full of uploads has to be taken
       // apart from the leaves up (docs/notes/filenode.md).
       for (const level of deepestFirst(nodes.list)) {
-        await jmap(auth, [CORE, FILENODE], [['FileNode/set', { accountId: fileAcc, destroy: level }, 'c0']])
+        await jmap(
+          auth,
+          [CORE, FILENODE],
+          [['FileNode/set', { accountId: fileAcc, destroy: level }, 'c0']],
+        )
       }
       removed.push(`${nodes.list.length} file node(s)`)
+    }
+  }
+
+  if (sieveAcc) {
+    const scripts = (
+      await jmap(
+        auth,
+        [CORE, SIEVE],
+        [['SieveScript/get', { accountId: sieveAcc, ids: null }, 'c0']],
+      )
+    ).methodResponses[0]![1] as { list: Array<{ id: string; isActive?: boolean }> }
+    if (scripts.list.length) {
+      // Deactivate first: the active script cannot be destroyed, and worse, a
+      // leftover one actually filters mail in the account every other spec
+      // reads — a rule that files the seeded inbox elsewhere would look like
+      // any number of unrelated failures.
+      if (scripts.list.some((s) => s.isActive))
+        await jmap(
+          auth,
+          [CORE, SIEVE],
+          [['SieveScript/set', { accountId: sieveAcc, onSuccessDeactivateScript: true }, 'c0']],
+        )
+      await jmap(
+        auth,
+        [CORE, SIEVE],
+        [
+          [
+            'SieveScript/set',
+            { accountId: sieveAcc, destroy: scripts.list.map((s) => s.id) },
+            'c0',
+          ],
+        ],
+      )
+      removed.push(`${scripts.list.length} sieve script(s)`)
     }
   }
 

@@ -44,12 +44,16 @@ folder, or drag onto a breadcrumb), delete (recursive), multi-select (Select tog
 shift-click for a range) for bulk move/delete, and a preview for images, text
 and PDF. Shift-click range selection works in the mail list too. See `docs/notes/filenode.md`.
 
+Server-side filter rules (Sieve, RFC 9661) are a section in Settings → Mail
+where the server offers the capability: a script editor with the server's own
+validation, activation, and delete. See `docs/notes/sieve.md`.
+
 Settings are a modal over the current screen, not a route: six tabs (General,
 Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=`, so deep links and the back button keep working and `/settings`
 redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 824 Vitest + 85 Playwright (desktop + mobile; state-mutating specs are
+Tests: 851 Vitest + 86 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -83,6 +87,8 @@ working on that specific feature, not on every session:
 - **Resizable panel widths** (two boundaries, lg and up only; why the handles
   cost no layout, and the pointercancel that collapsed a panel):
   `docs/notes/panel-widths.md`
+- **Filter rules / JMAP Sieve** (script editor in Settings → Mail, server-side
+  validation, the RFC-vs-Stalwart error names): `docs/notes/sieve.md`
 - **Files / JMAP FileNode** (the fourth app: browse, upload, preview; draft
   extension, capability-gated, the blob-id, null-index and destroy-ordering
   traps): `docs/notes/filenode.md`

@@ -47,8 +47,10 @@ describe('capabilityRows', () => {
     expect(row(caps({ mail: true }), 'mail').gate).toBeUndefined()
   })
 
-  it('flags sieve as supported-but-unimplemented rather than as a gate', () => {
-    expect(row(caps({ sieve: true }), 'sieve').gate).toBe('caps.gate.sieve')
-    expect(row(caps({ sieve: false }), 'sieve').gate).toBeUndefined()
+  it('names what sieve gates, now that there is an editor behind it', () => {
+    // It used to read "your server supports it, we have not built it" — a
+    // promise that stopped being true the day the filter rules section landed.
+    expect(row(caps({ sieve: false }), 'sieve').gate).toBe('caps.gate.sieve')
+    expect(row(caps({ sieve: true }), 'sieve').gate).toBeUndefined()
   })
 })

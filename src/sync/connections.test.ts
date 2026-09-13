@@ -44,6 +44,7 @@ const open = vi.fn((stored: Account): Promise<ProviderConnection> =>
     contacts: null,
     calendars: null,
     files: null,
+    sieve: null,
     push: null,
   }),
 )

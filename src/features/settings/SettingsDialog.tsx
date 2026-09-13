@@ -26,6 +26,7 @@ import {
   VacationSetting,
   WebPushSetting,
 } from './sections'
+import { SieveSetting } from './SieveSetting'
 
 const tabLabels: Record<SettingsTab, MsgKey> = {
   general: 'settings.tab.general',
@@ -176,6 +177,11 @@ export function SettingsDialog({
                 {account?.capabilities.vacation && (
                   <Section title={t('settings.vacation')}>
                     <VacationSetting accountId={account.id} />
+                  </Section>
+                )}
+                {account?.capabilities.sieve && (
+                  <Section title={t('settings.sieve')}>
+                    <SieveSetting accountId={account.id} />
                   </Section>
                 )}
               </>

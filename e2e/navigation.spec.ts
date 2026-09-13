@@ -176,13 +176,20 @@ test('the sync bar leads to the server feature list', async ({ page }) => {
   const caps = page.locator('#server-capabilities')
   await expect(caps).toBeVisible()
   // Stalwart offers all of these, so they must read as supported.
-  for (const feature of ['Mail', 'Contacts', 'Calendar', 'Sending mail']) {
+  for (const feature of ['Mail', 'Contacts', 'Calendar', 'Sending mail', 'Sieve filters']) {
     await expect(caps.getByRole('listitem').filter({ hasText: feature }).first()).toContainText(
       'supported',
     )
   }
-  // Sieve is offered by the server but mel has no editor yet — say so.
-  await expect(caps).toContainText('filter editor is not built yet')
+  /*
+   * A supported feature names no gate, because nothing is hidden. This line
+   * used to assert the opposite for Sieve — "your server can do it, we have
+   * not built it" — and failed the day the filter rules editor landed, which
+   * is the point of pinning the promise rather than the flag.
+   */
+  await expect(caps.getByRole('listitem').filter({ hasText: 'Sieve filters' })).not.toContainText(
+    'not built yet',
+  )
 })
 
 test('an action that never reached the server is reported, not dropped quietly', async ({

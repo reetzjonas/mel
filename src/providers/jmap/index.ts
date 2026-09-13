@@ -12,6 +12,7 @@ import {
 import { createJmapCalendars } from './calendars'
 import { createJmapContacts } from './contacts'
 import { createJmapFiles } from './files'
+import { createJmapSieve } from './sieve'
 import { createJmapMail } from './mail'
 
 async function buildConnection(
@@ -44,6 +45,9 @@ async function buildConnection(
     calendars: capabilities.calendars ? createJmapCalendars(transport, remoteAccountId) : null,
     files: capabilities.files
       ? createJmapFiles(transport, remoteAccountId, resolved.uploadUrl, resolved.downloadUrl)
+      : null,
+    sieve: capabilities.sieve
+      ? createJmapSieve(transport, remoteAccountId, resolved.uploadUrl, resolved.downloadUrl)
       : null,
     push: {
       eventSourceUrl: resolved.eventSourceUrl,
