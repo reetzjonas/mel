@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import type { FilterRule } from '../domain/sieve'
-import { emptyRule, rulesFromScript, stripRuleMarker, toSieveScript } from './sieveScript'
+import {
+  emptyRule,
+  mailboxPaths,
+  ruleForSender,
+  rulesFromScript,
+  stripRuleMarker,
+  toSieveScript,
+  unfinishedRules,
+} from './sieveScript'
 
 const rule = (over: Partial<FilterRule> = {}): FilterRule => ({
   name: 'Newsletters',
@@ -74,6 +82,66 @@ describe('generating a script', () => {
     // rejects, taking every other rule down with it.
     expect(toSieveScript([rule({ conditions: [] })])).not.toContain('if ')
     expect(toSieveScript([rule({ actions: [] })])).not.toContain('if ')
+  })
+})
+
+describe('an action that is not finished', () => {
+  it('leaves a fileinto with no folder out, rather than filing into nowhere', () => {
+    // The folder select starts empty on purpose — guessing a destination is
+    // worse than asking — so the generator must not emit `fileinto ""`.
+    const script = toSieveScript([
+      rule({ actions: [{ kind: 'fileinto', mailbox: '' }, { kind: 'flag' }] }),
+    ])
+
+    // The command, not the word: the marker line still carries the unfinished
+    // action so the form shows it again, which is the point of keeping it.
+    expect(script).not.toContain('fileinto "')
+    expect(script).toContain('addflag')
+    expect(script).toContain('require ["imap4flags"];')
+  })
+
+  it('skips a rule whose only action has no folder', () => {
+    expect(toSieveScript([rule({ actions: [{ kind: 'fileinto', mailbox: '' }] })])).not.toContain(
+      'if ',
+    )
+  })
+
+  it('names the rules the form still has to ask about', () => {
+    // Saving these would report success for rules that generate nothing.
+    const ok = rule()
+    const missing = rule({ name: 'Unfinished', actions: [{ kind: 'fileinto', mailbox: '' }] })
+
+    expect(unfinishedRules([ok, missing]).map((r) => r.name)).toEqual(['Unfinished'])
+  })
+})
+
+describe('ruleForSender', () => {
+  it('matches the sender and leaves the folder to be chosen', () => {
+    const seeded = ruleForSender('news@example.test')
+
+    expect(seeded.conditions).toEqual([
+      { field: 'from', op: 'contains', value: 'news@example.test' },
+    ])
+    expect(seeded.actions).toEqual([{ kind: 'fileinto', mailbox: '' }])
+  })
+})
+
+describe('mailboxPaths', () => {
+  const box = (id: string, name: string, parentId: string | null = null) =>
+    ({ id, name, parentId }) as never
+
+  it('spells a nested folder as the path fileinto needs', () => {
+    // Two "Archive" folders under different parents are different
+    // destinations, so a bare name would not say which.
+    expect(mailboxPaths([box('a', 'Work'), box('b', 'Archive', 'a')])).toContain('Work/Archive')
+  })
+
+  it('survives a parent chain that points at itself', () => {
+    expect(mailboxPaths([box('a', 'Loop', 'a')])).toEqual(['Loop'])
+  })
+
+  it('stops at a parent it does not have', () => {
+    expect(mailboxPaths([box('b', 'Orphan', 'gone')])).toEqual(['Orphan'])
   })
 })
 

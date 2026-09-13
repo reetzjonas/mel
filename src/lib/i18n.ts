@@ -99,6 +99,7 @@ const en = {
   'unsub.write': 'Unsubscribe by email',
   'mail.imagesBlocked': 'Remote images were not loaded — they can tell the sender you opened this.',
   'mail.loadImages': 'Load images',
+  'mail.filterLikeThis': 'Filter messages like this',
   'mail.details': 'Message details',
   'mail.details.overview': 'Overview',
   'mail.details.authentication': 'Authentication',
@@ -412,12 +413,12 @@ const en = {
   'rule.folder': 'Folder',
   'rule.stop': 'Stop after this rule',
   'rule.none': 'No rules in this set yet',
+  'rule.needsFolder': 'Pick a folder for every “Move to folder” action.',
   'rule.asText': 'Edit as text',
   'rule.asRules': 'Back to the form',
   'rule.handWritten':
     'This script was not written by the form, so it is only offered as text — opening it in the form would rewrite it.',
-  'rule.textWarning':
-    'Editing the text here means the form can no longer show this rule set.',
+  'rule.textWarning': 'Editing the text here means the form can no longer show this rule set.',
 
   'settings.sieve': 'Filter rules',
   'sieve.hint':
@@ -668,6 +669,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.imagesBlocked':
     'Externe Bilder wurden nicht geladen — sie können dem Absender verraten, dass du die Mail geöffnet hast.',
   'mail.loadImages': 'Bilder laden',
+  'mail.filterLikeThis': 'Ähnliche Nachrichten filtern',
   'mail.details': 'Nachrichtendetails',
   'mail.details.overview': 'Überblick',
   'mail.details.authentication': 'Authentifizierung',
@@ -981,6 +983,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'rule.folder': 'Ordner',
   'rule.stop': 'Nach dieser Regel aufhören',
   'rule.none': 'Noch keine Regeln in diesem Satz',
+  'rule.needsFolder': 'Wähle für jede Aktion „In Ordner verschieben“ einen Ordner.',
   'rule.asText': 'Als Text bearbeiten',
   'rule.asRules': 'Zurück zum Formular',
   'rule.handWritten':

@@ -54,6 +54,12 @@ export function useCanSend(): boolean {
   return accounts?.[0]?.capabilities.submission ?? false
 }
 
+/** Whether the server takes filter rules, which is what offers them anywhere. */
+export function useCanFilter(): boolean {
+  const accounts = useAccounts()
+  return accounts?.[0]?.capabilities.sieve ?? false
+}
+
 const ROLE_ORDER: Record<string, number> = {
   inbox: 0,
   drafts: 1,

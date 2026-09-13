@@ -1,7 +1,16 @@
 import { useEffect, useState } from 'react'
 import type { FilterRule, SieveScript } from '../../domain/sieve'
 import { t } from '../../lib/i18n'
-import { emptyRule, rulesFromScript, stripRuleMarker, toSieveScript } from '../../lib/sieveScript'
+import {
+  emptyRule,
+  mailboxPaths,
+  ruleForSender,
+  rulesFromScript,
+  stripRuleMarker,
+  toSieveScript,
+  unfinishedRules,
+} from '../../lib/sieveScript'
+import { useUi } from '../../app/store'
 import { useMailboxes } from '../mail/hooks'
 import { RuleWizard } from './RuleWizard'
 import {
@@ -36,16 +45,33 @@ type Note = { kind: 'error' | 'ok'; text: string } | null
 
 export function SieveSetting({ accountId }: { accountId: string }) {
   const [scripts, setScripts] = useState<SieveScript[] | null>(null)
-  const [draft, setDraft] = useState<Draft | null>(null)
+  /*
+   * Seeded from the reading pane, if that is how we got here. Read as the
+   * initial state rather than set from an effect: the dialog mounts fresh each
+   * time it opens, so this is the first render's own input, and an effect
+   * would spend a render showing an empty form first.
+   */
+  const seed = useUi.getState().filterSeed
+  const [draft, setDraft] = useState<Draft | null>(
+    seed ? { mode: 'rules', name: seed.from, rules: [ruleForSender(seed.from)] } : null,
+  )
   const [note, setNote] = useState<Note>(null)
   const [busy, setBusy] = useState(false)
   const mailboxes = useMailboxes(accountId)
+  const setFilterSeed = useUi((s) => s.setFilterSeed)
+  const folders = mailboxPaths(mailboxes ?? [])
 
   const refresh = async () => setScripts(await listScripts(accountId))
 
   useEffect(() => {
     void listScripts(accountId).then(setScripts)
   }, [accountId])
+
+  // Cleared once taken, so reopening settings later does not start the same
+  // draft again over whatever is on screen by then.
+  useEffect(() => {
+    setFilterSeed(null)
+  }, [setFilterSeed])
 
   const report = (r: SieveOutcome) => {
     setNote(
@@ -91,6 +117,10 @@ export function SieveSetting({ accountId }: { accountId: string }) {
   const save = async (activate: boolean) => {
     if (!draft) return
     if (!draft.name.trim()) return setNote({ kind: 'error', text: t('sieve.nameRequired') })
+    // A rule whose folder was never chosen generates nothing at all, so saving
+    // it would report success for a rule that quietly does not exist.
+    if (draft.mode === 'rules' && unfinishedRules(draft.rules).length)
+      return setNote({ kind: 'error', text: t('rule.needsFolder') })
     const ok = await run(() =>
       saveScript(accountId, {
         ...(draft.id ? { id: draft.id } : {}),
@@ -147,7 +177,7 @@ export function SieveSetting({ accountId }: { accountId: string }) {
           {draft.mode === 'rules' ? (
             <RuleWizard
               rules={draft.rules}
-              mailboxes={mailboxes ?? []}
+              folders={folders}
               onChange={(rules) => setDraft({ ...draft, rules })}
             />
           ) : (

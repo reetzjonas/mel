@@ -1,3 +1,4 @@
+import type { Mailbox } from '../domain/mailbox'
 import type { FilterRule, RuleAction, RuleCondition } from '../domain/sieve'
 
 /*
@@ -30,6 +31,18 @@ function testFor(condition: RuleCondition): string {
   return `header ${matchType} ${quote(HEADER[condition.field])} ${quote(condition.value)}`
 }
 
+/**
+ * An action that cannot be carried out as written.
+ *
+ * Only `fileinto` can be: the folder select starts empty when the account has
+ * no folders to offer, and `fileinto ""` is a rule that files mail nowhere.
+ * Dropping the action lets the surrounding rule be skipped by the same check
+ * that catches a rule with no actions at all.
+ */
+function isUsable(action: RuleAction): boolean {
+  return action.kind !== 'fileinto' || action.mailbox.length > 0
+}
+
 function commandsFor(action: RuleAction): string[] {
   switch (action.kind) {
     case 'fileinto':
@@ -49,7 +62,7 @@ function commandsFor(action: RuleAction): string[] {
 function requiresFor(rules: FilterRule[]): string[] {
   const needed = new Set<string>()
   for (const rule of rules)
-    for (const action of rule.actions) {
+    for (const action of rule.actions.filter(isUsable)) {
       if (action.kind === 'fileinto') needed.add('fileinto')
       if (action.kind === 'flag' || action.kind === 'markRead') needed.add('imap4flags')
     }
@@ -70,7 +83,8 @@ export function toSieveScript(rules: FilterRule[]): string {
   lines.push('')
 
   for (const rule of rules) {
-    if (!rule.conditions.length || !rule.actions.length) continue
+    const actions = rule.actions.filter(isUsable)
+    if (!rule.conditions.length || !actions.length) continue
     lines.push(`# ${rule.name}`)
     const tests = rule.conditions.map(testFor)
     // A single test needs no anyof/allof wrapper, and reads better without it.
@@ -79,9 +93,9 @@ export function toSieveScript(rules: FilterRule[]): string {
         ? tests[0]!
         : `${rule.match === 'all' ? 'allof' : 'anyof'} (${tests.join(', ')})`
     lines.push(`if ${condition} {`)
-    for (const action of rule.actions)
+    for (const action of actions)
       for (const command of commandsFor(action)) lines.push(`  ${command}`)
-    if (rule.stop && !rule.actions.some((a) => a.kind === 'discard')) lines.push('  stop;')
+    if (rule.stop && !actions.some((a) => a.kind === 'discard')) lines.push('  stop;')
     lines.push('}', '')
   }
   return lines.join('\n')
@@ -142,4 +156,53 @@ export function emptyRule(): FilterRule {
     actions: [{ kind: 'fileinto', mailbox: '' }],
     stop: false,
   }
+}
+
+/**
+ * A rule that catches everything from one sender.
+ *
+ * What "filter messages like this" means from an open message: the sender is
+ * the part people actually want to act on, and anything finer is a change away
+ * in the form they land in.
+ */
+export function ruleForSender(address: string): FilterRule {
+  return {
+    name: address,
+    match: 'all',
+    conditions: [{ field: 'from', op: 'contains', value: address }],
+    // No folder guessed: filing into whichever folder happens to sort first
+    // would be arbitrary, and a rule that moves mail somewhere unexpected is
+    // worse than one that asks.
+    actions: [{ kind: 'fileinto', mailbox: '' }],
+    stop: false,
+  }
+}
+
+/** Rules that would generate nothing, because an action is not finished. */
+export function unfinishedRules(rules: FilterRule[]): FilterRule[] {
+  return rules.filter((rule) => rule.actions.some((a) => !isUsable(a)))
+}
+
+/**
+ * Folder paths as Sieve wants them for `fileinto`.
+ *
+ * A name on its own is ambiguous once folders nest — two "Archive" folders
+ * under different parents are different destinations — so each is offered as
+ * the full path the server files into.
+ */
+export function mailboxPaths(mailboxes: Mailbox[]): string[] {
+  const byId = new Map(mailboxes.map((m) => [m.id, m]))
+  const pathOf = (m: Mailbox): string => {
+    const parts = [m.name]
+    const seen = new Set<string>([m.id])
+    for (let p = m.parentId; p != null && !seen.has(p);) {
+      const parent = byId.get(p)
+      if (!parent) break
+      seen.add(p)
+      parts.unshift(parent.name)
+      p = parent.parentId
+    }
+    return parts.join('/')
+  }
+  return mailboxes.map(pathOf).sort((a, b) => a.localeCompare(b))
 }

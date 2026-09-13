@@ -12,6 +12,29 @@ hand, so the form is what a new rule set opens on; the text editor stays
 because Sieve is a real language and the form covers a deliberately small part
 of it.
 
+## From a message to a rule
+
+The reading pane carries "Filter messages like this", which is where most
+rules will actually start: you are looking at the mail that prompted it. It
+hands the sender to the form through the UI store — a one-shot handover
+between two screens, like the composer's init, rather than something anyone
+should be able to bookmark — and settings opens with a rule already matching
+that sender.
+
+The form reads the seed as its **initial state**, not from an effect: the
+dialog mounts fresh each time it opens, so the seed is the first render's own
+input, and an effect would spend a render showing an empty form first (the
+trap `#50` is about).
+
+**No destination folder is guessed.** Filing into whichever folder happens to
+sort first is a decision about someone's mail that we have no basis for, so
+the folder select starts on "—". That makes an unfinished rule possible, so
+two things back it up: `toSieveScript` leaves out a `fileinto` with no folder
+(and skips the rule entirely if that was its only action, rather than emitting
+`fileinto ""`), and saving is refused with `unfinishedRules` naming the
+problem. Without the second half the first would be worse than the bug —
+"saved" for a rule that quietly does not exist.
+
 ## How the form round-trips
 
 A form cannot parse arbitrary Sieve, and pretending otherwise would mean

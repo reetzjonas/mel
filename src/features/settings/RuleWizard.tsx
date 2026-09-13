@@ -5,7 +5,6 @@ import type {
   RuleAction,
   RuleCondition,
 } from '../../domain/sieve'
-import type { Mailbox } from '../../domain/mailbox'
 import { t, type MsgKey } from '../../lib/i18n'
 import { emptyRule } from '../../lib/sieveScript'
 import { Icon } from '../../ui/Icon'
@@ -34,40 +33,16 @@ const actionLabel: Record<RuleAction['kind'], MsgKey> = {
 
 const selectClass = `${inputClass} w-auto py-1.5 text-xs`
 
-/**
- * Folder paths as Sieve wants them for `fileinto`.
- *
- * A name on its own is ambiguous once folders nest — two "Archive" folders
- * under different parents are different destinations — so each is offered as
- * the path the server files into.
- */
-function folderPaths(mailboxes: Mailbox[]): string[] {
-  const byId = new Map(mailboxes.map((m) => [m.id, m]))
-  const pathOf = (m: Mailbox): string => {
-    const parts = [m.name]
-    const seen = new Set<string>([m.id])
-    for (let p = m.parentId; p != null && !seen.has(p);) {
-      const parent = byId.get(p)
-      if (!parent) break
-      seen.add(p)
-      parts.unshift(parent.name)
-      p = parent.parentId
-    }
-    return parts.join('/')
-  }
-  return mailboxes.map(pathOf).sort((a, b) => a.localeCompare(b))
-}
-
 export function RuleWizard({
   rules,
-  mailboxes,
+  folders,
   onChange,
 }: {
   rules: FilterRule[]
-  mailboxes: Mailbox[]
+  /** Folder paths for fileinto; see mailboxPaths in lib/sieveScript.ts. */
+  folders: string[]
   onChange: (rules: FilterRule[]) => void
 }) {
-  const folders = folderPaths(mailboxes)
   const replace = (i: number, rule: FilterRule) =>
     onChange(rules.map((r, at) => (at === i ? rule : r)))
 
@@ -214,7 +189,7 @@ function RuleCard({
             value={action.kind}
             onChange={(e) => {
               const kind = e.target.value as RuleAction['kind']
-              setAction(i, kind === 'fileinto' ? { kind, mailbox: folders[0] ?? '' } : { kind })
+              setAction(i, kind === 'fileinto' ? { kind, mailbox: '' } : { kind })
             }}
           >
             {ACTION_KINDS.map((kind) => (
@@ -230,6 +205,10 @@ function RuleCard({
               value={action.mailbox}
               onChange={(e) => setAction(i, { kind: 'fileinto', mailbox: e.target.value })}
             >
+              {/* Nothing is preselected: a folder chosen for the user is a
+                  guess about where their mail should go. Saving with this
+                  still on it is refused rather than quietly doing nothing. */}
+              <option value="">—</option>
               {/* The stored folder may have been renamed or may come from
                   another client, so it stays selectable rather than silently
                   becoming the first one in the list. */}

@@ -6,7 +6,7 @@ import { formatFullDate, formatListDate } from '../../lib/dates'
 import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
 import { imagePolicy } from '../../lib/imagePolicy'
-import { useCanSend, useMailboxes, useThread } from './hooks'
+import { useCanFilter, useCanSend, useMailboxes, useThread } from './hooks'
 import { MessageDetails } from './MessageDetails'
 import { UnsubscribeBar } from './UnsubscribeBar'
 import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
@@ -25,6 +25,7 @@ import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { Skeleton } from '../../ui/Skeleton'
+import { useSettingsRoute } from '../settings/navigation'
 
 /*
  * Loaded only once a message actually carries an event: reading the .ics costs
@@ -458,7 +459,10 @@ export function ReadingPane({
   // address to. Only an explicit per-message release opens it.
   const allowRemote = released || (imagePolicy() === 'always' && !inJunk)
   const navigate = useNavigate()
-  const { openCompose, showSnackbar, messageDetailsOpen, setMessageDetailsOpen } = useUi()
+  const { openCompose, showSnackbar, messageDetailsOpen, setMessageDetailsOpen, setFilterSeed } =
+    useUi()
+  const canFilter = useCanFilter()
+  const { open: openSettings } = useSettingsRoute()
   const frameTheme = useFrameTheme()
 
   // Fetching the body is keyed on the message identity alone: a keyword
@@ -699,6 +703,19 @@ export function ReadingPane({
         {/* On its own, pushed right: it opens a panel rather than acting on the
             message, and it is the one control here that never changes it. */}
         <span className="ml-auto flex items-center rounded-control bg-surface-2/60 p-0.5">
+          {/* Turning "not this again" into a rule, from the message that
+              prompted it. The sender is what the form opens on; anything
+              finer is a change away once it is there. */}
+          {canFilter && expanded.from[0]?.email && (
+            <ActionButton
+              icon="folder"
+              label={t('mail.filterLikeThis')}
+              onClick={() => {
+                setFilterSeed({ from: expanded.from[0]!.email })
+                openSettings('mail')
+              }}
+            />
+          )}
           <ActionButton
             icon="info"
             label={t('mail.details')}

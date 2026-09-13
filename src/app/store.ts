@@ -38,6 +38,18 @@ export interface ComposeInit {
   attachments?: OutgoingAttachment[]
 }
 
+/**
+ * A message handed from the reading pane to the filter rules form.
+ *
+ * Kept here rather than in the URL for the same reason the composer's init is:
+ * it is a one-shot handover between two screens, not an address anyone should
+ * be able to bookmark or reload into.
+ */
+export interface FilterSeed {
+  /** The sender the new rule should match. */
+  from: string
+}
+
 interface Snackbar {
   message: string
   actionLabel?: string
@@ -48,6 +60,9 @@ interface UiState {
   compose: ComposeInit | null
   openCompose: (init?: ComposeInit) => void
   closeCompose: () => void
+  filterSeed: FilterSeed | null
+  /** Set on the way into settings; the form clears it once it has read it. */
+  setFilterSeed: (seed: FilterSeed | null) => void
   snackbar: Snackbar | null
   showSnackbar: (s: Snackbar, timeoutMs?: number) => void
   hideSnackbar: () => void
@@ -98,6 +113,8 @@ export const useUi = create<UiState>((set) => ({
   compose: null,
   openCompose: (init = {}) => set({ compose: init }),
   closeCompose: () => set({ compose: null }),
+  filterSeed: null,
+  setFilterSeed: (filterSeed) => set({ filterSeed }),
   snackbar: null,
   showSnackbar: (snackbar, timeoutMs = 10_000) => {
     if (snackbarTimer) clearTimeout(snackbarTimer)

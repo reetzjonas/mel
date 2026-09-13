@@ -45,6 +45,9 @@ test('build a rule in the form, and the server accepts what it generated', async
   // A quote in the value is the case that breaks a naive generator: it would
   // close the Sieve string and the rest of the rule would become syntax.
   await rules.getByLabel('Value').fill('news "weekly" digest')
+  // No folder is preselected — choosing one for the user would be a guess
+  // about where their mail should go.
+  await rules.getByLabel('Folder').selectOption({ index: 1 })
 
   await rules.getByRole('button', { name: 'Check' }).click()
   await expect(rules.getByRole('status')).toContainText('The script is valid.', {
@@ -70,6 +73,39 @@ test('build a rule in the form, and the server accepts what it generated', async
   await expect(rules.getByRole('listitem').filter({ hasText: name })).toHaveCount(0, {
     timeout: 15_000,
   })
+})
+
+test('filtering from an open message opens a rule for its sender', async ({ page }) => {
+  page.on('dialog', (d) => void d.accept())
+  await login(page)
+
+  // Open a seeded message and ask for a rule like it.
+  await page.getByText('Willkommen bei mel').first().click()
+  await page.getByRole('button', { name: 'Filter messages like this' }).click()
+
+  const rules = page.locator('section').filter({ hasText: 'Filter rules' })
+  await expect(rules.getByRole('heading', { name: 'Filter rules' })).toBeVisible({
+    timeout: 15_000,
+  })
+  // Straight into the form, with the sender already matched — that is the
+  // whole point of starting from the message rather than from settings.
+  const sender = await rules.getByLabel('Value').inputValue()
+  expect(sender).toContain('@')
+  await expect(rules.getByLabel('Rule name')).toHaveValue(sender)
+
+  // No folder is chosen for the user, and saving without one is refused
+  // rather than silently writing a rule that does nothing.
+  await rules.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(rules.getByRole('status')).toContainText('Pick a folder')
+
+  await rules.getByLabel('Folder').selectOption({ index: 1 })
+  await rules.getByRole('button', { name: 'Check' }).click()
+  await expect(rules.getByRole('status')).toContainText('The script is valid.', {
+    timeout: 15_000,
+  })
+
+  await rules.getByRole('button', { name: 'Cancel' }).click()
+  await expect(rules.getByRole('button', { name: 'New rule set' })).toBeVisible()
 })
 
 test('a hand-written script is offered as text, not rewritten by the form', async ({ page }) => {
