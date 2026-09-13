@@ -148,7 +148,7 @@ function Row({
   inJunk: boolean
   /** The folder being listed — what a drag carries as its origin. */
   mailboxId: string
-  onToggleSelect: () => void
+  onToggleSelect: (extend: boolean) => void
   onOpen: () => void
 }) {
   const { email, ids, unread, flagged } = item
@@ -247,7 +247,7 @@ function Row({
             aria-label={t('bulk.select')}
             onClick={(e) => {
               e.stopPropagation()
-              onToggleSelect()
+              onToggleSelect(e.shiftKey)
             }}
             className={`absolute inset-0 items-center justify-center rounded-full transition-opacity ${
               checked
@@ -446,7 +446,7 @@ export function ThreadList({
   onEndReached?: (() => void) | undefined
 }) {
   const navigate = useNavigate()
-  const { selection, selectionMailboxId, toggleSelected } = useUi()
+  const { selection, selectionMailboxId, toggleSelected, setSelection } = useUi()
   const mailboxes = useMailboxes(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
   // A Set, not the array: "select the whole folder" can hold thousands of ids,
@@ -462,6 +462,38 @@ export function ThreadList({
     [conversations, emails],
   )
   const items = useMemo(() => withDateHeaders(rows), [rows])
+
+  /**
+   * Where a shift-click measures from: the last row ticked on its own.
+   *
+   * A ref rather than state — nothing renders from it, and this list already
+   * goes to some length not to re-render on selection changes.
+   */
+  const anchor = useRef<string | null>(null)
+
+  /**
+   * Tick a row, or with shift the whole run since the last one ticked.
+   *
+   * Measured over `rows` — the list as displayed, conversations counted once —
+   * so the run matches what the eye picks out, the same reasoning j/k below
+   * already follows. It only ever adds: a range that also cleared rows would
+   * undo deliberate ticks it happened to cross.
+   */
+  const pickRow = (row: { email: { id: string }; ids: string[] }, extend: boolean) => {
+    const to = rows.findIndex((r) => r.email.id === row.email.id)
+    const from = rows.findIndex((r) => r.email.id === anchor.current)
+    if (extend && from !== -1 && to !== -1) {
+      const [lo, hi] = from < to ? [from, to] : [to, from]
+      const base = selectionMailboxId === mailboxId ? selection : []
+      setSelection(mailboxId, [
+        ...new Set([...base, ...rows.slice(lo, hi + 1).flatMap((r) => r.ids)]),
+      ])
+      return
+    }
+    anchor.current = row.email.id
+    toggleSelected(mailboxId, row.ids)
+  }
+
   const open = (id: string) =>
     void navigate({ to: '/mail/$mailboxId/$emailId', params: { mailboxId, emailId: id } })
 
@@ -510,7 +542,7 @@ export function ThreadList({
             checked={item.item.ids.some((id) => selected.has(id))}
             inJunk={Boolean(junkId && item.item.email.mailboxIds[junkId])}
             mailboxId={mailboxId}
-            onToggleSelect={() => toggleSelected(mailboxId, item.item.ids)}
+            onToggleSelect={(extend) => pickRow(item.item, extend)}
             onOpen={() => open(item.item.email.id)}
           />
         )

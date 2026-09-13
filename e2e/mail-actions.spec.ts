@@ -205,6 +205,33 @@ test('bulk select two messages, archive them, and undo', async ({ page }) => {
   await page.waitForTimeout(1500)
 })
 
+test('shift-clicking a second row takes the whole run between them', async ({ page }) => {
+  await login(page, ...ALICE)
+  const rows = page.locator('[data-testid="virtuoso-item-list"] [role="button"]')
+  await expect(rows.first()).toBeVisible({ timeout: 15_000 })
+  // Needs three rows to prove the middle one is taken along rather than just
+  // the two that were clicked.
+  expect(await rows.count()).toBeGreaterThanOrEqual(3)
+
+  await rows.nth(0).hover()
+  await rows.nth(0).getByRole('checkbox').click()
+  await rows.nth(2).hover()
+  await rows
+    .nth(2)
+    .getByRole('checkbox')
+    .click({ modifiers: ['Shift'] })
+
+  // The row in the middle is the claim: it was never clicked, so it is only
+  // ticked if the range was taken. Counting messages instead would prove
+  // nothing — a conversation row carries several on its own.
+  await expect(rows.nth(1)).toHaveAttribute('data-checked', 'true')
+  await expect(page.getByTestId('selection-toolbar')).toContainText('selected')
+  const toolbar = page.getByTestId('selection-toolbar')
+
+  await toolbar.getByLabel('Clear selection').click()
+  await expect(toolbar).toBeHidden()
+})
+
 test('select-all in the folder is offered from the first tick, server-side', async ({ page }) => {
   await login(page, ...ALICE)
   const rows = page.locator('[data-testid="virtuoso-item-list"] [role="button"]')

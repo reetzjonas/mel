@@ -54,6 +54,40 @@ were hover-only at first and the first person to use the app reported deleting
 as missing outright. They are still there, but below `lg` — where there is no
 hover — they are simply always visible.
 
+Three things about that checkbox were wrong first time round, and all three
+were reported from an actual window rather than caught by a test:
+
+**Always-on below `lg` was the wrong fix.** Making the checkbox permanently
+visible on narrow widths meant its opaque box sat on top of the file icon, so
+shrinking the window turned every row into what looked like a ticked one. The
+checkbox is revealed by hover on a desktop and by an explicit **Select** button
+otherwise — the toolbar toggle is also the only way to start selecting with a
+finger, since touch has no hover to reveal anything. While it is on, tapping
+anywhere in a row ticks it instead of opening it; a 17px box is not a touch
+target.
+
+**`group-hover` is not the same as `hover`.** Revealing the checkbox whenever
+the pointer was anywhere in the row read as the folder icon vanishing as the
+mouse went past. The mail list had already learned this about the avatar; the
+comment there says so, and it was still copied wrong.
+
+**A `draggable` element swallows clicks on the controls inside it.** Pressing
+the checkbox and moving a single pixel starts a drag instead of ticking, which
+made selecting with a mouse essentially impossible — reported as "I always end
+up in move mode". The row now stops being draggable while the pointer is over
+the checkbox or the row actions, so it is dragged by its name. Chromium raises
+no drag events for a synthetic mouse, so the gesture cannot be reproduced in
+Playwright; `files.spec.ts` asserts the `draggable` attribute flipping instead,
+which is the mechanism rather than the symptom.
+
+Shift-click takes the run between the last row ticked on the anchor and the one
+clicked, in **both** Files and the mail list (`ThreadList.pickRow`). It only
+ever adds: a range that also cleared rows would undo deliberate ticks it
+happened to cross. The anchor is a ref in both places — nothing renders from it,
+and the mail list already goes to some length not to re-render on selection
+changes. In mail the run is measured over rows as displayed, so a conversation
+counts once, matching what `j`/`k` already do.
+
 Moving works three ways, and they share `moveTargets` in `tree.ts` so they
 cannot disagree: the Move dialog, dragging a row onto a folder row, and
 dragging onto a **breadcrumb** crumb. The last one is not decoration — the

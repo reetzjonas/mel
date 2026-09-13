@@ -39,6 +39,14 @@ export function FileBrowser({
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [preview, setPreview] = useState<FileNode | null>(null)
   const [checked, setChecked] = useState<Set<string>>(new Set())
+  /**
+   * Whether the checkboxes are on show.
+   *
+   * On a desktop the pointer reveals one per row, but touch has no hover, so
+   * without a way to turn them on there is no way to select anything at all
+   * with a finger.
+   */
+  const [selecting, setSelecting] = useState(false)
   const [busy, setBusy] = useState(false)
   const [dropping, setDropping] = useState(false)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
@@ -70,14 +78,39 @@ export function FileBrowser({
     if (picked.length) void run(() => uploadFiles(accountId, folderId, picked))
   }
 
-  const toggle = (id: string) =>
+  /**
+   * Where a shift-click measures from: the last row ticked on its own.
+   *
+   * A ref, not state — nothing renders from it, and reading a stale value
+   * would silently select the wrong range.
+   */
+  const anchor = useRef<string | null>(null)
+
+  const toggle = (id: string, extend: boolean) => {
+    const rows = children ?? []
+    const from = rows.findIndex((n) => n.id === anchor.current)
+    const to = rows.findIndex((n) => n.id === id)
+    if (extend && from !== -1 && to !== -1) {
+      // Shift-click adds the run between the two, as a file manager does. It
+      // only ever adds: turning the range off again would undo ticks the run
+      // happens to cross that were made deliberately.
+      const [lo, hi] = from < to ? [from, to] : [to, from]
+      setChecked((prev) => new Set([...prev, ...rows.slice(lo, hi + 1).map((n) => n.id)]))
+      return
+    }
+    anchor.current = id
     setChecked((prev) => {
       const next = new Set(prev)
       if (!next.delete(id)) next.add(id)
       return next
     })
+  }
 
-  const clearChecked = () => setChecked(new Set())
+  const clearChecked = () => {
+    setChecked(new Set())
+    setSelecting(false)
+    anchor.current = null
+  }
 
   /** A dragged row that is itself checked stands in for the whole selection. */
   const dragPayload = (node: FileNode) => (checked.has(node.id) ? [...checked] : [node.id])
@@ -179,6 +212,14 @@ export function FileBrowser({
               <div className="ml-auto flex items-center gap-1.5">
                 <button
                   type="button"
+                  aria-pressed={selecting}
+                  onClick={() => setSelecting((on) => !on)}
+                  className={`${secondaryButtonClass} ${selecting ? 'bg-surface-2 text-ink' : ''}`}
+                >
+                  {t('files.select')}
+                </button>
+                <button
+                  type="button"
                   disabled={busy}
                   onClick={() => setDialog({ kind: 'newFolder' })}
                   className={secondaryButtonClass}
@@ -225,10 +266,11 @@ export function FileBrowser({
                   key={node.id}
                   node={node}
                   checked={checked.has(node.id)}
+                  selecting={selecting || checked.size > 0}
                   previewed={preview?.id === node.id}
                   isDropTarget={dropTarget === node.id}
                   busy={busy}
-                  onToggle={() => toggle(node.id)}
+                  onToggle={(extend) => toggle(node.id, extend)}
                   onOpen={() => {
                     if (node.nodeType === 'directory')
                       void navigate({ to: '/files/$folderId', params: { folderId: node.id } })
@@ -441,6 +483,7 @@ function Breadcrumb({
 function FileRow({
   node,
   checked,
+  selecting,
   previewed,
   isDropTarget,
   busy,
@@ -456,10 +499,11 @@ function FileRow({
 }: {
   node: FileNode
   checked: boolean
+  selecting: boolean
   previewed: boolean
   isDropTarget: boolean
   busy: boolean
-  onToggle: () => void
+  onToggle: (extend: boolean) => void
   onOpen: () => void
   onRename: () => void
   onDelete: () => void
@@ -470,9 +514,17 @@ function FileRow({
   onDropOnFolder: (e: React.DragEvent) => void
 }) {
   const isDir = node.nodeType === 'directory'
+  /*
+   * A draggable element swallows clicks on the controls inside it: pressing
+   * the checkbox and moving a pixel starts a drag instead, which is why
+   * ticking a row was all but impossible with a mouse. Dragging is therefore
+   * switched off while the pointer is over a control, and the row is dragged
+   * by its name instead.
+   */
+  const [dragOff, setDragOff] = useState(false)
   return (
     <li
-      draggable
+      draggable={!dragOff}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onContextMenu={suppressContextMenu}
@@ -488,10 +540,17 @@ function FileRow({
       data-over={isDropTarget || undefined}
       className={`group flex items-center gap-1 rounded-control pr-1 transition-colors hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash data-over:ring-2 data-over:ring-accent ${draggableTouchClass}`}
     >
-      <span className="shrink-0 py-2 pl-2">
+      <span
+        className="shrink-0 py-2 pl-2"
+        onMouseEnter={() => setDragOff(true)}
+        onMouseLeave={() => setDragOff(false)}
+      >
         {/* The icon doubles as the checkbox, the way the avatar does in the
-            mail list. On touch there is no hover to reveal it, so below lg it
-            is always there. */}
+            mail list — and, as there, it reacts to the pointer being on the
+            icon itself rather than anywhere in the row, which otherwise reads
+            as the folder icon vanishing as the mouse passes by. Touch has no
+            hover at all, so there the checkbox appears only once selecting has
+            been turned on. */}
         <span className="relative block h-[17px] w-[17px]">
           <Icon
             name={isDir ? 'folder' : 'file'}
@@ -505,12 +564,14 @@ function FileRow({
             aria-label={`${t('files.select')} ${node.name}`}
             onClick={(e) => {
               e.stopPropagation()
-              onToggle()
+              onToggle(e.shiftKey)
             }}
             className={`absolute inset-0 flex items-center justify-center rounded-[4px] transition-opacity ${
               checked
                 ? 'bg-accent text-accent-ink'
-                : 'bg-surface-2 text-ink-muted opacity-0 ring-1 ring-line ring-inset group-hover:opacity-100 max-lg:opacity-100'
+                : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
+                    selecting ? 'opacity-100' : 'opacity-0 hover:opacity-100'
+                  }`
             }`}
           >
             <Icon name="check" size={13} />
@@ -523,7 +584,10 @@ function FileRow({
         // or "Folder", and the row's other two buttons carry the name too, so
         // without this there is no way to address just this row.
         aria-label={node.name}
-        onClick={onOpen}
+        // While selecting, the whole row is a target for the selection rather
+        // than a way into the folder — otherwise ticking things on a phone
+        // means hitting a 17px box.
+        onClick={(e) => (selecting ? onToggle(e.shiftKey) : onOpen())}
         className="flex min-w-0 flex-1 items-center py-2 pl-2 text-left"
       >
         <span className="min-w-0 flex-1">
@@ -535,7 +599,11 @@ function FileRow({
       </button>
       {/* Kept mounted rather than conditionally rendered: a row whose buttons
           appear on hover would change height as the pointer crosses it. */}
-      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-lg:opacity-100">
+      <span
+        onMouseEnter={() => setDragOff(true)}
+        onMouseLeave={() => setDragOff(false)}
+        className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-lg:opacity-100"
+      >
         <Tooltip label={t('files.rename')}>
           <button
             type="button"

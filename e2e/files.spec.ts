@@ -71,6 +71,99 @@ test('select several items, move them into a folder, then delete them together',
   })
 })
 
+test('a narrow window shows icons, not checkboxes, until selecting is turned on', async ({
+  page,
+}) => {
+  page.on('dialog', (d) => void d.accept())
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'narrow.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  const box = page.getByRole('checkbox', { name: 'Select narrow.txt' })
+  await expect(page.getByRole('button', { name: 'narrow.txt', exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  // Narrow enough that no hover-revealed control may show itself. The checkbox
+  // is an overlay on the file icon, so an opaque one here hides the icon and
+  // the row looks permanently ticked.
+  await page.setViewportSize({ width: 500, height: 800 })
+  await expect(box).toHaveCSS('opacity', '0')
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await expect(box).toHaveCSS('opacity', '1')
+
+  await page.setViewportSize({ width: 1280, height: 720 })
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: 'narrow.txt' })
+    .getByRole('button', { name: /^Delete / })
+    .click()
+  await expect(page.getByRole('button', { name: 'narrow.txt', exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})
+
+test('the row stops being draggable while the pointer is on its checkbox', async ({ page }) => {
+  /*
+   * A draggable element swallows clicks on the controls inside it: pressing
+   * the checkbox and moving a pixel starts a drag instead of ticking the row,
+   * which made selecting with a mouse all but impossible. Chromium raises no
+   * drag events for a synthetic mouse, so the gesture itself cannot be
+   * reproduced here — the attribute that fixes it can.
+   */
+  page.on('dialog', (d) => void d.accept())
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'handle.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('x'),
+  })
+  const row = page.getByRole('listitem').filter({ hasText: 'handle.txt' })
+  await expect(row).toBeVisible({ timeout: 15_000 })
+
+  await row.getByRole('button', { name: 'handle.txt', exact: true }).hover()
+  await expect(row).toHaveAttribute('draggable', 'true')
+
+  await row.getByRole('checkbox', { name: 'Select handle.txt' }).hover()
+  await expect(row).toHaveAttribute('draggable', 'false')
+
+  await row.getByRole('button', { name: /^Delete / }).click()
+  await expect(page.getByRole('button', { name: 'handle.txt', exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})
+
+test('shift-click takes the whole run between two rows', async ({ page }) => {
+  page.on('dialog', (d) => void d.accept())
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: 'a.txt', mimeType: 'text/plain', buffer: Buffer.from('a') },
+    { name: 'b.txt', mimeType: 'text/plain', buffer: Buffer.from('b') },
+    { name: 'c.txt', mimeType: 'text/plain', buffer: Buffer.from('c') },
+  ])
+  await expect(page.getByRole('button', { name: 'c.txt', exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  await page.getByRole('checkbox', { name: 'Select a.txt' }).click()
+  await page.getByRole('checkbox', { name: 'Select c.txt' }).click({ modifiers: ['Shift'] })
+  await expect(page.getByText('3 selected')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'b.txt', exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})
+
 test('drag a file onto a folder to move it, and onto the breadcrumb to bring it back', async ({
   page,
 }) => {
