@@ -45,15 +45,16 @@ shift-click for a range) for bulk move/delete, and a preview for images, text
 and PDF. Shift-click range selection works in the mail list too. See `docs/notes/filenode.md`.
 
 Server-side filter rules (Sieve, RFC 9661) are a section in Settings → Mail
-where the server offers the capability: a script editor with the server's own
-validation, activation, and delete. See `docs/notes/sieve.md`.
+where the server offers the capability: a guided rule form for rules mel wrote
+itself (round-tripped via a marker comment) plus a script editor for everything
+else, with the server's own validation, activation and delete. See `docs/notes/sieve.md`.
 
 Settings are a modal over the current screen, not a route: six tabs (General,
 Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=`, so deep links and the back button keep working and `/settings`
 redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 851 Vitest + 86 Playwright (desktop + mobile; state-mutating specs are
+Tests: 865 Vitest + 88 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 

@@ -5,20 +5,56 @@ Server-side mail filtering, as a section in Settings → Mail, gated on
 on every device and to mail arriving while mel is closed — which is the reason
 to offer this at all rather than filtering locally.
 
-It is a **script editor**, not a rule builder: a name, a textarea, and the
-server's own verdict. Sieve (RFC 5228) is a real language with extensions the
-server advertises, and a builder that covered a useful fraction of it would be
-a large feature that still could not open a script it did not write. The
-server-side check is what makes the plain editor safe.
+There are two ways in, and which one you get is a fact about the script rather
+than a preference: a **guided form** for rules the form itself wrote, and the
+**script editor** for everything else. Most people will never write Sieve by
+hand, so the form is what a new rule set opens on; the text editor stays
+because Sieve is a real language and the form covers a deliberately small part
+of it.
+
+## How the form round-trips
+
+A form cannot parse arbitrary Sieve, and pretending otherwise would mean
+silently rewriting a script someone tuned by hand. So `lib/sieveScript.ts`
+writes the rules it generated onto a marker line —
+
+```
+# mel-rules:v1 [{"name":"Newsletters", …}]
+```
+
+— and reading them back only ever trusts that line. A script without it, or
+with a damaged one, is reported as hand-written and offered as text with a
+sentence saying why.
+
+Two consequences worth keeping:
+
+**Saving from the text editor strips the marker** (`stripRuleMarker`). Without
+that, a hand-edited body would still carry the rules as they were *before* the
+edit: reopening would show the form's version and saving from the form would
+throw the hand-written changes away without a word. Losing the marker is much
+the cheaper half of that trade.
+
+**"Edit as text" is one-way** within an editing session, for the same reason.
+Going back would read rules off a marker that no longer describes what is in
+the box.
+
+The generator escapes into Sieve strings (`\` and `"`); a subject containing a
+quote would otherwise close the string and turn the rest of the rule into
+syntax — and `require` lists only the extensions the chosen actions actually
+use, since requiring one the server lacks fails the whole script. Every shape
+the form can produce was validated against Stalwart, and `e2e/sieve.spec.ts`
+keeps that honest by building a rule whose value contains quotes and asking
+the server.
 
 ## Shape
 
 | Layer | Where |
 | --- | --- |
-| Domain object | `src/domain/sieve.ts` |
+| Domain objects (script, rule) | `src/domain/sieve.ts` |
+| Rule → Sieve, and back | `src/lib/sieveScript.ts` |
 | JMAP provider | `src/providers/jmap/sieve.ts` |
 | Writes | `src/services/sieve.ts` |
-| UI | `src/features/settings/SieveSetting.tsx`, in the Mail tab |
+| UI | `src/features/settings/SieveSetting.tsx` + `RuleWizard.tsx`, in the Mail tab |
 
 Nothing is cached locally and there is no outbox action. The server is the only
 thing that can say whether a script parses, so an edit that has not reached it
@@ -62,11 +98,20 @@ comes back as a refusal like any other.
 
 ## Testing
 
-`e2e/sieve.spec.ts` drives the whole flow against Stalwart: a script the server
-rejects (asserting the error names a line), the same script fixed, save and
-activate, reopen to prove the text comes back from the *server* rather than
-from the editor's own state, the refusal to delete while active, then
-deactivate and delete.
+`e2e/sieve.spec.ts` covers three paths against Stalwart:
+
+- **The form.** A rule whose value contains quotes, checked by the server,
+  saved, then reopened to prove the value survives the round trip — and the
+  generated script shown as text.
+- **A hand-written script.** Saved from the text editor, it must come back as
+  text with the "not written by the form" line, never in the form.
+- **The script editor.** A script the server rejects (the error has to name a
+  line), the same script fixed, save and activate, reopen to prove the text
+  comes back from the *server* rather than from the editor's own state, the
+  refusal to delete while active, then deactivate and delete.
+
+Its selectors are scoped to the filter rules `section`: the Mail tab also
+carries the vacation response, which has a `Save` button of its own.
 
 `e2e/global-setup.ts` deactivates and purges scripts as part of the reset. That
 matters more here than for other leftovers: an active script left behind by a

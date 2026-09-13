@@ -47,15 +47,22 @@ export default defineConfig({
        * when the work raises the number, rather than leaving slack to grow.
        */
       thresholds: {
-        // The whole tree, UI included. A floor against a collapse, no more:
-        // most of what it measures is components the e2e suite covers and
-        // this metric cannot see. So it moves down when a feature is mostly
-        // component — Files added ~500 lines of browser UI whose behaviour
-        // lives in e2e/files.spec.ts, while its pure parts (tree.ts) are unit
-        // tested at the usual rate.
-        statements: 55,
+        /*
+         * The whole tree, UI included. A floor against a collapse, no more:
+         * most of what it measures is components the e2e suite covers and
+         * this metric cannot see.
+         *
+         * So it drifts *down* as the app grows, because a feature that is
+         * mostly screen adds more lines here than it adds reachable ones —
+         * Files and the Sieve rule form each cost it a point or two while
+         * their pure parts (features/files/tree.ts, lib/sieveScript.ts) are
+         * unit tested at the usual rate. Lowering it for that reason is
+         * honest; lowering it because a pure module lost its tests is not, so
+         * check which kind you have before touching these four numbers.
+         */
+        statements: 54,
         branches: 47,
-        functions: 43,
+        functions: 42,
         lines: 55,
         'src/domain/**': { statements: 95, branches: 88, functions: 95, lines: 95 },
         'src/lib/**': { statements: 94, branches: 84, functions: 92, lines: 94 },

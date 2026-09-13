@@ -19,3 +19,36 @@ export interface SieveError {
   /** The server's own message; it names the line, and often the column. */
   message: string
 }
+
+/*
+ * The structured form of a rule, which the guided editor works in and
+ * lib/sieveScript.ts turns into Sieve. Deliberately a small subset of what
+ * Sieve can express: it covers what a filter rule usually *is*, and anything
+ * beyond it belongs in the script editor instead of in a form that would have
+ * to grow a control per extension.
+ */
+
+export type ConditionField = 'from' | 'to' | 'cc' | 'subject'
+export type ConditionOp = 'contains' | 'is'
+
+export interface RuleCondition {
+  field: ConditionField
+  op: ConditionOp
+  value: string
+}
+
+export type RuleAction =
+  | { kind: 'fileinto'; mailbox: string }
+  | { kind: 'flag' }
+  | { kind: 'markRead' }
+  | { kind: 'discard' }
+
+export interface FilterRule {
+  name: string
+  /** Whether every condition has to match, or just one of them. */
+  match: 'all' | 'any'
+  conditions: RuleCondition[]
+  actions: RuleAction[]
+  /** Stop after this rule, so later ones cannot also act on the message. */
+  stop: boolean
+}

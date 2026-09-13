@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { SieveScript } from '../../domain/sieve'
+import type { FilterRule, SieveScript } from '../../domain/sieve'
 import { t } from '../../lib/i18n'
+import { emptyRule, rulesFromScript, stripRuleMarker, toSieveScript } from '../../lib/sieveScript'
+import { useMailboxes } from '../mail/hooks'
+import { RuleWizard } from './RuleWizard'
 import {
   checkScript,
   deleteScript,
@@ -13,11 +16,20 @@ import {
 import { Icon } from '../../ui/Icon'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
-interface Draft {
-  /** Absent for a script that does not exist yet. */
-  id?: string
-  name: string
-  content: string
+/**
+ * What is being edited: the guided form, or the script itself.
+ *
+ * Which one you get is not a preference but a fact about the script. The form
+ * can only show back what the form wrote — see lib/sieveScript.ts — so a
+ * hand-written script is offered as text and says why.
+ */
+type Draft =
+  /** Absent `id` for a script that does not exist yet. */
+  | { mode: 'rules'; id?: string; name: string; rules: FilterRule[] }
+  | { mode: 'text'; id?: string; name: string; content: string; handWritten: boolean }
+
+function scriptOf(draft: Draft): string {
+  return draft.mode === 'rules' ? toSieveScript(draft.rules) : stripRuleMarker(draft.content)
 }
 
 type Note = { kind: 'error' | 'ok'; text: string } | null
@@ -27,6 +39,7 @@ export function SieveSetting({ accountId }: { accountId: string }) {
   const [draft, setDraft] = useState<Draft | null>(null)
   const [note, setNote] = useState<Note>(null)
   const [busy, setBusy] = useState(false)
+  const mailboxes = useMailboxes(accountId)
 
   const refresh = async () => setScripts(await listScripts(accountId))
 
@@ -63,7 +76,13 @@ export function SieveSetting({ accountId }: { accountId: string }) {
     setNote(null)
     setBusy(true)
     try {
-      setDraft({ id: script.id, name: script.name, content: await readScript(accountId, script) })
+      const content = await readScript(accountId, script)
+      const rules = rulesFromScript(content)
+      setDraft(
+        rules
+          ? { mode: 'rules', id: script.id, name: script.name, rules }
+          : { mode: 'text', id: script.id, name: script.name, content, handWritten: true },
+      )
     } finally {
       setBusy(false)
     }
@@ -76,7 +95,7 @@ export function SieveSetting({ accountId }: { accountId: string }) {
       saveScript(accountId, {
         ...(draft.id ? { id: draft.id } : {}),
         name: draft.name.trim(),
-        content: draft.content,
+        content: scriptOf(draft),
         activate,
       }),
     )
@@ -87,7 +106,7 @@ export function SieveSetting({ accountId }: { accountId: string }) {
     if (!draft) return
     setBusy(true)
     try {
-      const error = await checkScript(accountId, draft.content)
+      const error = await checkScript(accountId, scriptOf(draft))
       setNote(error ? { kind: 'error', text: error } : { kind: 'ok', text: t('sieve.valid') })
     } finally {
       setBusy(false)
@@ -125,13 +144,26 @@ export function SieveSetting({ accountId }: { accountId: string }) {
             value={draft.name}
             onChange={(e) => setDraft({ ...draft, name: e.target.value })}
           />
-          <textarea
-            className={`${inputClass} min-h-48 font-mono text-xs`}
-            aria-label={t('sieve.script')}
-            spellCheck={false}
-            value={draft.content}
-            onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-          />
+          {draft.mode === 'rules' ? (
+            <RuleWizard
+              rules={draft.rules}
+              mailboxes={mailboxes ?? []}
+              onChange={(rules) => setDraft({ ...draft, rules })}
+            />
+          ) : (
+            <>
+              <p className="text-xs text-ink-subtle">
+                {draft.handWritten ? t('rule.handWritten') : t('rule.textWarning')}
+              </p>
+              <textarea
+                className={`${inputClass} min-h-48 font-mono text-xs`}
+                aria-label={t('sieve.script')}
+                spellCheck={false}
+                value={draft.content}
+                onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+              />
+            </>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -157,6 +189,29 @@ export function SieveSetting({ accountId }: { accountId: string }) {
             >
               {t('sieve.check')}
             </button>
+            {draft.mode === 'rules' && (
+              /*
+               * One way only. Going back would mean reading the rules off the
+               * marker line, which no longer describes a body edited by hand —
+               * so the form would show one thing, saving would write another,
+               * and the text edits would be gone without a word.
+               */
+              <button
+                type="button"
+                className={secondaryButtonClass}
+                onClick={() =>
+                  setDraft({
+                    mode: 'text',
+                    ...(draft.id ? { id: draft.id } : {}),
+                    name: draft.name,
+                    content: toSieveScript(draft.rules),
+                    handWritten: false,
+                  })
+                }
+              >
+                {t('rule.asText')}
+              </button>
+            )}
             <button
               type="button"
               className={secondaryButtonClass}
@@ -222,7 +277,7 @@ export function SieveSetting({ accountId }: { accountId: string }) {
             className={secondaryButtonClass}
             onClick={() => {
               setNote(null)
-              setDraft({ name: '', content: '' })
+              setDraft({ mode: 'rules', name: '', rules: [emptyRule()] })
             }}
           >
             {t('sieve.new')}
