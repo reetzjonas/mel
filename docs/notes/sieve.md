@@ -16,10 +16,12 @@ of it.
 
 The reading pane carries "Filter messages like this", which is where most
 rules will actually start: you are looking at the mail that prompted it. It
-hands the sender to the form through the UI store — a one-shot handover
+sits with the other message actions and hands the sender to the form through
+the UI store — a one-shot handover
 between two screens, like the composer's init, rather than something anyone
 should be able to bookmark — and settings opens with a rule already matching
-that sender.
+that sender — scrolled to, not merely opened behind a tab full of other
+settings (see the anchors section of `settings-modal.md`).
 
 The form reads the seed as its **initial state**, not from an effect: the
 dialog mounts fresh each time it opens, so the seed is the first render's own

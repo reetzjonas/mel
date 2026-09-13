@@ -5,15 +5,16 @@
  */
 import { useCallback } from 'react'
 import { useNavigate, useSearch } from '@tanstack/react-router'
-import type { SettingsTab } from './tabs'
+import type { SettingsAnchor, SettingsTab } from './tabs'
 
 export function useSettingsRoute() {
   const navigate = useNavigate()
-  const search = useSearch({ strict: false }) as { settings?: SettingsTab }
+  const search = useSearch({ strict: false }) as { settings?: SettingsTab; at?: SettingsAnchor }
 
+  /** `anchor` scrolls the dialog to one section instead of opening at the top. */
   const open = useCallback(
-    (tab: SettingsTab) => {
-      void navigate({ to: '.', search: (prev) => ({ ...prev, settings: tab }) })
+    (tab: SettingsTab, anchor?: SettingsAnchor) => {
+      void navigate({ to: '.', search: (prev) => ({ ...prev, settings: tab, at: anchor }) })
     },
     [navigate],
   )
@@ -22,14 +23,20 @@ export function useSettingsRoute() {
   // stays a single press of Back however long someone browsed around in it.
   const select = useCallback(
     (tab: SettingsTab) => {
-      void navigate({ to: '.', search: (prev) => ({ ...prev, settings: tab }), replace: true })
+      // Switching tabs by hand drops any anchor: it described where the last
+      // link wanted to land, not where this tab should open.
+      void navigate({
+        to: '.',
+        search: (prev) => ({ ...prev, settings: tab, at: undefined }),
+        replace: true,
+      })
     },
     [navigate],
   )
 
   const close = useCallback(() => {
-    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined }) })
+    void navigate({ to: '.', search: (prev) => ({ ...prev, settings: undefined, at: undefined }) })
   }, [navigate])
 
-  return { tab: search.settings, open, select, close }
+  return { tab: search.settings, anchor: search.at, open, select, close }
 }

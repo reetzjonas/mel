@@ -140,7 +140,12 @@ export function AppShell() {
         <Compose key={compose.draftId ?? 'new'} accountId={account.id} init={compose} />
       )}
       {settings.tab && (
-        <SettingsDialog tab={settings.tab} onTab={settings.select} onClose={settings.close} />
+        <SettingsDialog
+          tab={settings.tab}
+          anchor={settings.anchor}
+          onTab={settings.select}
+          onClose={settings.close}
+        />
       )}
       <HelpOverlay />
       <Snackbar />

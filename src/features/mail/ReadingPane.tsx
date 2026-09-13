@@ -654,6 +654,20 @@ export function ReadingPane({
               backToList()
             }}
           />
+          {/* Turning "not this again" into a rule, from the message that
+              prompted it. Icon-only like the two toggles above: it is a
+              sentence long spelled out, and this row is already the thing
+              that overflows first. */}
+          {canFilter && expanded.from[0]?.email && (
+            <ActionButton
+              icon="filter"
+              label={t('mail.filterLikeThis')}
+              onClick={() => {
+                setFilterSeed({ from: expanded.from[0]!.email })
+                openSettings('mail', 'sieve')
+              }}
+            />
+          )}
         </span>
         {/*
          * Answering is gated on the server taking mail for delivery; picking
@@ -703,19 +717,6 @@ export function ReadingPane({
         {/* On its own, pushed right: it opens a panel rather than acting on the
             message, and it is the one control here that never changes it. */}
         <span className="ml-auto flex items-center rounded-control bg-surface-2/60 p-0.5">
-          {/* Turning "not this again" into a rule, from the message that
-              prompted it. The sender is what the form opens on; anything
-              finer is a change away once it is there. */}
-          {canFilter && expanded.from[0]?.email && (
-            <ActionButton
-              icon="folder"
-              label={t('mail.filterLikeThis')}
-              onClick={() => {
-                setFilterSeed({ from: expanded.from[0]!.email })
-                openSettings('mail')
-              }}
-            />
-          )}
           <ActionButton
             icon="info"
             label={t('mail.details')}

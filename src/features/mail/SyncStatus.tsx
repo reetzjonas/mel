@@ -183,7 +183,7 @@ export function SyncStatus({ account }: { account: Account }) {
   const bar = (
     <button
       type="button"
-      onClick={() => openSettings('account')}
+      onClick={() => openSettings('account', 'capabilities')}
       className="block w-full shrink-0 border-t border-line px-3 py-2 text-left text-[11px] text-ink-subtle transition-colors hover:bg-surface-2"
       data-testid="sync-status"
     >

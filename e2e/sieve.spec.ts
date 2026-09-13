@@ -87,6 +87,10 @@ test('filtering from an open message opens a rule for its sender', async ({ page
   await expect(rules.getByRole('heading', { name: 'Filter rules' })).toBeVisible({
     timeout: 15_000,
   })
+  // Scrolled to, not merely rendered: the section sits below the whole Mail
+  // tab, and leaving someone to find it is most of the way back to making
+  // them open settings themselves.
+  await expect(rules).toBeInViewport({ timeout: 10_000 })
   // Straight into the form, with the sender already matched — that is the
   // whole point of starting from the message rather than from settings.
   const sender = await rules.getByLabel('Value').inputValue()

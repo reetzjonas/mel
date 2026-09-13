@@ -28,10 +28,23 @@ import type { Account } from '../../domain/account'
 import type { VacationSettings } from '../../providers/types'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { anchorId, type SettingsAnchor } from './tabs'
 
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
+export function Section({
+  title,
+  anchor,
+  children,
+}: {
+  title: string
+  /** Set so a link from elsewhere can open settings on this section. */
+  anchor?: SettingsAnchor
+  children: React.ReactNode
+}) {
   return (
-    <section className="space-y-3 rounded-panel bg-surface p-5 shadow-panel">
+    <section
+      {...(anchor ? { id: anchorId(anchor) } : {})}
+      className="space-y-3 rounded-panel bg-surface p-5 shadow-panel"
+    >
       <h2 className="text-sm font-semibold">{title}</h2>
       {children}
     </section>

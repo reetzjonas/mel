@@ -52,10 +52,10 @@ pane can start a rule from the open message ("Filter messages like this"). See `
 
 Settings are a modal over the current screen, not a route: six tabs (General,
 Appearance, Mail, Notifications, Security, Account) with the open one in
-`?settings=`, so deep links and the back button keep working and `/settings`
-redirects in. See `docs/notes/settings-modal.md`.
+`?settings=` and an optional section anchor in `?at=`, so deep links and the
+back button keep working and `/settings` redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 872 Vitest + 89 Playwright (desktop + mobile; state-mutating specs are
+Tests: 875 Vitest + 89 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 

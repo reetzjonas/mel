@@ -25,6 +25,25 @@ the calendar missing", so it has to be able to point at the capability list.
 `/settings` survives as a route whose only job is to redirect to
 `/mail?settings=general`.
 
+## Anchors
+
+A link from elsewhere can point at one section, not just a tab: `?at=sieve`
+alongside `?settings=mail`, validated against a closed list in `tabs.ts` for
+the same reason the tab is — it ends up in `getElementById`, and an open list
+would let a link claim to scroll somewhere that does not exist. Picking a tab
+by hand drops the anchor, since it described where the last *link* wanted to
+land.
+
+Scrolling to it is not one call. The panel scrolls rather than the page, and
+several sections fetch before they have their real height — the vacation
+response sits above the filter rules and roughly triples in size when it
+lands, so a single scroll ends up somewhere that stops being the right place a
+moment later. Measured, not guessed: the panel came to rest 28px down from a
+target 760px in. So the dialog re-applies the scroll while the panel keeps
+changing size, and stops the moment the reader scrolls, taps or types, or
+after a second. Instantly rather than smoothly, because a smooth scroll
+re-aimed twice reads as drifting.
+
 Two consequences worth knowing:
 
 - Switching tabs navigates with `replace`, so closing the dialog is one press of
