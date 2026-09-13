@@ -4,13 +4,14 @@ import type { MsgKey } from '../lib/i18n'
 export interface AppTab {
   to: string
   key: MsgKey
-  cap: 'mail' | 'calendars' | 'contacts'
+  cap: 'mail' | 'calendars' | 'contacts' | 'files'
 }
 
 const ALL: AppTab[] = [
   { to: '/mail', key: 'app.mail', cap: 'mail' },
   { to: '/calendar', key: 'app.calendar', cap: 'calendars' },
   { to: '/contacts', key: 'app.contacts', cap: 'contacts' },
+  { to: '/files', key: 'app.files', cap: 'files' },
 ]
 
 /**

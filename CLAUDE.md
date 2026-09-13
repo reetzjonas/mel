@@ -37,12 +37,17 @@ quick actions in the list, folder management (create/rename/delete), draft
 autosave, search snippets with `<mark>`, pull-to-refresh. Contacts now sort correctly
 by display name.
 
+Files is the fourth app, where the server offers JMAP FileNode (a draft
+extension; the tab is hidden otherwise): folder browsing with breadcrumbs,
+upload by button or drop, create folder, rename, delete (recursive) and a
+preview for images, text and PDF. See `docs/notes/filenode.md`.
+
 Settings are a modal over the current screen, not a route: six tabs (General,
 Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=`, so deep links and the back button keep working and `/settings`
 redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 769 Vitest + 77 Playwright (desktop + mobile; state-mutating specs are
+Tests: 812 Vitest + 78 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -76,6 +81,9 @@ working on that specific feature, not on every session:
 - **Resizable panel widths** (two boundaries, lg and up only; why the handles
   cost no layout, and the pointercancel that collapsed a panel):
   `docs/notes/panel-widths.md`
+- **Files / JMAP FileNode** (the fourth app: browse, upload, preview; draft
+  extension, capability-gated, the blob-id, null-index and destroy-ordering
+  traps): `docs/notes/filenode.md`
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
 
 ## Dev workflow
@@ -97,9 +105,9 @@ Open todos and bugs are tracked as GitHub issues on `reetzjonas/mel`
 (`gh issue list`, labelled `enhancement`/`bug` plus an `area: *` label) — that
 is the current, authoritative list; do not add new items here.
 
-Still open, not yet in issue form: `CalendarEventNotification/get` is not read
-yet (would allow "Bob accepted" as a notification instead of only a dialog
-status); local calendar alerts; drag-move/resize of calendar events.
+Everything known to be open is in that list — including the calendar follow-ups
+that used to be named here (`CalendarEventNotification/get`, local alerts,
+drag-move/resize), which are issues #3, #4 and #28.
 
 Everything that already shipped from the old backlog (sync status bar, feature
 capability visibility, bulk editing, spam handling, image blocking, select-all

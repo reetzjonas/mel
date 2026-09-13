@@ -9,6 +9,7 @@ const caps = (over: Partial<AccountCapabilities> = {}): AccountCapabilities => (
   calendars: true,
   sieve: false,
   vacation: false,
+  files: false,
   push: 'poll',
   webPush: false,
   ...over,

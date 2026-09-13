@@ -24,6 +24,20 @@ const CORE = 'urn:ietf:params:jmap:core'
 const MAIL = 'urn:ietf:params:jmap:mail'
 const CALENDARS = 'urn:ietf:params:jmap:calendars'
 const CONTACTS = 'urn:ietf:params:jmap:contacts'
+const FILENODE = 'urn:ietf:params:jmap:filenode'
+
+/** File nodes grouped by depth, deepest level first. */
+function deepestFirst(nodes: Array<{ id: string; parentId: string | null }>): string[][] {
+  const parentOf = new Map(nodes.map((n) => [n.id, n.parentId]))
+  const depth = (id: string) => {
+    let d = 0
+    for (let p = parentOf.get(id); p != null; p = parentOf.get(p)) d++
+    return d
+  }
+  const levels = new Map<number, string[]>()
+  for (const n of nodes) levels.set(depth(n.id), [...(levels.get(depth(n.id)) ?? []), n.id])
+  return [...levels.entries()].sort((a, b) => b[0] - a[0]).map(([, ids]) => ids)
+}
 
 /** Everything else in the inbox is debris from an earlier run. */
 const SEEDED_INBOX = new Set([
@@ -74,6 +88,7 @@ async function resetAccount(user: string, pass: string) {
   const mailAcc = session.primaryAccounts[MAIL]
   const calAcc = session.primaryAccounts[CALENDARS]
   const conAcc = session.primaryAccounts[CONTACTS]
+  const fileAcc = session.primaryAccounts[FILENODE]
   const removed: string[] = []
 
   if (mailAcc) {
@@ -265,6 +280,25 @@ async function resetAccount(user: string, pass: string) {
         [['ContactCard/set', { accountId: conAcc, destroy: cards.list.map((c) => c.id) }, 'c0']],
       )
       removed.push(`${cards.list.length} contact(s)`)
+    }
+  }
+
+  if (fileAcc) {
+    const nodes = (
+      await jmap(
+        auth,
+        [CORE, FILENODE],
+        [['FileNode/get', { accountId: fileAcc, ids: null, properties: ['id', 'parentId'] }, 'c0']],
+      )
+    ).methodResponses[0]![1] as { list: Array<{ id: string; parentId: string | null }> }
+    if (nodes.list.length) {
+      // Deepest first, one call per level: the server refuses a node and its
+      // parent in the same call, so a folder full of uploads has to be taken
+      // apart from the leaves up (docs/notes/filenode.md).
+      for (const level of deepestFirst(nodes.list)) {
+        await jmap(auth, [CORE, FILENODE], [['FileNode/set', { accountId: fileAcc, destroy: level }, 'c0']])
+      }
+      removed.push(`${nodes.list.length} file node(s)`)
     }
   }
 

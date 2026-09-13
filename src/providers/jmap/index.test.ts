@@ -40,6 +40,7 @@ function sessionWith(accountCapabilities: string[], over: Record<string, unknown
 const MAIL = 'urn:ietf:params:jmap:mail'
 const CONTACTS = 'urn:ietf:params:jmap:contacts'
 const CALENDARS = 'urn:ietf:params:jmap:calendars'
+const FILENODE = 'urn:ietf:params:jmap:filenode'
 
 beforeEach(() => {
   session = sessionWith([MAIL, CONTACTS, CALENDARS])
@@ -69,6 +70,18 @@ describe('opening a connection to a JMAP server', () => {
     expect(conn.mail).not.toBeNull()
     expect(conn.contacts).not.toBeNull()
     expect(conn.calendars).not.toBeNull()
+  })
+
+  it('leaves out file storage unless the account offers the draft extension', async () => {
+    // FileNode is an unfinished draft that most servers do not implement.
+    const without = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    expect(without.files).toBeNull()
+    expect(without.capabilities.files).toBe(false)
+
+    session = sessionWith([MAIL, FILENODE])
+    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    expect(conn.files).not.toBeNull()
+    expect(conn.capabilities.files).toBe(true)
   })
 
   it('keeps the local id rather than the server’s account id', async () => {

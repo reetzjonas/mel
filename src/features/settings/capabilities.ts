@@ -64,6 +64,12 @@ export function capabilityRows(caps: AccountCapabilities): CapabilityRow[] {
       gate: caps.sieve ? 'caps.gate.sieve' : undefined,
     },
     {
+      id: 'files',
+      label: 'caps.files',
+      state: caps.files ? 'yes' : 'no',
+      gate: caps.files ? undefined : 'caps.gate.files',
+    },
+    {
       id: 'push',
       label: 'caps.push',
       state: 'info',

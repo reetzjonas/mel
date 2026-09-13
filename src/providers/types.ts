@@ -146,6 +146,47 @@ export interface ContactsProvider {
   destroyContacts(ids: string[]): Promise<SetFailure | null>
 }
 
+export interface NewFile {
+  name: string
+  /** null creates at the top level of the account. */
+  parentId: string | null
+  data: Blob | ArrayBuffer
+  type: string
+}
+
+/** Rename (`name`) and/or move (`parentId`). */
+export interface NodeEdit {
+  name?: string
+  parentId?: string | null
+}
+
+/**
+ * File storage, where the server offers it (JMAP FileNode).
+ *
+ * Writes are server-first and have no outbox action: there is no local mirror
+ * of the tree to write optimistically into, and the only caller so far wants
+ * to know whether the write landed before it does anything else.
+ */
+export interface FilesProvider {
+  /** Full fetch when state is undefined, otherwise delta via changes. */
+  syncNodes(sinceState?: string): Promise<SyncPage<import('../domain/file').FileNode>>
+  /** Direct children of a directory; null lists the top level. */
+  listChildren(parentId: string | null): Promise<import('../domain/file').FileNode[]>
+  createDirectory(
+    name: string,
+    parentId: string | null,
+  ): Promise<{ id: string | null; failure: SetFailure | null }>
+  /** Uploads the content, then creates the node pointing at it. */
+  createFile(file: NewFile): Promise<{ id: string | null; failure: SetFailure | null }>
+  /** Replace the content of an existing file. */
+  writeFileContent(id: string, data: Blob | ArrayBuffer, type: string): Promise<SetFailure | null>
+  editNode(id: string, edit: NodeEdit): Promise<SetFailure | null>
+  /** Not recursive: a parent and its child in one call fails both. */
+  destroyNodes(ids: string[]): Promise<SetFailure | null>
+  /** null for a node that has no content (a directory). */
+  readFile(node: import('../domain/file').FileNode): Promise<Blob | null>
+}
+
 export interface PushInfo {
   eventSourceUrl: string
   credentials: Credentials
@@ -157,6 +198,7 @@ export interface ProviderConnection {
   mail: MailProvider | null
   contacts: ContactsProvider | null
   calendars: CalendarProvider | null
+  files: FilesProvider | null
   push: PushInfo | null
 }
 

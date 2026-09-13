@@ -21,6 +21,8 @@ export interface AccountCapabilities {
   calendars: boolean
   sieve: boolean
   vacation: boolean
+  /** Server-side file storage (JMAP FileNode). */
+  files: boolean
   /** How live updates arrive. */
   push: 'sse' | 'poll'
   /** Web Push at closed-app time (RFC 9749 VAPID capability present). */

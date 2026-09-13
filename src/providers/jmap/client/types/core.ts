@@ -9,6 +9,7 @@ export const Cap = {
   calendars: 'urn:ietf:params:jmap:calendars',
   sieve: 'urn:ietf:params:jmap:sieve',
   blob: 'urn:ietf:params:jmap:blob',
+  filenode: 'urn:ietf:params:jmap:filenode',
   websocket: 'urn:ietf:params:jmap:websocket',
   webpushVapid: 'urn:ietf:params:jmap:webpush-vapid',
 } as const

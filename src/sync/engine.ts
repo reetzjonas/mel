@@ -6,6 +6,7 @@ import {
   CannotCalculateChanges,
   type CalendarProvider,
   type ContactsProvider,
+  type FilesProvider,
   type MailProvider,
   type SyncPage,
 } from '../providers/types'
@@ -239,6 +240,35 @@ async function syncCalendarData(accountId: string, calendars: CalendarProvider) 
   )
 }
 
+/**
+ * Bring the local file tree up to date on its own.
+ *
+ * File writes go straight to the server, and the local mirror has to catch up
+ * afterwards. Running the whole account sync for that would drag every message
+ * header along behind a folder rename, so this is the one collection with a
+ * public entry point of its own.
+ */
+export async function syncFileTree(accountId: string): Promise<void> {
+  const conn = await connectionFor(accountId)
+  if (conn.files) await syncFiles(accountId, conn.files)
+}
+
+function syncFiles(accountId: string, files: FilesProvider) {
+  return syncCollection(
+    accountId,
+    'FileNode',
+    db.files,
+    (s) => files.syncNodes(s),
+    (n) => ({
+      accountId,
+      id: n.id,
+      parentKey: n.parentId ?? '',
+      nodeType: n.nodeType,
+      payload: sealPlain(n),
+    }),
+  )
+}
+
 const running = new Map<string, Promise<void>>()
 
 /**
@@ -262,6 +292,7 @@ export function syncAccount(accountId: string): Promise<void> {
       }
       if (conn.contacts) await syncContacts(accountId, conn.contacts)
       if (conn.calendars) await syncCalendarData(accountId, conn.calendars)
+      if (conn.files) await syncFiles(accountId, conn.files)
     })
   })().finally(() => running.delete(accountId))
   running.set(accountId, run)

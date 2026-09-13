@@ -3,6 +3,7 @@ import type { Account, Credentials } from '../domain/account'
 import type { Calendar, CalendarEvent } from '../domain/calendar'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
+import type { FileNode } from '../domain/file'
 import type { Mailbox } from '../domain/mailbox'
 import { cryptoMiddleware } from './crypto/middleware'
 import { mailboxDateKey } from './emailRow'
@@ -118,6 +119,23 @@ export interface EventRow {
   payload: Envelope<CalendarEvent>
 }
 
+export interface FileNodeRow {
+  accountId: string
+  id: string
+  /**
+   * The parent, with the empty string standing in for "top level".
+   *
+   * Not `string | null` like the domain object: IndexedDB skips a record whose
+   * indexed key is null, so a nullable column would leave every root node out
+   * of the very index the listing is built on. Opening a folder is the one
+   * query this table exists to answer, so it gets a key that always indexes.
+   */
+  parentKey: string
+  /** Folders sort before files, and that must not need the payload open. */
+  nodeType: string
+  payload: Envelope<FileNode>
+}
+
 export interface KeyringRow {
   accountId: string
   kdf: { algo: 'argon2id' | 'pbkdf2'; salt: Uint8Array; params: Record<string, number> }
@@ -142,6 +160,7 @@ export class MelDb extends Dexie {
   contacts!: Table<ContactRow, AccountScopedKey>
   calendars!: Table<CalendarRow, AccountScopedKey>
   events!: Table<EventRow, AccountScopedKey>
+  files!: Table<FileNodeRow, AccountScopedKey>
 
   constructor() {
     super('mel')
@@ -181,6 +200,9 @@ export class MelDb extends Dexie {
     // Same column, now with the thread as a third segment so the grouped list
     // can read its window without scanning the account (see emailRow.ts).
     this.version(5).upgrade((tx) => backfillMailboxDates(tx))
+    this.version(6).stores({
+      files: '&[accountId+id], accountId, [accountId+parentKey]',
+    })
     this.use(cryptoMiddleware)
   }
 }

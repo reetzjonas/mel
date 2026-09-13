@@ -276,6 +276,16 @@ describe('capabilitiesFor', () => {
     ).toBe(true)
   })
 
+  it('reports file storage only where the account actually offers it', () => {
+    // FileNode is a draft extension few servers have, so it is read off the
+    // account like the rest rather than assumed.
+    expect(capabilitiesFor(session(), 'a1').files).toBe(false)
+    const withFiles = session({
+      accounts: { a1: { accountCapabilities: { [Cap.filenode]: {} } } } as never,
+    })
+    expect(capabilitiesFor(withFiles, 'a1').files).toBe(true)
+  })
+
   it('says no to everything for an account the session does not list', () => {
     expect(capabilitiesFor(session(), 'nope')).toMatchObject({ mail: false, calendars: false })
   })

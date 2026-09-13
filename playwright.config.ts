@@ -56,6 +56,7 @@ export default defineConfig({
         '**/mail-actions.spec.ts',
         '**/contacts.spec.ts',
         '**/calendar.spec.ts',
+        '**/files.spec.ts',
         '**/encryption.spec.ts',
         '**/offline.spec.ts',
         '**/folders-drafts.spec.ts',
