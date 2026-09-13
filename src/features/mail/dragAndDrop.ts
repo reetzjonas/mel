@@ -12,6 +12,14 @@ import type { DragEvent, MouseEvent } from 'react'
  */
 export const MAIL_DRAG = 'application/x-mel-mail'
 export const FOLDER_DRAG = 'application/x-mel-folder'
+/**
+ * File nodes, dragged in the Files app onto a folder there.
+ *
+ * This module lives under mail/ because that is where it grew up; it is the
+ * app's drag plumbing, not mail's. The touch lessons below were expensive and
+ * apply to any drag, so Files reuses them rather than keeping a second copy.
+ */
+export const FILENODE_DRAG = 'application/x-mel-filenode'
 
 export interface MailDrag {
   /** The folder being dragged out of, so a drop onto it can do nothing. */
@@ -71,8 +79,11 @@ function setDragLabel(e: DragEvent, label: string): void {
  * and it is tried first in `dragKind` so nothing changes on the engines
  * where `types` was already reliable during dragover.
  */
-let liveDragKind: 'mail' | 'folder' | null = null
+type DragKind = 'mail' | 'folder' | 'filenode'
+
+let liveDragKind: DragKind | null = null
 let mailPayload: MailDrag | null = null
+let fileNodePayload: string[] | null = null
 
 export function setMailDrag(e: DragEvent, payload: MailDrag, label: string): void {
   liveDragKind = 'mail'
@@ -93,10 +104,28 @@ export function setFolderDrag(e: DragEvent, mailboxId: string, label: string): v
   setDragLabel(e, label)
 }
 
+/**
+ * The nodes being dragged, kept here for the same reason the mail payload is:
+ * `getData` is not reliable on a touch-started drag, and a drop target may
+ * read nothing but the type until the drop lands anyway.
+ */
+export function setFileNodeDrag(e: DragEvent, ids: string[], label: string): void {
+  liveDragKind = 'filenode'
+  fileNodePayload = ids
+  e.dataTransfer.setData(FILENODE_DRAG, '1')
+  e.dataTransfer.effectAllowed = 'move'
+  setDragLabel(e, label)
+}
+
+export function readFileNodeDrag(e: DragEvent): string[] | null {
+  return dragKind(e) === 'filenode' ? fileNodePayload : null
+}
+
 /** Call on every dragend, so a later foreign drag cannot read as a stale one. */
 export function clearDragState(): void {
   liveDragKind = null
   mailPayload = null
+  fileNodePayload = null
 }
 
 /*
@@ -117,9 +146,10 @@ export function suppressContextMenu(e: MouseEvent): void {
 }
 
 /** What is being dragged. `types` first; `liveDragKind` for when it comes up empty. */
-export function dragKind(e: DragEvent): 'mail' | 'folder' | null {
+export function dragKind(e: DragEvent): DragKind | null {
   const types = e.dataTransfer.types
   if (types.includes(MAIL_DRAG)) return 'mail'
   if (types.includes(FOLDER_DRAG)) return 'folder'
+  if (types.includes(FILENODE_DRAG)) return 'filenode'
   return types.length === 0 ? liveDragKind : null
 }

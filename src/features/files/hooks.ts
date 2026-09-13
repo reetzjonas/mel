@@ -24,6 +24,15 @@ export function useFolderChildren(
   }, [accountId, parentId])
 }
 
+/** Every node in the account, for working out where a move may land. */
+export function useAllNodes(accountId: string | undefined): FileNode[] | undefined {
+  return useLiveQuery(async () => {
+    if (!accountId) return []
+    const rows = await db.files.where('accountId').equals(accountId).toArray()
+    return rows.map((r) => openEnvelope(r.payload)).sort(inListingOrder)
+  }, [accountId])
+}
+
 export function useFileNode(
   accountId: string | undefined,
   id: string | null,

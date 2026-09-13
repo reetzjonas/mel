@@ -1,7 +1,8 @@
 # Files (JMAP FileNode)
 
 A fourth app beside Mail, Contacts and Calendar: browse folders, upload, create
-folders, rename, delete, preview. It rests on `urn:ietf:params:jmap:filenode`,
+folders, rename, move, delete, preview, and tick several items to move or
+delete them together. It rests on `urn:ietf:params:jmap:filenode`,
 a **draft** (`draft-ietf-jmap-filenode`, -14 at the time of writing) that few
 servers implement — so the tab only exists when the account advertises the
 capability, and `connection.files` is null otherwise.
@@ -43,6 +44,30 @@ and `syncFileTree()` brings the local mirror back in line afterwards. That is
 also why the sync engine grew a public entry point for this one collection:
 running the whole account sync behind a folder rename would drag every message
 header along with it.
+
+## Selecting, moving, dragging
+
+The row icon doubles as the checkbox, exactly as the avatar does in the mail
+list, and a selection swaps the toolbar for a selection one carrying Move and
+Delete. That swap is also what made deleting *findable*: the per-row buttons
+were hover-only at first and the first person to use the app reported deleting
+as missing outright. They are still there, but below `lg` — where there is no
+hover — they are simply always visible.
+
+Moving works three ways, and they share `moveTargets` in `tree.ts` so they
+cannot disagree: the Move dialog, dragging a row onto a folder row, and
+dragging onto a **breadcrumb** crumb. The last one is not decoration — the
+listing only shows a folder's children, so without it there is no way to aim
+at a folder *above* the one being viewed. A folder may never be dropped into
+itself or its own descendants; the server would be left holding a cycle with
+no path to the root.
+
+Drag and drop reuses `features/mail/dragAndDrop.ts` rather than keeping a
+second copy: every touch lesson in `drag-and-drop.md` applies here unchanged,
+including the two that cost the most — the in-flight payload is kept in module
+state because `dataTransfer` cannot be read during a touch drag, and what is
+being dragged lives in a `useRef`, since a touch drag can fire `dragenter`
+before any React render commits.
 
 ## What the server does that the spec does not say
 
@@ -91,3 +116,15 @@ which is exactly how it was found here.
 Below `lg` the preview replaces the listing instead of sitting beside it. The
 first version had it `hidden lg:flex`, so on a phone tapping a file appeared to
 do nothing at all; the mobile Playwright project caught it.
+
+**Every button in a row carries the node's name** — `note.txt`, `Rename
+note.txt`, `Delete note.txt` — so a screen reader hearing "Delete" ten times in
+a row can tell them apart. The cost lands on the specs: `getByRole` matches the
+name case-insensitively **as a substring**, so `{ name: 'note.txt' }` resolves
+to all three and `{ name: folder }` also caught `Delete <folder>`. Every row
+selector here passes `exact: true`, and the row actions are reached by
+`/^Delete /` inside a `filter({ hasText })`. Same trap as the one already in
+`gotchas-testing.md`, met from the other direction.
+
+The move dialog has `role="dialog"` so its folder buttons can be addressed
+apart from the identically named rows behind it.

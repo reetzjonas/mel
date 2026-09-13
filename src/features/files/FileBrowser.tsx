@@ -4,21 +4,25 @@ import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
-import {
-  createFolder,
-  deleteNodes,
-  renameNode,
-  uploadFiles,
-} from '../../services/files'
+import { createFolder, deleteNodes, moveNodes, renameNode, uploadFiles } from '../../services/files'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
-import { primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import {
+  clearDragState,
+  draggableTouchClass,
+  dragKind,
+  readFileNodeDrag,
+  setFileNodeDrag,
+  suppressContextMenu,
+} from '../mail/dragAndDrop'
 import { FilePreview } from './FilePreview'
-import { useFilePath, useFolderChildren } from './hooks'
+import { useAllNodes, useFilePath, useFolderChildren } from './hooks'
+import { moveTargets } from './tree'
 
-type Dialog = { kind: 'newFolder' } | { kind: 'rename'; node: FileNode }
+type Dialog = { kind: 'newFolder' } | { kind: 'rename'; node: FileNode } | { kind: 'move' }
 
 export function FileBrowser({
   accountId,
@@ -29,13 +33,24 @@ export function FileBrowser({
 }) {
   const children = useFolderChildren(accountId, folderId)
   const trail = useFilePath(accountId, folderId)
+  const allNodes = useAllNodes(accountId)
   const navigate = useNavigate()
   const { showSnackbar } = useUi()
   const [dialog, setDialog] = useState<Dialog | null>(null)
-  const [selected, setSelected] = useState<FileNode | null>(null)
+  const [preview, setPreview] = useState<FileNode | null>(null)
+  const [checked, setChecked] = useState<Set<string>>(new Set())
   const [busy, setBusy] = useState(false)
   const [dropping, setDropping] = useState(false)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
   const picker = useRef<HTMLInputElement>(null)
+  /*
+   * What is in flight, as a ref rather than state. A touch-started drag can
+   * fire dragenter on the first element under the finger before any render
+   * commits, so a useState value would still read as empty for the whole
+   * gesture and nothing would ever highlight — the trap written up in
+   * docs/notes/drag-and-drop.md.
+   */
+  const draggingRef = useRef<string[]>([])
 
   const report = (err: string | null) => {
     if (err) showSnackbar({ message: err })
@@ -55,13 +70,42 @@ export function FileBrowser({
     if (picked.length) void run(() => uploadFiles(accountId, folderId, picked))
   }
 
-  const remove = (node: FileNode) => {
+  const toggle = (id: string) =>
+    setChecked((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(id)) next.add(id)
+      return next
+    })
+
+  const clearChecked = () => setChecked(new Set())
+
+  /** A dragged row that is itself checked stands in for the whole selection. */
+  const dragPayload = (node: FileNode) => (checked.has(node.id) ? [...checked] : [node.id])
+
+  const move = async (ids: string[], parentId: string | null) => {
+    clearChecked()
+    setDropTarget(null)
+    await run(() => moveNodes(accountId, ids, parentId))
+  }
+
+  const removeChecked = () => {
+    if (!window.confirm(t('files.delete.selection'))) return
+    const ids = [...checked]
+    clearChecked()
+    if (preview && ids.includes(preview.id)) setPreview(null)
+    void run(() => deleteNodes(accountId, ids))
+  }
+
+  const removeOne = (node: FileNode) => {
     const question =
       node.nodeType === 'directory' ? t('files.deleteFolder.confirm') : t('files.delete.confirm')
     if (!window.confirm(question)) return
-    if (selected?.id === node.id) setSelected(null)
+    if (preview?.id === node.id) setPreview(null)
     void run(() => deleteNodes(accountId, [node.id]))
   }
+
+  /** Accept a node drop onto a folder, unless it is one of the nodes in flight. */
+  const folderTakesDrop = (id: string) => !draggingRef.current.includes(id)
 
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
@@ -70,10 +114,11 @@ export function FileBrowser({
         // aside instead of being squeezed next to it — the same swap the
         // contact list does, and the preview's close button comes back here.
         className={`panel h-full min-w-0 flex-1 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex ${
-          selected ? 'hidden lg:flex' : 'flex'
+          preview ? 'hidden lg:flex' : 'flex'
         }`}
         onDragOver={(e) => {
-          // Only a drag carrying actual files; a dragged link is not an upload.
+          // Files from outside the browser; a node dragged within the app is
+          // a move and is handled by the rows themselves.
           if (!e.dataTransfer.types.includes('Files')) return
           e.preventDefault()
           setDropping(true)
@@ -90,37 +135,79 @@ export function FileBrowser({
         }}
       >
         <div className="flex items-center gap-2 border-b border-line px-2.5 py-2">
-          <Breadcrumb trail={trail} />
-          <div className="ml-auto flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => setDialog({ kind: 'newFolder' })}
-              className={secondaryButtonClass}
-            >
-              {t('files.newFolder')}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => picker.current?.click()}
-              className={primaryButtonClass}
-            >
-              {busy ? t('files.uploading') : t('files.upload')}
-            </button>
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              className="hidden"
-              aria-label={t('files.upload')}
-              onChange={(e) => {
-                upload(e.target.files)
-                // Same file twice in a row still has to fire a change event.
-                e.target.value = ''
-              }}
-            />
-          </div>
+          {checked.size > 0 ? (
+            <>
+              <Tooltip label={t('bulk.clear')}>
+                <button
+                  type="button"
+                  aria-label={t('bulk.clear')}
+                  onClick={clearChecked}
+                  className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                >
+                  <Icon name="close" size={15} />
+                </button>
+              </Tooltip>
+              <span className="text-[13px] font-medium whitespace-nowrap">
+                {checked.size} {t('bulk.selected')}
+              </span>
+              <div className="ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setDialog({ kind: 'move' })}
+                  className={secondaryButtonClass}
+                >
+                  {t('files.move')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={removeChecked}
+                  className={secondaryButtonClass}
+                >
+                  {t('files.delete')}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <Breadcrumb
+                trail={trail}
+                onDropNodes={(parentId) => void move(draggingRef.current, parentId)}
+                dragging={draggingRef}
+              />
+              <div className="ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setDialog({ kind: 'newFolder' })}
+                  className={secondaryButtonClass}
+                >
+                  {t('files.newFolder')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => picker.current?.click()}
+                  className={primaryButtonClass}
+                >
+                  {busy ? t('files.uploading') : t('files.upload')}
+                </button>
+                <input
+                  ref={picker}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  aria-label={t('files.upload')}
+                  onChange={(e) => {
+                    upload(e.target.files)
+                    // Same file twice in a row still has to fire a change event.
+                    e.target.value = ''
+                  }}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <div className="relative min-h-0 flex-1 overflow-y-auto">
@@ -137,15 +224,46 @@ export function FileBrowser({
                 <FileRow
                   key={node.id}
                   node={node}
-                  selected={selected?.id === node.id}
+                  checked={checked.has(node.id)}
+                  previewed={preview?.id === node.id}
+                  isDropTarget={dropTarget === node.id}
                   busy={busy}
+                  onToggle={() => toggle(node.id)}
                   onOpen={() => {
                     if (node.nodeType === 'directory')
                       void navigate({ to: '/files/$folderId', params: { folderId: node.id } })
-                    else setSelected(node)
+                    else setPreview(node)
                   }}
                   onRename={() => setDialog({ kind: 'rename', node })}
-                  onDelete={() => remove(node)}
+                  onDelete={() => removeOne(node)}
+                  onDragStart={(e) => {
+                    const ids = dragPayload(node)
+                    draggingRef.current = ids
+                    setFileNodeDrag(
+                      e,
+                      ids,
+                      ids.length > 1 ? `${ids.length} ${t('bulk.selected')}` : node.name,
+                    )
+                  }}
+                  onDragEnd={() => {
+                    draggingRef.current = []
+                    setDropTarget(null)
+                    clearDragState()
+                  }}
+                  onDragOverFolder={(e) => {
+                    if (dragKind(e) !== 'filenode' || !folderTakesDrop(node.id)) return
+                    e.preventDefault()
+                    setDropTarget(node.id)
+                  }}
+                  onDragLeaveFolder={() => setDropTarget((at) => (at === node.id ? null : at))}
+                  onDropOnFolder={(e) => {
+                    if (dragKind(e) !== 'filenode' || !folderTakesDrop(node.id)) return
+                    e.preventDefault()
+                    // Read before anything clears the module state the touch
+                    // fallback keeps the payload in.
+                    const ids = readFileNodeDrag(e) ?? draggingRef.current
+                    void move(ids, node.id)
+                  }}
                 />
               ))}
             </ul>
@@ -153,13 +271,13 @@ export function FileBrowser({
         </div>
       </section>
 
-      {selected && (
+      {preview && (
         <aside className="panel flex h-full w-full shrink-0 overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:w-96">
           <FilePreview
-            key={selected.id}
+            key={preview.id}
             accountId={accountId}
-            node={selected}
-            onClose={() => setSelected(null)}
+            node={preview}
+            onClose={() => setPreview(null)}
           />
         </aside>
       )}
@@ -190,16 +308,112 @@ export function FileBrowser({
           }}
         />
       )}
+      {dialog?.kind === 'move' && (
+        <MoveDialog
+          targets={moveTargets(allNodes ?? [], [...checked], folderId)}
+          atTopLevel={folderId === null}
+          onClose={() => setDialog(null)}
+          onPick={(parentId) => {
+            setDialog(null)
+            void move([...checked], parentId)
+          }}
+        />
+      )}
     </div>
   )
 }
 
-function Breadcrumb({ trail }: { trail: FileNode[] | undefined }) {
+function MoveDialog({
+  targets,
+  atTopLevel,
+  onPick,
+  onClose,
+}: {
+  targets: FileNode[]
+  atTopLevel: boolean
+  onPick: (parentId: string | null) => void
+  onClose: () => void
+}) {
+  // Moving to the top level is only an option when it is not where they are.
+  const options: Array<{ id: string | null; name: string }> = [
+    ...(atTopLevel ? [] : [{ id: null, name: t('files.move.top') }]),
+    ...targets.map((n) => ({ id: n.id as string | null, name: n.name })),
+  ]
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+      onClick={onClose}
+    >
+      <div
+        role="dialog"
+        aria-modal
+        aria-label={t('files.move')}
+        className={`animate-rise flex max-h-[70vh] w-full max-w-xs flex-col p-5 ${overlayPanelClass}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="mb-3 text-sm font-semibold">{t('files.move')}</h2>
+        {options.length === 0 ? (
+          <p className="text-xs text-ink-subtle">{t('files.move.nowhere')}</p>
+        ) : (
+          <ul className="min-h-0 flex-1 space-y-0.5 overflow-y-auto">
+            {options.map((o) => (
+              <li key={o.id ?? 'top'}>
+                <button
+                  type="button"
+                  onClick={() => onPick(o.id)}
+                  className="flex w-full items-center gap-2 rounded-control px-2 py-2 text-left text-sm transition-colors hover:bg-surface-2"
+                >
+                  <Icon name="folder" size={15} className="shrink-0 text-accent" />
+                  <span className="truncate">{o.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Breadcrumb({
+  trail,
+  onDropNodes,
+  dragging,
+}: {
+  trail: FileNode[] | undefined
+  onDropNodes: (parentId: string | null) => void
+  dragging: { current: string[] }
+}) {
+  const [over, setOver] = useState<string | null>(null)
+  /*
+   * The trail doubles as a drop target so a node can be moved *up* the tree,
+   * which the listing alone cannot offer: a folder that is not a child of the
+   * one being viewed has no row to aim at. Each crumb is always there rather
+   * than appearing mid-drag — a target that shows up under way is hard to hit
+   * and impossible to hand a drag to in a test.
+   */
+  const crumbProps = (id: string | null, key: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (dragKind(e) !== 'filenode' || dragging.current.includes(id ?? '')) return
+      e.preventDefault()
+      setOver(key)
+    },
+    onDragLeave: () => setOver((at) => (at === key ? null : at)),
+    onDrop: (e: React.DragEvent) => {
+      if (dragKind(e) !== 'filenode') return
+      e.preventDefault()
+      setOver(null)
+      onDropNodes(id)
+    },
+    'data-over': over === key || undefined,
+  })
+
   return (
     <nav className="flex min-w-0 items-center gap-1 text-sm">
       <Link
         to="/files"
-        className="shrink-0 rounded-control px-1.5 py-1 font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        {...crumbProps(null, 'root')}
+        className="shrink-0 rounded-control px-1.5 py-1 font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
       >
         {t('files.root')}
       </Link>
@@ -212,7 +426,8 @@ function Breadcrumb({ trail }: { trail: FileNode[] | undefined }) {
             <Link
               to="/files/$folderId"
               params={{ folderId: node.id }}
-              className="truncate rounded-control px-1.5 py-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              {...crumbProps(node.id, node.id)}
+              className="truncate rounded-control px-1.5 py-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
             >
               {node.name}
             </Link>
@@ -225,32 +440,92 @@ function Breadcrumb({ trail }: { trail: FileNode[] | undefined }) {
 
 function FileRow({
   node,
-  selected,
+  checked,
+  previewed,
+  isDropTarget,
   busy,
+  onToggle,
   onOpen,
   onRename,
   onDelete,
+  onDragStart,
+  onDragEnd,
+  onDragOverFolder,
+  onDragLeaveFolder,
+  onDropOnFolder,
 }: {
   node: FileNode
-  selected: boolean
+  checked: boolean
+  previewed: boolean
+  isDropTarget: boolean
   busy: boolean
+  onToggle: () => void
   onOpen: () => void
   onRename: () => void
   onDelete: () => void
+  onDragStart: (e: React.DragEvent) => void
+  onDragEnd: () => void
+  onDragOverFolder: (e: React.DragEvent) => void
+  onDragLeaveFolder: () => void
+  onDropOnFolder: (e: React.DragEvent) => void
 }) {
   const isDir = node.nodeType === 'directory'
   return (
-    <li className="group flex items-center gap-1 rounded-control pr-1 transition-colors hover:bg-surface-2 data-selected:bg-accent-wash" data-selected={selected || undefined}>
+    <li
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onContextMenu={suppressContextMenu}
+      {...(isDir
+        ? {
+            onDragOver: onDragOverFolder,
+            onDragLeave: onDragLeaveFolder,
+            onDrop: onDropOnFolder,
+          }
+        : {})}
+      data-checked={checked || undefined}
+      data-selected={previewed || undefined}
+      data-over={isDropTarget || undefined}
+      className={`group flex items-center gap-1 rounded-control pr-1 transition-colors hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash data-over:ring-2 data-over:ring-accent ${draggableTouchClass}`}
+    >
+      <span className="shrink-0 py-2 pl-2">
+        {/* The icon doubles as the checkbox, the way the avatar does in the
+            mail list. On touch there is no hover to reveal it, so below lg it
+            is always there. */}
+        <span className="relative block h-[17px] w-[17px]">
+          <Icon
+            name={isDir ? 'folder' : 'file'}
+            size={17}
+            className={`${checked ? 'invisible' : ''} ${isDir ? 'text-accent' : 'text-ink-subtle'}`}
+          />
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={checked}
+            aria-label={`${t('files.select')} ${node.name}`}
+            onClick={(e) => {
+              e.stopPropagation()
+              onToggle()
+            }}
+            className={`absolute inset-0 flex items-center justify-center rounded-[4px] transition-opacity ${
+              checked
+                ? 'bg-accent text-accent-ink'
+                : 'bg-surface-2 text-ink-muted opacity-0 ring-1 ring-line ring-inset group-hover:opacity-100 max-lg:opacity-100'
+            }`}
+          >
+            <Icon name="check" size={13} />
+          </button>
+        </span>
+      </span>
       <button
         type="button"
+        // Labelled by the name alone: the visible text also carries the size
+        // or "Folder", and the row's other two buttons carry the name too, so
+        // without this there is no way to address just this row.
+        aria-label={node.name}
         onClick={onOpen}
-        className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left"
+        className="flex min-w-0 flex-1 items-center py-2 pl-2 text-left"
       >
-        <Icon
-          name={isDir ? 'folder' : 'file'}
-          size={17}
-          className={isDir ? 'shrink-0 text-accent' : 'shrink-0 text-ink-subtle'}
-        />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium text-ink">{node.name}</span>
           <span className="block truncate text-xs text-ink-subtle">
@@ -260,11 +535,11 @@ function FileRow({
       </button>
       {/* Kept mounted rather than conditionally rendered: a row whose buttons
           appear on hover would change height as the pointer crosses it. */}
-      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+      <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100 max-lg:opacity-100">
         <Tooltip label={t('files.rename')}>
           <button
             type="button"
-            aria-label={t('files.rename')}
+            aria-label={`${t('files.rename')} ${node.name}`}
             disabled={busy}
             onClick={onRename}
             className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
@@ -275,7 +550,7 @@ function FileRow({
         <Tooltip label={t('files.delete')}>
           <button
             type="button"
-            aria-label={t('files.delete')}
+            aria-label={`${t('files.delete')} ${node.name}`}
             disabled={busy}
             onClick={onDelete}
             className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-danger"

@@ -16,10 +16,18 @@ let tree: FileNode[] = []
 let destroyFailure: SetFailure | null = null
 let created: Array<{ name: string; parentId: string | null; type: string }> = []
 let hasProvider = true
+let edited: Array<{ id: string; edit: Record<string, unknown> }> = []
+let editFailure: SetFailure | null = null
 
 const files = {
   syncNodes: () =>
-    Promise.resolve({ created: tree, updated: [], destroyedIds: [], newState: 's', hasMore: false }),
+    Promise.resolve({
+      created: tree,
+      updated: [],
+      destroyedIds: [],
+      newState: 's',
+      hasMore: false,
+    }),
   destroyNodes: (ids: string[]) => {
     destroyed.push(ids)
     return Promise.resolve(destroyFailure)
@@ -29,7 +37,10 @@ const files = {
     return Promise.resolve({ id: 'new', failure: null })
   },
   createDirectory: () => Promise.resolve({ id: 'dir', failure: null }),
-  editNode: () => Promise.resolve(null),
+  editNode: (id: string, edit: Record<string, unknown>) => {
+    edited.push({ id, edit })
+    return Promise.resolve(editFailure)
+  },
   readFile: () => Promise.resolve(new Blob(['content'])),
 }
 
@@ -37,7 +48,7 @@ vi.mock('../sync/connections', () => ({
   connectionFor: () => Promise.resolve({ files: hasProvider ? files : null }),
 }))
 
-const { createFolder, deleteNodes, downloadNode, uploadFiles } = await import('./files')
+const { createFolder, deleteNodes, downloadNode, moveNodes, uploadFiles } = await import('./files')
 
 const node = (id: string, parentId: string | null): FileNode => ({
   id,
@@ -58,6 +69,8 @@ beforeEach(() => {
   destroyFailure = null
   hasProvider = true
   tree = []
+  edited = []
+  editFailure = null
 })
 
 describe('deleting a folder', () => {
@@ -123,6 +136,32 @@ describe('uploading', () => {
     await uploadFiles('acc', null, [new File(['a'], 'a.txt'), new File(['b'], 'b.txt')])
 
     expect(synced).toEqual(['acc'])
+  })
+})
+
+describe('moving nodes', () => {
+  it('re-parents each one and refreshes once', async () => {
+    expect(await moveNodes('acc', ['a', 'b'], 'dest')).toBeNull()
+
+    expect(edited).toEqual([
+      { id: 'a', edit: { parentId: 'dest' } },
+      { id: 'b', edit: { parentId: 'dest' } },
+    ])
+    expect(synced).toEqual(['acc'])
+  })
+
+  it('moves to the top level with a null parent', async () => {
+    await moveNodes('acc', ['a'], null)
+
+    expect(edited[0]!.edit).toEqual({ parentId: null })
+  })
+
+  it('keeps going after one is refused, so the rest are not stranded', async () => {
+    // A name that collides in the destination should not hold up the others.
+    editFailure = { type: 'alreadyExists', permanent: true }
+
+    expect(await moveNodes('acc', ['a', 'b'], 'dest')).toBe('alreadyExists')
+    expect(edited).toHaveLength(2)
   })
 })
 

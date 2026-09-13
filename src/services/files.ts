@@ -1,4 +1,5 @@
 import type { FileNode } from '../domain/file'
+import { deepestFirst, withDescendants } from '../features/files/tree'
 import type { FilesProvider, SetFailure } from '../providers/types'
 import { connectionFor } from '../sync/connections'
 import { syncFileTree } from '../sync/engine'
@@ -45,6 +46,30 @@ export function renameNode(accountId: string, id: string, name: string): Promise
 }
 
 /**
+ * Re-parent nodes; `null` moves them to the top level.
+ *
+ * One request per node — there is no batched re-parent — and the first
+ * refusal is what gets reported, but the rest are still attempted: a name
+ * that collides in the destination should not strand the others where they
+ * were.
+ */
+export async function moveNodes(
+  accountId: string,
+  ids: string[],
+  parentId: string | null,
+): Promise<string | null> {
+  const files = await provider(accountId)
+  if (!files) return 'noProvider'
+  let failed: string | null = null
+  for (const id of ids) {
+    const failure = await files.editNode(id, { parentId })
+    if (failure && !failed) failed = message(failure)
+  }
+  await syncFileTree(accountId)
+  return failed
+}
+
+/**
  * Upload files into a folder, reporting the first one that fails.
  *
  * Sequential rather than parallel: a multi-file drop is the normal case, and
@@ -84,37 +109,14 @@ export async function deleteNodes(accountId: string, ids: string[]): Promise<str
   const files = await provider(accountId)
   if (!files) return 'noProvider'
   const all = (await files.syncNodes()).created
-  const doomed = new Set<string>()
-  const collect = (id: string) => {
-    if (doomed.has(id)) return
-    doomed.add(id)
-    for (const child of all.filter((n) => n.parentId === id)) collect(child.id)
-  }
-  for (const id of ids) collect(id)
 
   let failed: string | null = null
-  for (const level of byDepth(all, doomed)) {
+  for (const level of deepestFirst(all, withDescendants(all, ids))) {
     const failure = await files.destroyNodes(level)
     if (failure && !failed) failed = message(failure)
   }
   await syncFileTree(accountId)
   return failed
-}
-
-/** The doomed ids grouped deepest-first, so no call holds a node and its parent. */
-function byDepth(all: FileNode[], doomed: Set<string>): string[][] {
-  const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
-  const depth = (id: string): number => {
-    let d = 0
-    for (let p = parentOf.get(id); p != null; p = parentOf.get(p)) d++
-    return d
-  }
-  const levels = new Map<number, string[]>()
-  for (const id of doomed) {
-    const d = depth(id)
-    levels.set(d, [...(levels.get(d) ?? []), id])
-  }
-  return [...levels.entries()].sort((a, b) => b[0] - a[0]).map(([, ids]) => ids)
 }
 
 export async function downloadNode(accountId: string, node: FileNode): Promise<Blob | null> {

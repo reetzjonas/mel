@@ -39,15 +39,16 @@ by display name.
 
 Files is the fourth app, where the server offers JMAP FileNode (a draft
 extension; the tab is hidden otherwise): folder browsing with breadcrumbs,
-upload by button or drop, create folder, rename, delete (recursive) and a
-preview for images, text and PDF. See `docs/notes/filenode.md`.
+upload by button or drop, create folder, rename, move (dialog, drag onto a
+folder, or drag onto a breadcrumb), delete (recursive), multi-select for bulk
+move/delete, and a preview for images, text and PDF. See `docs/notes/filenode.md`.
 
 Settings are a modal over the current screen, not a route: six tabs (General,
 Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=`, so deep links and the back button keep working and `/settings`
 redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 812 Vitest + 78 Playwright (desktop + mobile; state-mutating specs are
+Tests: 824 Vitest + 80 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 

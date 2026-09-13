@@ -96,7 +96,9 @@ export function FilePreview({
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {content.kind === 'loading' && <p className="text-xs text-ink-subtle">{t('files.loading')}</p>}
+        {content.kind === 'loading' && (
+          <p className="text-xs text-ink-subtle">{t('files.loading')}</p>
+        )}
         {content.kind === 'text' && (
           <pre className="text-xs whitespace-pre-wrap text-ink-muted">{content.text}</pre>
         )}
