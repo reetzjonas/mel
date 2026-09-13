@@ -18,6 +18,8 @@ export const FOLDER_DRAG = 'application/x-mel-folder'
  * This module lives under mail/ because that is where it grew up; it is the
  * app's drag plumbing, not mail's. The touch lessons below were expensive and
  * apply to any drag, so Files reuses them rather than keeping a second copy.
+ * Moving it somewhere shared is #51 — deliberately not done from a Files
+ * commit, since it touches mail's drag handling for no reason of mail's own.
  */
 export const FILENODE_DRAG = 'application/x-mel-filenode'
 
