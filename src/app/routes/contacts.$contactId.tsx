@@ -133,7 +133,7 @@ function ContactDetail() {
         </Link>
       </div>
       <header className="flex items-center gap-4">
-        <Avatar name={name} email={contact.emails[0]?.value ?? name} size={56} />
+        <Avatar name={name} email={contact.emails[0]?.value ?? name} size={56} src={contact.photo} />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-semibold">{name}</h1>
           {(contact.jobTitle || contact.organization) && (

@@ -174,3 +174,32 @@ describe('tags on a card', () => {
     expect(out['keywords']).toEqual({ friend: true, 'ski-club': true })
   })
 })
+
+describe('the picture on a card', () => {
+  const uri = 'data:image/jpeg;base64,/9j/4AAQ'
+
+  it('reads the photo out of the media map', () => {
+    const c = toContact({
+      id: 'c7',
+      addressBookIds: { b: true },
+      media: { m0: { '@type': 'Media', kind: 'logo', uri: 'https://x/logo.png' }, m1: { '@type': 'Media', kind: 'photo', uri } },
+    })
+    expect(c.photo).toBe(uri)
+  })
+
+  it('has no photo when the card carries only other media', () => {
+    const c = toContact({
+      id: 'c8',
+      addressBookIds: { b: true },
+      media: { m0: { '@type': 'Media', kind: 'sound', uri: 'https://x/hi.mp3' } },
+    })
+    expect(c.photo).toBe('')
+  })
+
+  it('writes it back as a photo, and clears the map when removed', () => {
+    const c = toContact({ id: 'c9', addressBookIds: { b: true } })
+    const withPhoto = fromContact({ ...c, photo: uri }) as Record<string, unknown>
+    expect(withPhoto['media']).toEqual({ m0: { '@type': 'Media', kind: 'photo', uri } })
+    expect((fromContact(c) as Record<string, unknown>)['media']).toBeNull()
+  })
+})

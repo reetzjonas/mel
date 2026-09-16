@@ -11,7 +11,30 @@ function hash(s: string): number {
   return Math.abs(h)
 }
 
-export function Avatar({ name, email, size = 36 }: { name: string; email: string; size?: number }) {
+export function Avatar({
+  name,
+  email,
+  size = 36,
+  src,
+}: {
+  name: string
+  email: string
+  size?: number
+  /** The contact's own picture; initials stand in when there is none. */
+  src?: string
+}) {
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        width={size}
+        height={size}
+        className="shrink-0 rounded-full object-cover"
+        style={{ width: size, height: size }}
+      />
+    )
+  }
   const initials = name
     .split(/\s+/)
     .filter(Boolean)

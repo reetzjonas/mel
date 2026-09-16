@@ -7,6 +7,15 @@
   it was until the next sync put it back on screen. `null` is what JSContact
   means by "no value" and the only thing that clears; every managed property is
   now spelled out as null when empty, with a test listing them.
+- **A contact's picture is `media`, not `photos`, and cannot be a blob.**
+  RFC 9553 keeps photos, logos and sounds in one `media` map, each entry a
+  `Media` with `kind: "photo"`; there is no `photos` property, and sending one
+  is refused as `invalidProperties`. A `blobId` there is refused too —
+  "blobIds in media is not supported" — so the picture travels inline as a
+  `data:` URI, inside the card, through every sync. That is why mel scales a
+  picked image down before storing it (`features/contacts/photo.ts`), and why
+  writing a photo replaces the whole `media` map, dropping a logo or sound a
+  card happened to carry.
 - **Stalwart drops a JSContact `OnlineService` that lacks `uri` or `@type`, and
   says nothing.** The card is created, the response carries no `notCreated`, and
   the property simply is not there on the next fetch. `uri` takes any string, so

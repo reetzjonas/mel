@@ -34,6 +34,7 @@ export interface JmapContactCard {
     JsContext & { service?: string | null; user?: string | null; uri?: string | null }
   > | null
   keywords?: Record<string, boolean> | null
+  media?: Record<string, { '@type'?: string; kind?: string | null; uri?: string | null }> | null
   notes?: Record<string, { note: string }> | null
   members?: Record<string, boolean> | null
   uid?: string
@@ -111,6 +112,7 @@ export function toContact(card: JmapContactCard): Contact {
     keywords: Object.entries(card.keywords ?? {})
       .filter(([, on]) => on)
       .map(([k]) => k),
+    photo: Object.values(card.media ?? {}).find((m) => m.kind === 'photo' && m.uri)?.uri ?? '',
     note: Object.values(card.notes ?? {})[0]?.note ?? '',
     memberUids: Object.entries(card.members ?? {})
       .filter(([, on]) => on)
@@ -190,6 +192,16 @@ export function fromContact(c: Contact): Record<string, unknown> {
      */
     onlineServices: onlineServiceList(c.onlineServices),
     keywords: c.keywords.length ? Object.fromEntries(c.keywords.map((k) => [k, true])) : null,
+    /*
+     * `media` also holds logos and sounds, and writing the photo replaces the
+     * whole map — so a card carrying one of those loses it to an edit here.
+     * mel models no other media, and a personal card with a logo on it is rare
+     * enough to be worth the simpler shape; see the issue #60 comment.
+     *
+     * A blob id is not an option: Stalwart answers "blobIds in media is not
+     * supported", so the picture travels inline as a data: URI.
+     */
+    media: c.photo ? { m0: { '@type': 'Media', kind: 'photo', uri: c.photo } } : null,
     notes: c.note ? { note0: { note: c.note } } : null,
   }
 }

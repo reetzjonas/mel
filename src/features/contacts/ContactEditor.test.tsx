@@ -21,6 +21,7 @@ const contact = (over: Partial<Contact> = {}): Contact => ({
   urls: [{ value: '', label: null }],
   onlineServices: [],
   keywords: [],
+  photo: '',
   note: '',
   memberUids: [],
   ...over,
@@ -62,7 +63,8 @@ describe('what the browser is told to autofill', () => {
    */
   it('offers the user their own profile in no field at all', () => {
     const { container } = editor({ addresses: [{ full: '', label: null }] })
-    const fields = [...container.querySelectorAll('input, textarea')]
+    // File inputs are exempt: there is nothing for a profile to autofill there.
+    const fields = [...container.querySelectorAll('input:not([type="file"]), textarea')]
     expect(fields.length).toBeGreaterThan(5)
     for (const field of fields) expect(field.getAttribute('autocomplete')).toBe('off')
   })

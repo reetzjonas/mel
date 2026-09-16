@@ -147,3 +147,48 @@ test('handles, tags, and removing a field the server already stored', async ({ p
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+// A 1x1 PNG, so the picker has a real image to decode without a fixture file.
+const TINY_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+)
+
+test('a contact photo is scaled, stored and shown', async ({ page }) => {
+  const surname = `Photo${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Erika')
+  await page.getByLabel('Last name').fill(surname)
+  await page
+    .getByLabel('Photo')
+    .setInputFiles({ name: 'erika.png', mimeType: 'image/png', buffer: TINY_PNG })
+
+  // The card holds the picture itself, so what is stored must be the scaled
+  // JPEG mel made rather than the file that was picked.
+  const preview = page.locator('form img')
+  await expect(preview).toHaveAttribute('src', /^data:image\/jpeg;base64,/)
+
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+
+  // Survives a reload, which is what proves it reached the server.
+  await page.reload()
+  await expect(page.getByRole('article').locator('img')).toHaveAttribute(
+    'src',
+    /^data:image\/jpeg;base64,/,
+  )
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  await page.getByRole('button', { name: 'Remove' }).click()
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.reload()
+  await expect(page.getByRole('article').locator('img')).toHaveCount(0)
+
+  // Clean up.
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('link', { name: `Erika ${surname}` }).click()
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+})

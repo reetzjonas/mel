@@ -53,6 +53,14 @@ export interface Contact {
   onlineServices: OnlineService[]
   /** Free-form tags the card carries, for grouping and filtering. */
   keywords: string[]
+  /**
+   * The contact's picture as a URI, '' when the card has none.
+   *
+   * A URI rather than a blob id because that is all the card can hold: the
+   * picture mel uploads is a `data:` URI it scaled down itself, and one that
+   * arrived from elsewhere may be an `https:` URL instead.
+   */
+  photo: string
   note: string
   /** For kind=group: member uids. */
   memberUids: string[]
@@ -100,6 +108,7 @@ export function emptyContact(addressBookId: string): Contact {
     urls: [],
     onlineServices: [],
     keywords: [],
+    photo: '',
     note: '',
     memberUids: [],
   }

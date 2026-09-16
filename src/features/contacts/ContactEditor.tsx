@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import type { Contact, LabeledValue, OnlineService } from '../../domain/contact'
 import { t } from '../../lib/i18n'
+import { Avatar } from '../../ui/Avatar'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { toPhotoUri } from './photo'
 
 /*
  * Every field here describes *someone else*, which is why nothing in this form
@@ -125,6 +127,63 @@ function ServiceField({
   )
 }
 
+/**
+ * Picking a picture for the card.
+ *
+ * The scaling happens before anything is stored, because the card carries the
+ * image itself rather than a reference to one — see photo.ts. A file the
+ * browser cannot decode leaves the current picture alone rather than clearing
+ * it; a failed pick is not a request to remove.
+ */
+function PhotoField({
+  name,
+  photo,
+  onChange,
+}: {
+  name: string
+  photo: string
+  onChange: (photo: string) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  const [failed, setFailed] = useState(false)
+  return (
+    <div className="flex items-center gap-3">
+      <Avatar name={name} email={name} size={56} src={photo} />
+      <div className="space-y-1">
+        <div className="flex gap-2">
+          <button type="button" className={secondaryButtonClass} onClick={() => input.current?.click()}>
+            {photo ? t('contacts.photo.replace') : t('contacts.photo.add')}
+          </button>
+          {photo && (
+            <button
+              type="button"
+              className="text-sm text-danger hover:underline"
+              onClick={() => onChange('')}
+            >
+              {t('contacts.photo.remove')}
+            </button>
+          )}
+        </div>
+        {failed && <p className="text-xs text-danger">{t('contacts.photo.failed')}</p>}
+      </div>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        aria-label={t('contacts.photo')}
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          e.target.value = ''
+          if (!file) return
+          setFailed(false)
+          void toPhotoUri(file).then(onChange, () => setFailed(true))
+        }}
+      />
+    </div>
+  )
+}
+
 export function ContactEditor({
   initial,
   onSave,
@@ -145,6 +204,12 @@ export function ContactEditor({
         onSave(c)
       }}
     >
+      <PhotoField
+        name={[c.given, c.surname].filter(Boolean).join(' ') || c.fullName}
+        photo={c.photo}
+        onChange={(photo) => set({ photo })}
+      />
+
       <div className="grid grid-cols-2 gap-3">
         <label className="space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.given')}</span>
