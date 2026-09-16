@@ -192,3 +192,37 @@ test('a contact photo is scaled, stored and shown', async ({ page }) => {
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+test('a birthday reaches the card and shows up in the calendar', async ({ page }) => {
+  const surname = `Bday${Date.now() % 100000}`
+  // A date this month, so the calendar opens on it without navigating.
+  const now = new Date()
+  const day = new Date(now.getFullYear(), now.getMonth(), 15)
+  const iso = `1985-${String(day.getMonth() + 1).padStart(2, '0')}-15`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Erika')
+  await page.getByLabel('Last name').fill(surname)
+  await page.getByLabel('Birthday').fill(iso)
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+  await expect(page.getByRole('article').getByText(/1985/)).toBeVisible()
+
+  /*
+   * The point of the field: it is derived into the calendar rather than stored
+   * there, so it appears without anything having been written to a calendar.
+   */
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  const entry = page.getByRole('button', { name: new RegExp(`Erika ${surname}`) })
+  await expect(entry.first()).toBeVisible()
+
+  // It has no event behind it, so it leads back to the card instead of an editor.
+  await entry.first().click()
+  await expect(page).toHaveURL(/\/contacts\//)
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+
+  // Clean up.
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+})

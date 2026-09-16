@@ -46,6 +46,7 @@ const card = (over: Partial<Contact> = {}): Contact =>
     onlineServices: [],
     keywords: [],
     photo: '',
+    birthday: '',
     note: '',
     memberUids: [],
     addressBookIds: { ab: true },

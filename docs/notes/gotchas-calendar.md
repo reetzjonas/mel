@@ -1,5 +1,14 @@
 # Hard-won gotchas: calendar / iTIP scheduling (do not rediscover)
 
+- **A leap-day birthday needs a leap-year anchor.** Birthdays are derived into
+  the calendar as ordinary yearly events (`features/calendar/birthdays.ts`) and
+  expanded by the same `expandAll` as real ones. Anchoring one in the year
+  before the window is what keeps the expansion short — but "2025-02-29" is not
+  a date, and it rolls forward to 1 March, putting the series on the wrong day
+  every year after. The anchor walks back to a real leap year, from which a
+  yearly rule recurs only in leap years, which is the honest answer for a
+  29 February birthday.
+
 - Stalwart calendar: `recurrenceRule` is **singular** (not `recurrenceRules`);
   ContactCards are **flat** JSContact objects (no `card` wrapper).
 - **Scheduling/iTIP has three traps, all silent** (worked out the hard way, see

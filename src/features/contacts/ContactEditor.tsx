@@ -3,6 +3,7 @@ import type { Contact, LabeledValue, OnlineService } from '../../domain/contact'
 import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { birthdayLabel } from './birthday'
 import { toPhotoUri } from './photo'
 
 /*
@@ -286,6 +287,26 @@ export function ContactEditor({
             set({ addresses: e.target.value ? [{ full: e.target.value, label: null }] : [] })
           }
         />
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-xs font-medium text-ink-muted">{t('contacts.birthday')}</span>
+        {/* A date input cannot hold a birthday with no year, which is how many
+            cards store one. Rather than showing an empty box over a date that
+            is really there, the stored value is named beside it and only
+            replaced if a full date is picked. */}
+        <input
+          className={inputClass}
+          type="date"
+          autoComplete={NO_AUTOFILL}
+          value={/^\d{4}-/.test(c.birthday) ? c.birthday : ''}
+          onChange={(e) => set({ birthday: e.target.value })}
+        />
+        {c.birthday && !/^\d{4}-/.test(c.birthday) && (
+          <span className="text-xs text-ink-muted">
+            {birthdayLabel(c.birthday)} · {t('contacts.birthday.noYear')}
+          </span>
+        )}
       </label>
 
       <label className="block space-y-1">

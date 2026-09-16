@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useEffect, useMemo, useState } from 'react'
 import { useUi } from '../store'
 import type {
@@ -15,6 +15,8 @@ import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
+import { birthdayEvents, contactIdOfBirthday, isBirthdayEventId } from '../../features/calendar/birthdays'
+import { useContacts } from '../../features/contacts/hooks'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
 import { primaryButtonClass } from '../../ui/styles'
@@ -122,8 +124,10 @@ function CalendarApp() {
   const accounts = useAccounts()
   const account = accounts?.[0]
   const calendars = useCalendars(account?.id)
+  const contacts = useContacts(account?.id)
   const events = useEvents(account?.id)
   const { showSnackbar } = useUi()
+  const navigate = useNavigate()
   const [anchor, setAnchor] = useState(() => new Date())
   const [view, setView] = useState<ViewMode>('month')
   const [dialog, setDialog] = useState<DialogState | null>(null)
@@ -141,9 +145,21 @@ function CalendarApp() {
     return [anchor]
   }, [view, anchor])
 
+  /*
+   * Birthdays are not events on any server: they are derived from the contact
+   * cards for the window on screen and expanded by the same machinery as the
+   * real ones, so a yearly series behaves identically. Nothing is stored, and
+   * clicking one leads to the card rather than to an editor.
+   */
+  const birthdays = useMemo(
+    () => (grid.length ? birthdayEvents(contacts ?? [], grid[0]!) : []),
+    [contacts, grid],
+  )
+
   const byDay = useMemo(() => {
     const map = new Map<string, Occurrence[]>()
-    if (!visibleEvents.length || !grid.length) return map
+    const all = [...visibleEvents, ...birthdays]
+    if (!all.length || !grid.length) return map
     // Normalize to midnight: `anchor` (and thus week/day grids derived from
     // it) carries the real current time-of-day, which would otherwise shift
     // this window away from a clean day boundary and drop early events.
@@ -151,19 +167,19 @@ function CalendarApp() {
     const last = grid[grid.length - 1]!
     const from = new Date(first.getFullYear(), first.getMonth(), first.getDate())
     const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1)
-    for (const occ of expandAll(visibleEvents, from, to, VIEWER_ZONE)) {
+    for (const occ of expandAll(all, from, to, VIEWER_ZONE)) {
       const key = dayKey(occ.start)
       const list = map.get(key) ?? []
       list.push(occ)
       map.set(key, list)
     }
     return map
-  }, [visibleEvents, grid])
+  }, [visibleEvents, birthdays, grid])
 
   if (!account?.capabilities.calendars)
     return <CapabilityNotice reason="caps.unsupported.calendar" />
 
-  const eventById = new Map((events ?? []).map((e) => [e.id, e]))
+  const eventById = new Map([...(events ?? []), ...birthdays].map((e) => [e.id, e]))
   const eventColor = (e: CalendarEvent) => colorFor(calendars ?? [], Object.keys(e.calendarIds)[0])
   const defaultCalendarId = calendars?.find((c) => c.isDefault)?.id ?? calendars?.[0]?.id ?? null
 
@@ -196,6 +212,12 @@ function CalendarApp() {
   }
 
   function openEdit(eventId: string) {
+    // A birthday has no event behind it to edit; the card it came from is the
+    // only thing there is to open.
+    if (isBirthdayEventId(eventId)) {
+      void navigate({ to: '/contacts/$contactId', params: { contactId: contactIdOfBirthday(eventId) } })
+      return
+    }
     const full = eventById.get(eventId)
     if (full) setDialog({ isNew: false, event: full })
   }

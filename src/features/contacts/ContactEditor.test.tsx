@@ -22,6 +22,7 @@ const contact = (over: Partial<Contact> = {}): Contact => ({
   onlineServices: [],
   keywords: [],
   photo: '',
+  birthday: '',
   note: '',
   memberUids: [],
   ...over,

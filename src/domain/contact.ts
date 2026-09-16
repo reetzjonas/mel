@@ -61,6 +61,11 @@ export interface Contact {
    * arrived from elsewhere may be an `https:` URL instead.
    */
   photo: string
+  /**
+   * Birthday as `YYYY-MM-DD`, or `--MM-DD` when the card gives no year, which
+   * is how a great many of them arrive. '' when the card has none.
+   */
+  birthday: string
   note: string
   /** For kind=group: member uids. */
   memberUids: string[]
@@ -109,7 +114,24 @@ export function emptyContact(addressBookId: string): Contact {
     onlineServices: [],
     keywords: [],
     photo: '',
+    birthday: '',
     note: '',
     memberUids: [],
   }
+}
+
+/** The day and month of a birthday, or null when it is not a date we can read. */
+export function birthdayMonthDay(birthday: string): { month: number; day: number } | null {
+  const m = /^(?:(\d{4})|-)?-(\d{2})-(\d{2})$/.exec(birthday.trim())
+  if (!m) return null
+  const month = Number(m[2])
+  const day = Number(m[3])
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null
+  return { month, day }
+}
+
+/** The year a birthday names, or null when it names none. */
+export function birthdayYear(birthday: string): number | null {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(birthday.trim())
+  return m ? Number(m[1]) : null
 }

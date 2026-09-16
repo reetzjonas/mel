@@ -24,6 +24,7 @@ function contactRow(overrides: Partial<Contact>): { accountId: string; id: strin
     onlineServices: [],
     keywords: [],
     photo: '',
+    birthday: '',
     note: '',
     memberUids: [],
     ...overrides,

@@ -1,4 +1,10 @@
-import type { AddressBook, Contact, LabeledValue } from '../../../domain/contact'
+import {
+  birthdayMonthDay,
+  birthdayYear,
+  type AddressBook,
+  type Contact,
+  type LabeledValue,
+} from '../../../domain/contact'
 
 // JSContact (RFC 9553) shapes as served by RFC 9610 ContactCard objects.
 
@@ -35,6 +41,20 @@ export interface JmapContactCard {
   > | null
   keywords?: Record<string, boolean> | null
   media?: Record<string, { '@type'?: string; kind?: string | null; uri?: string | null }> | null
+  anniversaries?: Record<
+    string,
+    {
+      '@type'?: string
+      kind?: string | null
+      date?: {
+        '@type'?: string
+        year?: number | null
+        month?: number | null
+        day?: number | null
+        utc?: string | null
+      } | null
+    }
+  > | null
   notes?: Record<string, { note: string }> | null
   members?: Record<string, boolean> | null
   uid?: string
@@ -75,6 +95,24 @@ export function toAddressBook(b: JmapAddressBook): AddressBook {
   }
 }
 
+const pad = (n: number) => String(n).padStart(2, '0')
+
+/**
+ * The birth anniversary as a date string, '' when the card names none.
+ *
+ * A PartialDate may leave the year out — plenty of cards record the day and
+ * nothing more — and that is kept rather than filled in, because a made-up
+ * year would come back as somebody's age.
+ */
+function toBirthday(card: JmapContactCard): string {
+  const birth = Object.values(card.anniversaries ?? {}).find((a) => a.kind === 'birth')
+  const date = birth?.date
+  if (!date) return ''
+  if (date.utc) return date.utc.slice(0, 10)
+  if (!date.month || !date.day) return ''
+  return `${date.year ? String(date.year).padStart(4, '0') : '-'}-${pad(date.month)}-${pad(date.day)}`
+}
+
 export function toContact(card: JmapContactCard): Contact {
   const addressBookIds: Record<string, true> = {}
   for (const [id, on] of Object.entries(card.addressBookIds ?? {})) if (on) addressBookIds[id] = true
@@ -113,6 +151,7 @@ export function toContact(card: JmapContactCard): Contact {
       .filter(([, on]) => on)
       .map(([k]) => k),
     photo: Object.values(card.media ?? {}).find((m) => m.kind === 'photo' && m.uri)?.uri ?? '',
+    birthday: toBirthday(card),
     note: Object.values(card.notes ?? {})[0]?.note ?? '',
     memberUids: Object.entries(card.members ?? {})
       .filter(([, on]) => on)
@@ -152,6 +191,24 @@ function onlineServiceList(services: Contact['onlineServices']) {
       },
     ]),
   )
+}
+
+function birthdayAnniversary(birthday: string) {
+  const monthDay = birthdayMonthDay(birthday)
+  if (!monthDay) return null
+  const year = birthdayYear(birthday)
+  return {
+    a0: {
+      '@type': 'Anniversary',
+      kind: 'birth',
+      date: {
+        '@type': 'PartialDate',
+        ...(year ? { year } : {}),
+        month: monthDay.month,
+        day: monthDay.day,
+      },
+    },
+  }
 }
 
 /** Build the flat JSContact card for ContactCard/set create/update. */
@@ -202,6 +259,9 @@ export function fromContact(c: Contact): Record<string, unknown> {
      * supported", so the picture travels inline as a data: URI.
      */
     media: c.photo ? { m0: { '@type': 'Media', kind: 'photo', uri: c.photo } } : null,
+    // Only the birth anniversary: a card's weddings and the rest are left
+    // alone, which is also why this replaces the map only when mel has one.
+    anniversaries: birthdayAnniversary(c.birthday),
     notes: c.note ? { note0: { note: c.note } } : null,
   }
 }

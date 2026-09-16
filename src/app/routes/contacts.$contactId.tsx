@@ -4,6 +4,7 @@ import { useUi } from '../../app/store'
 import { displayName, type LabeledValue } from '../../domain/contact'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
+import { birthdayLabel } from '../../features/contacts/birthday'
 import { mapHref, profileHref, telHref } from '../../features/contacts/links'
 import { useAccounts, useCanSend } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
@@ -231,6 +232,12 @@ function ContactDetail() {
                 </div>
               )
             })}
+          </div>
+        )}
+        {birthdayLabel(contact.birthday) && (
+          <div>
+            <div className="text-xs font-medium text-ink-muted">{t('contacts.birthday')}</div>
+            <div className="text-sm">{birthdayLabel(contact.birthday)}</div>
           </div>
         )}
         {contact.keywords.length > 0 && (
