@@ -160,3 +160,8 @@ Split by topic, since each is only relevant when working in that area:
 - Commit messages in English, with the Co-Authored-By trailer. **After finishing a
   feature, ask the user whether everything is right before committing** (explicit
   instruction). They check in a real browser and regularly find what the tests do not.
+- Commit subjects follow **Conventional Commits** (`feat:`, `fix:`, `chore:`,
+  `refactor:`, `docs:`, `test:`, `ci:`, `perf:`) as of the release-please setup
+  (issue #55) — release-please's release PR (bump + `CHANGELOG.md`) is generated
+  from these, and only `feat`/`fix`/`perf` show up in the changelog. A breaking
+  change is a `!` after the type (`feat!:`) or a `BREAKING CHANGE:` footer.

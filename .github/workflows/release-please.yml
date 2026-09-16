@@ -1,0 +1,21 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      # Opens/updates a release PR that bumps package.json and CHANGELOG.md
+      # from Conventional Commits; merging it creates the git tag + GitHub
+      # Release that ci.yml's `publish` job (v*-tag trigger) picks up.
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
