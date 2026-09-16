@@ -203,3 +203,60 @@ describe('the picture on a card', () => {
     expect((fromContact(c) as Record<string, unknown>)['media']).toBeNull()
   })
 })
+
+describe('the birth anniversary', () => {
+  const anniversary = (date: Record<string, unknown>, kind = 'birth') => ({
+    id: 'c10',
+    addressBookIds: { b: true },
+    anniversaries: { a0: { '@type': 'Anniversary', kind, date } },
+  })
+
+  it('reads a full PartialDate', () => {
+    expect(toContact(anniversary({ '@type': 'PartialDate', year: 1985, month: 4, day: 20 })).birthday).toBe(
+      '1985-04-20',
+    )
+  })
+
+  // The year is optional in a PartialDate and left out rather than invented.
+  it('reads one with no year as one with no year', () => {
+    expect(toContact(anniversary({ '@type': 'PartialDate', month: 4, day: 20 })).birthday).toBe('--04-20')
+  })
+
+  it('reads a Timestamp, which is the other shape a card may use', () => {
+    expect(
+      toContact(anniversary({ '@type': 'Timestamp', utc: '1985-04-20T00:00:00Z' })).birthday,
+    ).toBe('1985-04-20')
+  })
+
+  it('ignores anniversaries that are not birthdays', () => {
+    expect(
+      toContact(anniversary({ '@type': 'PartialDate', year: 2010, month: 6, day: 5 }, 'wedding'))
+        .birthday,
+    ).toBe('')
+  })
+
+  it('writes a full date back as a PartialDate', () => {
+    const c = toContact({ id: 'c11', addressBookIds: { b: true } })
+    const out = fromContact({ ...c, birthday: '1985-04-20' }) as Record<string, unknown>
+    expect(out['anniversaries']).toEqual({
+      a0: {
+        '@type': 'Anniversary',
+        kind: 'birth',
+        date: { '@type': 'PartialDate', year: 1985, month: 4, day: 20 },
+      },
+    })
+  })
+
+  it('writes one with no year without inventing one', () => {
+    const c = toContact({ id: 'c12', addressBookIds: { b: true } })
+    const out = fromContact({ ...c, birthday: '--04-20' }) as Record<string, unknown>
+    const date = (out['anniversaries'] as Record<string, { date: Record<string, unknown> }>)['a0']!
+      .date
+    expect(date).toEqual({ '@type': 'PartialDate', month: 4, day: 20 })
+  })
+
+  it('clears the map when the birthday is removed', () => {
+    const c = toContact({ id: 'c13', addressBookIds: { b: true } })
+    expect((fromContact(c) as Record<string, unknown>)['anniversaries']).toBeNull()
+  })
+})
