@@ -31,8 +31,11 @@ function ListField({
     <div className="space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-ink-muted">{label}</span>
+        {/* Three of these sit on the form and the visible text is the same on
+            each, so the field it adds has to be in the name. */}
         <button
           type="button"
+          aria-label={`${t('contacts.addField')}: ${label}`}
           className="text-xs text-accent"
           onClick={() => onChange([...values, { value: '', label: null }])}
         >

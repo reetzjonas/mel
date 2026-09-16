@@ -71,3 +71,41 @@ test('contact "send email" opens compose prefilled', async ({ page }) => {
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+test('email, phone and address on a contact are each actionable', async ({ page }) => {
+  const surname = `Clickable${Date.now() % 100000}`
+  const email = `erika.${surname.toLowerCase()}@example.org`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Erika')
+  await page.getByLabel('Last name').fill(surname)
+  await page.locator('input[type="email"]').first().fill(email)
+  // A new card starts without a phone line.
+  await page.getByRole('button', { name: 'Add: Phone' }).click()
+  await page.locator('input[type="tel"]').first().fill('(030) 12 34-56')
+  await page.getByLabel('Address').fill('Hauptstr. 1, 10115 Berlin')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+
+  // The separators that make a number readable are not part of the URI.
+  await expect(page.getByRole('link', { name: `Call (030) 12 34-56` })).toHaveAttribute(
+    'href',
+    'tel:030123456',
+  )
+  await expect(
+    page.getByRole('link', { name: /^Show on map Hauptstr\. 1, 10115 Berlin$/ }),
+  ).toHaveAttribute('href', /openstreetmap\.org\/search\?query=Hauptstr/)
+
+  // The address entry composes in mel rather than handing off to a mailto:
+  // handler, so the reply stays in the app the contact lives in.
+  await page.getByRole('button', { name: `Write to ${email}` }).click()
+  await expect(page.getByPlaceholder('To', { exact: true })).toHaveValue(new RegExp(email))
+
+  // Clean up.
+  await page.getByRole('button', { name: 'Discard' }).click()
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('link', { name: `Erika ${surname}` }).click()
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+})

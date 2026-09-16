@@ -500,6 +500,9 @@ const en = {
   'contacts.addField': 'Add',
   'contacts.notFound': 'Contact not found',
   'contacts.sendMail': 'Send email',
+  'contacts.writeTo': 'Write to',
+  'contacts.call': 'Call',
+  'contacts.showOnMap': 'Show on map',
 
   'cal.loading': 'Loading calendars…',
   'cal.today': 'Today',
@@ -1080,6 +1083,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'contacts.addField': 'Hinzufügen',
   'contacts.notFound': 'Kontakt nicht gefunden',
   'contacts.sendMail': 'E-Mail senden',
+  'contacts.writeTo': 'Schreiben an',
+  'contacts.call': 'Anrufen',
+  'contacts.showOnMap': 'Auf der Karte zeigen',
 
   'cal.loading': 'Kalender werden geladen…',
   'cal.today': 'Heute',

@@ -4,6 +4,7 @@ import { useUi } from '../../app/store'
 import { displayName, type LabeledValue } from '../../domain/contact'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
+import { mapHref, telHref } from '../../features/contacts/links'
 import { useAccounts, useCanSend } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
 import { deleteContact, updateContact } from '../../services/contacts'
@@ -15,16 +16,72 @@ export const Route = createFileRoute('/contacts/$contactId')({
   component: ContactDetail,
 })
 
-function FieldList({ label, values }: { label: string; values: LabeledValue[] }) {
+const actionClass = 'rounded-sm text-sm text-accent hover:underline'
+
+/**
+ * One entry of a contact field, actionable where there is something to do.
+ *
+ * `href` hands the value to whatever the system opens for it; `onSelect` keeps
+ * it inside mel. A value with neither — or one no href could be built from,
+ * like a phone field holding "ask Ines" — stays plain text rather than becoming
+ * a link that goes nowhere.
+ */
+function FieldValue({
+  value,
+  action,
+  children,
+}: {
+  value: string
+  action?: { href?: string | null; onSelect?: () => void; describe: string }
+  children: React.ReactNode
+}) {
+  if (action?.onSelect) {
+    return (
+      <button
+        type="button"
+        onClick={action.onSelect}
+        aria-label={`${action.describe} ${value}`}
+        className={`block text-left ${actionClass}`}
+      >
+        {children}
+      </button>
+    )
+  }
+  if (action?.href) {
+    return (
+      <a
+        href={action.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`${action.describe} ${value}`}
+        className={`block ${actionClass}`}
+      >
+        {children}
+      </a>
+    )
+  }
+  return <div className="text-sm">{children}</div>
+}
+
+function FieldList({
+  label,
+  values,
+  action,
+}: {
+  label: string
+  values: LabeledValue[]
+  /** Built per entry, so one contact's five numbers each dial their own. */
+  action?: (value: string) => { href?: string | null; onSelect?: () => void; describe: string }
+}) {
   if (!values.length) return null
   return (
     <div>
       <div className="text-xs font-medium text-ink-muted">{label}</div>
       {values.map((v, i) => (
-        <div key={i} className="text-sm">
+        <FieldValue key={i} value={v.value} {...(action ? { action: action(v.value) } : {})}>
           {v.value}
           {v.label && <span className="ml-2 text-xs text-ink-muted">({v.label})</span>}
-        </div>
+        </FieldValue>
       ))}
     </div>
   )
@@ -110,17 +167,48 @@ function ContactDetail() {
       )}
 
       <div className="space-y-3 rounded-panel bg-surface-2/50 p-4">
-        <FieldList label={t('contacts.email')} values={contact.emails} />
-        <FieldList label={t('contacts.phone')} values={contact.phones} />
+        <FieldList
+          label={t('contacts.email')}
+          values={contact.emails}
+          // Compose inside mel rather than a mailto: handoff — mel is the mail
+          // client here. Without a server that can send, it stays plain text.
+          {...(canSend
+            ? {
+                action: (email: string) => ({
+                  onSelect: () => openCompose({ to: [{ name, email }] }),
+                  describe: t('contacts.writeTo'),
+                }),
+              }
+            : {})}
+        />
+        <FieldList
+          label={t('contacts.phone')}
+          values={contact.phones}
+          action={(phone) => ({ href: telHref(phone), describe: t('contacts.call') })}
+        />
         <FieldList label={t('contacts.url')} values={contact.urls} />
         {contact.addresses.length > 0 && (
           <div>
             <div className="text-xs font-medium text-ink-muted">{t('contacts.address')}</div>
-            {contact.addresses.map((a, i) => (
-              <div key={i} className="text-sm whitespace-pre-line">
-                {a.full}
-              </div>
-            ))}
+            {contact.addresses.map((a, i) => {
+              const href = mapHref(a.full)
+              return href ? (
+                <a
+                  key={i}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`${t('contacts.showOnMap')} ${a.full}`}
+                  className={`block whitespace-pre-line ${actionClass}`}
+                >
+                  {a.full}
+                </a>
+              ) : (
+                <div key={i} className="text-sm whitespace-pre-line">
+                  {a.full}
+                </div>
+              )
+            })}
           </div>
         )}
         {contact.note && (
