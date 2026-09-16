@@ -124,6 +124,39 @@ else
   echo "Accounts exist"
 fi
 
+# maxConcurrentRequests defaults to 4 *per account*, and the whole e2e suite
+# drives the one alice: two Playwright workers, each with an SSE stream and a
+# sync in flight, sit right on that budget. One more request from anywhere in
+# the app then pushes a worker over, and whichever spec loses the race fails on
+# a timeout — in a different file each run, which is what makes it read as
+# flakiness rather than as a limit. Raised for dev; the app honours whatever a
+# real server advertises. Takes a restart to reach the session object, so only
+# do it when it is not already raised.
+CONCURRENCY=$(curl -fsS -u "alice@localhost:$ALICE_PASS" "$JMAP"session |
+  node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+    console.log(JSON.parse(d).capabilities['urn:ietf:params:jmap:core'].maxConcurrentRequests)})")
+if [ "${CONCURRENCY:-0}" -lt 64 ]; then
+  echo "Lifting the per-account concurrency limit (dev)..."
+  jmap "$ADMIN_AUTH" '[["x:Jmap/set",{"update":{"singleton":{
+    "maxConcurrentRequests":64,"maxConcurrentUploads":16}}},"c0"]]' > /dev/null
+  docker compose restart stalwart > /dev/null
+  wait_http
+fi
+
+# Stalwart only answers Quota/get with an object when the account's disk quota
+# is non-zero; an account created without one counts as unlimited and the
+# storage meter has nothing to show. Set every run, not only on creation, so
+# databases seeded before this existed pick it up too.
+echo "Setting a storage quota on alice/bob..."
+QUOTA_ACCOUNTS=$(jmap "$ADMIN_AUTH" '[["x:Account/query",{},"q"],
+  ["x:Account/get",{"#ids":{"resultOf":"q","name":"x:Account/query","path":"/ids"}},"g"]]' |
+  node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{
+    const l=JSON.parse(d).methodResponses[1][1].list||[]
+    console.log(l.filter(a=>a.name==='alice'||a.name==='bob').map(a=>a.id).join(' '))})")
+for qid in $QUOTA_ACCOUNTS; do
+  jmap "$ADMIN_AUTH" "[[\"x:Account/set\",{\"update\":{\"$qid\":{\"quotas\":{\"maxDiskQuota\":1073741824}}}},\"c0\"]]" > /dev/null
+done
+
 # Seed mail only once (check alice's mailbox via JMAP)
 ALICE_AUTH="alice@localhost:$ALICE_PASS"
 ACC=$(curl -fsS -u "$ALICE_AUTH" "$JMAP"session |

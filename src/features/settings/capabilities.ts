@@ -70,6 +70,12 @@ export function capabilityRows(caps: AccountCapabilities): CapabilityRow[] {
       gate: caps.files ? undefined : 'caps.gate.files',
     },
     {
+      id: 'quota',
+      label: 'caps.quota',
+      state: caps.quota ? 'yes' : 'no',
+      gate: caps.quota ? undefined : 'caps.gate.quota',
+    },
+    {
       id: 'push',
       label: 'caps.push',
       state: 'info',

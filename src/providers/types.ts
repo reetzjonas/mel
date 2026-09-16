@@ -215,6 +215,11 @@ export interface SieveProvider {
   destroyScript(id: string): Promise<SetFailure | null>
 }
 
+export interface QuotaProvider {
+  /** null when the server tracks no limit for this account. */
+  storage(): Promise<import('../domain/quota').StorageQuota | null>
+}
+
 export interface PushInfo {
   eventSourceUrl: string
   credentials: Credentials
@@ -228,6 +233,7 @@ export interface ProviderConnection {
   calendars: CalendarProvider | null
   files: FilesProvider | null
   sieve: SieveProvider | null
+  quota: QuotaProvider | null
   push: PushInfo | null
 }
 

@@ -174,6 +174,7 @@ export function capabilitiesFor(
     sieve: has(Cap.sieve),
     vacation: has(Cap.vacation),
     files: has(Cap.filenode),
+    quota: has(Cap.quota),
     push: session.eventSourceUrl ? 'sse' : 'poll',
     webPush: Cap.webpushVapid in session.capabilities,
   }

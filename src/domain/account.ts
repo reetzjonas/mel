@@ -23,6 +23,8 @@ export interface AccountCapabilities {
   vacation: boolean
   /** Server-side file storage (JMAP FileNode). */
   files: boolean
+  /** Storage usage and limit (JMAP Quota, RFC 9425). */
+  quota: boolean
   /** How live updates arrive. */
   push: 'sse' | 'poll'
   /** Web Push at closed-app time (RFC 9749 VAPID capability present). */

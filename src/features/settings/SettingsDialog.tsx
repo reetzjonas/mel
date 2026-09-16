@@ -27,6 +27,7 @@ import {
   WebPushSetting,
 } from './sections'
 import { SieveSetting } from './SieveSetting'
+import { StorageSetting } from './StorageQuota'
 
 const tabLabels: Record<SettingsTab, MsgKey> = {
   general: 'settings.tab.general',
@@ -268,6 +269,9 @@ export function SettingsDialog({
               <>
                 <Section title={t('settings.account')}>
                   <AccountSetting account={account} onDone={onClose} />
+                </Section>
+                <Section title={t('quota.section')} anchor="storage">
+                  <StorageSetting accountId={account.id} enabled={account.capabilities.quota} />
                 </Section>
                 <Section title={t('queue.section')}>
                   <OutboxQueue accountId={account.id} />

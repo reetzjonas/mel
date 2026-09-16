@@ -4,6 +4,7 @@ import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAccounts } from '../features/mail/hooks'
 import { SettingsDialog } from '../features/settings/SettingsDialog'
+import { StorageWarning } from '../features/settings/StorageQuota'
 import { useSettingsRoute } from '../features/settings/navigation'
 import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
@@ -96,6 +97,9 @@ export function AppShell() {
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-1">
+          {account && (
+            <StorageWarning accountId={account.id} enabled={account.capabilities.quota} />
+          )}
           <ThemeToggle />
           {account && <SignOutButton accountId={account.id} />}
           <Tooltip label={t('settings.title')}>

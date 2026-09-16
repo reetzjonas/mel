@@ -1,5 +1,20 @@
 # Hard-won gotchas: JMAP protocol, sync, mail (do not rediscover)
 
+- **A quota exists only once somebody sets one.** Stalwart answers `Quota/get`
+  with a record only while `account.disk_quota() > 0`; an account created
+  without a limit is unlimited and the list comes back empty — which is why
+  `docker/stalwart/seed.sh` sets `quotas.maxDiskQuota` on alice and bob (every
+  run, not only on creation, so older dev databases pick it up). Confusingly
+  `Quota/query` still reports `total: 1` for an account with no quota while
+  returning no ids at all. What it reports is one object, `resourceType:
+  "octets"` and `scope: "account"`, counting Email, SieveScript, FileNode,
+  CalendarEvent and ContactCard together — so the figure is account-wide, never
+  per app. `warnLimit` and `softLimit` are in the response but Stalwart never
+  assigns them (they are always null), which is why the "nearly full" threshold
+  in `features/settings/quota.ts` is ours rather than the server's. `count`
+  quotas and the domain/global scopes exist in RFC 9425 and are deliberately
+  ignored; see issue #58.
+
 - **Stalwart ≥0.16 has NO REST admin API.** Everything goes through JMAP management
   (`urn:stalwart:jmap`, objects `x:Bootstrap`, `x:Http`, `x:Account`, `x:Jmap`,
   `x:Task`…). Schema: `GET /api/schema` (gzip). Details in `docker/stalwart/seed.sh`

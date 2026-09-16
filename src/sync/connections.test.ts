@@ -15,6 +15,7 @@ const caps = (over: Partial<AccountCapabilities> = {}): AccountCapabilities => (
   sieve: false,
   vacation: false,
   files: false,
+  quota: false,
   push: 'poll',
   webPush: false,
   ...over,
@@ -45,6 +46,7 @@ const open = vi.fn((stored: Account): Promise<ProviderConnection> =>
     calendars: null,
     files: null,
     sieve: null,
+    quota: null,
     push: null,
   }),
 )

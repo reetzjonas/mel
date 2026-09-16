@@ -10,6 +10,7 @@ const caps = (over: Partial<AccountCapabilities> = {}): AccountCapabilities => (
   sieve: false,
   vacation: false,
   files: false,
+  quota: false,
   push: 'poll',
   webPush: false,
   ...over,

@@ -45,6 +45,19 @@ put down to CPU load. That was **wrong** — there were real causes, all fixed:
    exceeded` — visible only as "the mail never arrives". Switched off for dev in
    `seed.sh` (`x:MtaInboundThrottle`, `enable:false`).
 
+4. **`maxConcurrentRequests: 4`, per account.** Found while adding the storage
+   quota display, which put one more request into the app. The suite drives the
+   single alice from two workers, each holding an SSE stream and a sync, which
+   sits right on that budget — so one extra request anywhere in the app pushed a
+   worker over and whichever spec lost the race died on a timeout, in a
+   *different file each run*. That moving target is exactly what makes it read as
+   flakiness rather than as a limit, and it is why a bisect is worth more than a
+   guess here: two full runs with the change (red, red) against two with it
+   stashed (green, green) is what named the cause. Raised in `seed.sh` for dev
+   (`x:Jmap/set`, `maxConcurrentRequests: 64`), self-healing so an existing
+   database picks it up, and it needs a restart to reach the session object. The
+   app still honours whatever a real server advertises.
+
 Also: `workers: 2`, and `mobile` sits behind `desktop` via `dependencies` — every spec
 drives the same account, and parallel files were archiving each other's mail. Green
 full runs ever since. **If something flickers again, check these classes first

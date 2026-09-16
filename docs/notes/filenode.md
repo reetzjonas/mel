@@ -127,6 +127,15 @@ pass-through and does not recurse.
 **`parentId: null` is not how you ask for the top level.** That is the separate
 `isTopLevel: true` filter condition; a null parent in a query is refused.
 
+**An unsupported filter condition is ignored, not refused.** `{role: 'trash'}`,
+`{hasAnyRole: false}` and `{totalNonsense: 1}` each return the *unfiltered* set
+rather than `unsupportedFilter`, so a query built on a condition the server does
+not implement looks like it matched everything instead of failing. `role` and
+`hasAnyRole` are in that group — `role` is a TODO on both sides in Stalwart
+(discarded on write, ignored in queries), which is why mel has no concept of
+server-assigned folder roles; see issue #76. `parentId`, `isTopLevel` and
+`ancestorId` are honoured.
+
 **A file may be created with no blob at all.** The draft calls `blobId` required
 for `nodeType: "file"`, Stalwart accepts it as null — so a file node in the wild
 may have no content, and `readFile` returns null rather than assuming.

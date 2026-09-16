@@ -55,7 +55,14 @@ Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=` and an optional section anchor in `?at=`, so deep links and the
 back button keep working and `/settings` redirects in. See `docs/notes/settings-modal.md`.
 
-Tests: 875 Vitest + 89 Playwright (desktop + mobile; state-mutating specs are
+Storage usage (JMAP Quota, RFC 9425) sits in Settings → Account, and the shell
+header stays quiet about it until the account is ~90% full, where it shows a
+warning that opens that section. The figure is account-wide — one number over
+mail, files, calendars, contacts and filter scripts — which is why it is not in
+any one app's sidebar. Stalwart only reports a quota once one is configured, so
+`seed.sh` sets one; see the quota entry in `docs/notes/gotchas-jmap-mail.md`.
+
+Tests: 899 Vitest + 93 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 
@@ -131,9 +138,11 @@ for the reasoning behind each.
 The suite was long regarded as sporadically flaky (~40% red full runs) and that
 was put down to CPU load. That was **wrong** — there were real causes (accumulated
 test data across runs, a real app bug in the inbox auto-redirect, a Stalwart rate
-limit), all fixed and detailed in `docs/notes/e2e-stability.md`. **If something
-flickers again, check account state / shared state / server limits first rather
-than assuming system load.**
+limit, and a per-account cap of 4 concurrent requests), all fixed and detailed in
+`docs/notes/e2e-stability.md`. **If something flickers again, check account state
+/ shared state / server limits first rather than assuming system load** — and
+when a change is suspected, bisect it (two full runs with it, two with it
+stashed) instead of guessing; that is what named the concurrency cap.
 
 ## Hard-won gotchas (do not rediscover)
 

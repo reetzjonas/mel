@@ -14,6 +14,7 @@ import { createJmapContacts } from './contacts'
 import { createJmapFiles } from './files'
 import { createJmapSieve } from './sieve'
 import { createJmapMail } from './mail'
+import { createJmapQuota } from './quota'
 
 async function buildConnection(
   sessionUrl: string,
@@ -49,6 +50,7 @@ async function buildConnection(
     sieve: capabilities.sieve
       ? createJmapSieve(transport, remoteAccountId, resolved.uploadUrl, resolved.downloadUrl)
       : null,
+    quota: capabilities.quota ? createJmapQuota(transport, remoteAccountId) : null,
     push: {
       eventSourceUrl: resolved.eventSourceUrl,
       credentials: creds,
