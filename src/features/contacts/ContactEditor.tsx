@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Contact, LabeledValue } from '../../domain/contact'
+import type { Contact, LabeledValue, OnlineService } from '../../domain/contact'
 import { t } from '../../lib/i18n'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
@@ -53,6 +53,64 @@ function ListField({
             onChange={(e) =>
               onChange(values.map((x, j) => (j === i ? { ...x, value: e.target.value } : x)))
             }
+          />
+          <button
+            type="button"
+            className="px-2 text-ink-muted hover:text-danger"
+            onClick={() => onChange(values.filter((_, j) => j !== i))}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Handles on other services, as a service name beside the handle itself.
+ *
+ * The card's `uri` is not edited here but travels with the entry, so a handle
+ * that arrived with a link keeps it instead of losing it to the first edit.
+ */
+function ServiceField({
+  values,
+  onChange,
+}: {
+  values: OnlineService[]
+  onChange: (v: OnlineService[]) => void
+}) {
+  const patch = (i: number, part: Partial<OnlineService>) =>
+    onChange(values.map((x, j) => (j === i ? { ...x, ...part } : x)))
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-ink-muted">{t('contacts.onlineServices')}</span>
+        <button
+          type="button"
+          aria-label={`${t('contacts.addField')}: ${t('contacts.onlineServices')}`}
+          className="text-xs text-accent"
+          onClick={() => onChange([...values, { service: '', user: '', uri: '' }])}
+        >
+          + {t('contacts.addField')}
+        </button>
+      </div>
+      {values.map((v, i) => (
+        <div key={i} className="flex gap-1.5">
+          <input
+            className={`${inputClass} w-1/3`}
+            autoComplete={NO_AUTOFILL}
+            aria-label={t('contacts.service')}
+            placeholder={t('contacts.servicePlaceholder')}
+            value={v.service}
+            onChange={(e) => patch(i, { service: e.target.value })}
+          />
+          <input
+            className={inputClass}
+            autoComplete={NO_AUTOFILL}
+            aria-label={t('contacts.handle')}
+            value={v.user}
+            onChange={(e) => patch(i, { user: e.target.value })}
           />
           <button
             type="button"
@@ -148,6 +206,11 @@ export function ContactEditor({
         onChange={(urls) => set({ urls })}
       />
 
+      <ServiceField
+        values={c.onlineServices}
+        onChange={(onlineServices) => set({ onlineServices })}
+      />
+
       <label className="block space-y-1">
         <span className="text-xs font-medium text-ink-muted">{t('contacts.address')}</span>
         <input
@@ -156,6 +219,26 @@ export function ContactEditor({
           value={c.addresses[0]?.full ?? ''}
           onChange={(e) =>
             set({ addresses: e.target.value ? [{ full: e.target.value, label: null }] : [] })
+          }
+        />
+      </label>
+
+      <label className="block space-y-1">
+        <span className="text-xs font-medium text-ink-muted">{t('contacts.keywords')}</span>
+        {/* One comma-separated line rather than chips: tags are typed far more
+            often than they are picked, and the card stores an unordered set. */}
+        <input
+          className={inputClass}
+          autoComplete={NO_AUTOFILL}
+          placeholder={t('contacts.keywordsPlaceholder')}
+          value={c.keywords.join(', ')}
+          onChange={(e) =>
+            set({
+              keywords: e.target.value
+                .split(',')
+                .map((k) => k.trim())
+                .filter(Boolean),
+            })
           }
         />
       </label>

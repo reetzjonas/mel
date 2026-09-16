@@ -29,6 +29,11 @@ export interface JmapContactCard {
     }
   > | null
   links?: Record<string, JsContext & { uri: string; kind?: string | null }> | null
+  onlineServices?: Record<
+    string,
+    JsContext & { service?: string | null; user?: string | null; uri?: string | null }
+  > | null
+  keywords?: Record<string, boolean> | null
   notes?: Record<string, { note: string }> | null
   members?: Record<string, boolean> | null
   uid?: string
@@ -95,6 +100,17 @@ export function toContact(card: JmapContactCard): Contact {
       return full ? { full, label: contextLabel(a) } : null
     }),
     urls: mapValues(card.links, (l) => (l.uri ? { value: l.uri, label: contextLabel(l) } : null)),
+    // Kept apart rather than flattened to one string: a card may carry the
+    // handle, the URI, or both, and writing back only what was displayed would
+    // drop the other half.
+    onlineServices: mapValues(card.onlineServices, (o) => {
+      const user = o.user ?? ''
+      const uri = o.uri ?? ''
+      return user || uri ? { service: o.service ?? '', user, uri } : null
+    }),
+    keywords: Object.entries(card.keywords ?? {})
+      .filter(([, on]) => on)
+      .map(([k]) => k),
     note: Object.values(card.notes ?? {})[0]?.note ?? '',
     memberUids: Object.entries(card.members ?? {})
       .filter(([, on]) => on)
@@ -102,6 +118,14 @@ export function toContact(card: JmapContactCard): Contact {
   }
 }
 
+/*
+ * Empty comes back as null, never as an omitted key.
+ *
+ * ContactCard/set takes an update as a patch, so a property mel leaves out is
+ * one the server keeps: emitting undefined here meant deleting a contact's last
+ * email in the editor saved cleanly and changed nothing at all. null is how
+ * JSContact says "no value", and it is the only thing that clears.
+ */
 function labeled(list: LabeledValue[], build: (v: LabeledValue) => Record<string, unknown>) {
   const out: Record<string, Record<string, unknown>> = {}
   list.forEach((v, i) => {
@@ -109,7 +133,23 @@ function labeled(list: LabeledValue[], build: (v: LabeledValue) => Record<string
     if (v.label) obj['contexts'] = { [v.label]: true }
     out[`k${i}`] = obj
   })
-  return Object.keys(out).length ? out : undefined
+  return Object.keys(out).length ? out : null
+}
+
+function onlineServiceList(services: Contact['onlineServices']) {
+  const usable = services.filter((o) => o.user || o.uri)
+  if (!usable.length) return null
+  return Object.fromEntries(
+    usable.map((o, i) => [
+      `s${i}`,
+      {
+        '@type': 'OnlineService',
+        ...(o.service ? { service: o.service } : {}),
+        ...(o.user ? { user: o.user } : {}),
+        uri: o.uri || o.user,
+      },
+    ]),
+  )
 }
 
 /** Build the flat JSContact card for ContactCard/set create/update. */
@@ -126,10 +166,10 @@ export function fromContact(c: Contact): Record<string, unknown> {
       ? { components, isOrdered: true }
       : c.fullName
         ? { full: c.fullName }
-        : undefined,
-    nicknames: c.nickname ? { n0: { name: c.nickname } } : undefined,
-    organizations: c.organization ? { o0: { name: c.organization } } : undefined,
-    titles: c.jobTitle ? { t0: { name: c.jobTitle } } : undefined,
+        : null,
+    nicknames: c.nickname ? { n0: { name: c.nickname } } : null,
+    organizations: c.organization ? { o0: { name: c.organization } } : null,
+    titles: c.jobTitle ? { t0: { name: c.jobTitle } } : null,
     emails: labeled(c.emails, (v) => ({ address: v.value })),
     phones: labeled(c.phones, (v) => ({ number: v.value })),
     addresses: c.addresses.length
@@ -139,8 +179,17 @@ export function fromContact(c: Contact): Record<string, unknown> {
             { full: a.full, ...(a.label ? { contexts: { [a.label]: true } } : {}) },
           ]),
         )
-      : undefined,
+      : null,
     links: labeled(c.urls, (v) => ({ uri: v.value })),
-    notes: c.note ? { note0: { note: c.note } } : undefined,
+    /*
+     * Both `@type` and `uri` are load-bearing: Stalwart drops an entry missing
+     * either one *silently* — the card is created, reports no error, and simply
+     * comes back without it. So the handle stands in as the uri when the card
+     * carries no link; the server stores any string there, and reading puts the
+     * handle back where it belongs.
+     */
+    onlineServices: onlineServiceList(c.onlineServices),
+    keywords: c.keywords.length ? Object.fromEntries(c.keywords.map((k) => [k, true])) : null,
+    notes: c.note ? { note0: { note: c.note } } : null,
   }
 }

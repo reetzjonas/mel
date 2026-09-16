@@ -19,6 +19,8 @@ const contact = (over: Partial<Contact> = {}): Contact => ({
   phones: [{ value: '', label: null }],
   addresses: [],
   urls: [{ value: '', label: null }],
+  onlineServices: [],
+  keywords: [],
   note: '',
   memberUids: [],
   ...over,

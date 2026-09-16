@@ -109,3 +109,41 @@ test('email, phone and address on a contact are each actionable', async ({ page 
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+test('handles, tags, and removing a field the server already stored', async ({ page }) => {
+  const surname = `Fields${Date.now() % 100000}`
+  const email = `erika.${surname.toLowerCase()}@example.org`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Erika')
+  await page.getByLabel('Last name').fill(surname)
+  await page.locator('input[type="email"]').first().fill(email)
+  await page.getByRole('button', { name: 'Add: Online' }).click()
+  await page.getByLabel('Service').fill('Mastodon')
+  await page.getByLabel('Handle').fill('@erika@chaos.social')
+  await page.getByLabel('Tags').fill('friend, ski-club')
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+  await expect(page.getByText('@erika@chaos.social')).toBeVisible()
+  await expect(page.getByText('ski-club')).toBeVisible()
+
+  /*
+   * The clearing case, which is why this runs against a real server: an update
+   * is a JMAP patch, so a property mel leaves out is one the server keeps. This
+   * used to "save" and leave the address exactly where it was.
+   */
+  await page.getByRole('button', { name: 'Edit' }).click()
+  await page.locator('input[type="email"]').first().fill('')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+  await page.reload()
+  await expect(page.getByText(email)).toHaveCount(0)
+
+  // Clean up.
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('link', { name: `Erika ${surname}` }).click()
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+})

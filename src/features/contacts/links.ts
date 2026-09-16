@@ -40,3 +40,15 @@ export function mapHref(address: string): string | null {
   if (!query) return null
   return `https://www.openstreetmap.org/search?query=${encodeURIComponent(query)}`
 }
+
+/**
+ * A profile link, or null when the field holds a handle rather than a URI.
+ *
+ * The card's `uri` is where a handle opens, but it is also where mel has to put
+ * the handle itself for servers that insist on the field — so "@erika@chaos.social"
+ * shows up here, and an anchor pointing at it would go nowhere.
+ */
+export function profileHref(uri: string): string | null {
+  const trimmed = uri.trim()
+  return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : null
+}

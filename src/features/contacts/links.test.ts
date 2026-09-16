@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapHref, telHref } from './links'
+import { mapHref, profileHref, telHref } from './links'
 
 describe('dialling a stored number', () => {
   it('drops the separators that only help a reader', () => {
@@ -36,5 +36,19 @@ describe('finding a stored address on a map', () => {
   it('has nothing to search for in an empty address', () => {
     expect(mapHref('')).toBeNull()
     expect(mapHref('\n  \n')).toBeNull()
+  })
+})
+
+describe('opening a handle on another service', () => {
+  it('links a uri that has a scheme', () => {
+    expect(profileHref('https://chaos.social/@erika')).toBe('https://chaos.social/@erika')
+    expect(profileHref('xmpp:erika@example.org')).toBe('xmpp:erika@example.org')
+  })
+
+  // The uri field doubles as the store for a bare handle, because a card
+  // without one is dropped by the server — so it is not always a link.
+  it('refuses a handle that only looks like an address', () => {
+    expect(profileHref('@erika@chaos.social')).toBeNull()
+    expect(profileHref('erika:matrix')).toBe('erika:matrix')
   })
 })

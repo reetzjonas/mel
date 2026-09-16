@@ -43,6 +43,8 @@ const card = (over: Partial<Contact> = {}): Contact =>
     phones: [],
     addresses: [],
     urls: [],
+    onlineServices: [],
+    keywords: [],
     note: '',
     memberUids: [],
     addressBookIds: { ab: true },

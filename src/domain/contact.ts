@@ -14,6 +14,22 @@ export interface LabeledValue {
   label: string | null
 }
 
+/**
+ * A handle on some service — Mastodon, Matrix, Signal — as JSContact carries it.
+ *
+ * Three fields rather than a LabeledValue because the card separates the name
+ * of the service, the handle as written, and where that handle opens; folding
+ * them into one value would throw away whichever half was not shown.
+ */
+export interface OnlineService {
+  /** As the card names it, e.g. "Mastodon". */
+  service: string
+  /** The handle as written, e.g. "@erika@chaos.social". */
+  user: string
+  /** Where it opens, when the card carries one. */
+  uri: string
+}
+
 export interface PostalAddress {
   /** Free-form full address (JSContact address "full" or joined components). */
   full: string
@@ -34,6 +50,9 @@ export interface Contact {
   phones: LabeledValue[]
   addresses: PostalAddress[]
   urls: LabeledValue[]
+  onlineServices: OnlineService[]
+  /** Free-form tags the card carries, for grouping and filtering. */
+  keywords: string[]
   note: string
   /** For kind=group: member uids. */
   memberUids: string[]
@@ -79,6 +98,8 @@ export function emptyContact(addressBookId: string): Contact {
     phones: [],
     addresses: [],
     urls: [],
+    onlineServices: [],
+    keywords: [],
     note: '',
     memberUids: [],
   }

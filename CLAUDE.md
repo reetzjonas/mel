@@ -62,7 +62,7 @@ mail, files, calendars, contacts and filter scripts — which is why it is not i
 any one app's sidebar. Stalwart only reports a quota once one is configured, so
 `seed.sh` sets one; see the quota entry in `docs/notes/gotchas-jmap-mail.md`.
 
-Tests: 913 Vitest + 94 Playwright (desktop + mobile; state-mutating specs are
+Tests: 923 Vitest + 95 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user.
 

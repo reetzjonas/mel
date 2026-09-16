@@ -1,5 +1,19 @@
 # Hard-won gotchas: JMAP protocol, sync, mail (do not rediscover)
 
+- **An update is a patch, so an omitted property is one the server keeps.**
+  `fromContact` used to emit `undefined` for a field the contact no longer had,
+  which `JSON.stringify` drops — so deleting a contact's last email address
+  saved without complaint, reported success, and left the address exactly where
+  it was until the next sync put it back on screen. `null` is what JSContact
+  means by "no value" and the only thing that clears; every managed property is
+  now spelled out as null when empty, with a test listing them.
+- **Stalwart drops a JSContact `OnlineService` that lacks `uri` or `@type`, and
+  says nothing.** The card is created, the response carries no `notCreated`, and
+  the property simply is not there on the next fetch. `uri` takes any string, so
+  a handle with no link travels as its own uri and is read back into `user`.
+  Worth assuming the same of other JSContact sub-objects: silence here is not
+  acceptance.
+
 - **A quota exists only once somebody sets one.** Stalwart answers `Quota/get`
   with a record only while `account.disk_quota() > 0`; an account created
   without a limit is unlimited and the list comes back empty — which is why

@@ -4,7 +4,7 @@ import { useUi } from '../../app/store'
 import { displayName, type LabeledValue } from '../../domain/contact'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
-import { mapHref, telHref } from '../../features/contacts/links'
+import { mapHref, profileHref, telHref } from '../../features/contacts/links'
 import { useAccounts, useCanSend } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
 import { deleteContact, updateContact } from '../../services/contacts'
@@ -187,6 +187,28 @@ function ContactDetail() {
           action={(phone) => ({ href: telHref(phone), describe: t('contacts.call') })}
         />
         <FieldList label={t('contacts.url')} values={contact.urls} />
+        {contact.onlineServices.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-ink-muted">
+              {t('contacts.onlineServices')}
+            </div>
+            {contact.onlineServices.map((o, i) => {
+              // Only a handle that came with a real link is one: mel does not
+              // guess a profile URL from "@erika@chaos.social".
+              const href = profileHref(o.uri)
+              return (
+                <FieldValue
+                  key={i}
+                  value={o.user || o.uri}
+                  {...(href ? { action: { href, describe: t('contacts.openProfile') } } : {})}
+                >
+                  {o.user || o.uri}
+                  {o.service && <span className="ml-2 text-xs text-ink-muted">({o.service})</span>}
+                </FieldValue>
+              )
+            })}
+          </div>
+        )}
         {contact.addresses.length > 0 && (
           <div>
             <div className="text-xs font-medium text-ink-muted">{t('contacts.address')}</div>
@@ -209,6 +231,18 @@ function ContactDetail() {
                 </div>
               )
             })}
+          </div>
+        )}
+        {contact.keywords.length > 0 && (
+          <div>
+            <div className="text-xs font-medium text-ink-muted">{t('contacts.keywords')}</div>
+            <ul className="mt-1 flex flex-wrap gap-1.5">
+              {contact.keywords.map((k) => (
+                <li key={k} className="rounded-full bg-surface px-2 py-0.5 text-xs text-ink-muted">
+                  {k}
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {contact.note && (
