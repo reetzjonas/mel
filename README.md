@@ -56,10 +56,16 @@ React 19 + TypeScript + Vite, Tailwind, TanStack Router, Dexie.
     </td>
   </tr>
   <tr>
-    <td colspan="2" align="center">
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-invitation-dark.png">
+        <img src="docs/media/screenshot-invitation-light.png" alt="An invitation in the reading pane, offering to add the event to a calendar" width="100%">
+      </picture>
+    </td>
+    <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-files-dark.png">
-        <img src="docs/media/screenshot-files-light.png" alt="The files browser with a text file previewing in place" width="70%">
+        <img src="docs/media/screenshot-files-light.png" alt="The files browser with a text file previewing in place" width="100%">
       </picture>
     </td>
   </tr>

@@ -2,8 +2,9 @@
 /**
  * Regenerates docs/media/screenshot-<view>-{light,dark}.png for the README.
  *
- * One pair per app — mail, calendar, contacts, files — because a README that
- * claims four apps and shows one is a README that shows one.
+ * One pair per view — mail, the invitation card, calendar, contacts, files —
+ * because a README that claims four apps and shows one is a README that shows
+ * one.
  *
  * Requires a running dev server and a seeded Stalwart:
  *   npm run stalwart:up && npm run stalwart:seed && npm run dev
@@ -58,18 +59,46 @@ const EMAIL = 'alice@localhost'
 const PASSWORD = 'korrekt-pferd-batterie-alice'
 const VIEWPORT = { width: 1440, height: 900 }
 
-// A believable little conversation — plain text, no markup, so it also
-// doubles as a check that plain-text mail follows the app's theme (the
-// original bug this script was written to catch: Stalwart mirrors a
-// plain-text part into `htmlBody` per RFC 8621 §4.1.4, and mel used to
-// treat that as real HTML and render it on a fixed white background —
-// see toEmailBody() / htmlPartText() in src/providers/jmap/mappers/mail.ts).
+const THREAD_ROOT = `<design-review.${Date.now()}@screenshot-readme>`
+const THREAD_SUBJECT = 'Design review: new inbox layout'
+const INVITE_SUBJECT = 'Invitation: Coffee and a catch-up'
+
+/** The event the invitation carries, as an iMIP REQUEST. */
+function inviteIcs() {
+  const d = new Date(mondayOfThisWeek())
+  d.setDate(d.getDate() + 1)
+  const stamp = (hour) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}T${String(hour).padStart(2, '0')}0000`
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//mel//screenshot//EN',
+    'METHOD:REQUEST',
+    'BEGIN:VEVENT',
+    `UID:screenshot-invite-${Date.now()}@example.com`,
+    `DTSTAMP:${stamp(9)}Z`,
+    `DTSTART:${stamp(15)}`,
+    `DTEND:${stamp(16)}`,
+    'SUMMARY:Coffee and a catch-up',
+    'LOCATION:Café Einstein, Berlin',
+    'ORGANIZER;CN=Elena Vogt:mailto:elena.vogt@example.com',
+    `ATTENDEE;CN=Alice;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:${EMAIL}`,
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ].join('\n')
+}
+
+// A believable little inbox — plain text, no markup, so it also doubles as a
+// check that plain-text mail follows the app's theme (the original bug this
+// script was written to catch: Stalwart mirrors a plain-text part into
+// `htmlBody` per RFC 8621 §4.1.4, and mel used to treat that as real HTML and
+// render it on a fixed white background — see toEmailBody() / htmlPartText()
+// in src/providers/jmap/mappers/mail.ts).
+//
+// The last three form one thread, so the list shows a conversation row and the
+// reading pane shows it folded together; the invitation carries a real
+// text/calendar part, which is what the pane offers a calendar for.
 const DEMO_MAIL = [
-  {
-    from: 'Elena Vogt <elena.vogt@example.com>',
-    subject: 'Coffee next week?',
-    body: 'Hey! Are you around Tuesday afternoon? Would love to grab coffee and catch up.',
-  },
   {
     from: 'Notifications <notifications@example.com>',
     subject: 'Weekly digest: 3 new comments',
@@ -81,20 +110,67 @@ const DEMO_MAIL = [
     body: 'Fixed! Turned out to be a timezone edge case around DST. Thanks for flagging it.',
   },
   {
+    from: 'Elena Vogt <elena.vogt@example.com>',
+    subject: INVITE_SUBJECT,
+    body: 'Tuesday afternoon works for me — put something in the calendar, see you there!',
+    calendar: inviteIcs(),
+  },
+  {
     from: 'Priya Nair <priya.nair@example.com>',
-    subject: 'Design review: new inbox layout',
+    subject: THREAD_SUBJECT,
+    id: THREAD_ROOT,
     body: 'Hi Alice, Could you take a look at the updated conversation view before Thursday? I think grouping replies really helps. Thanks, Priya',
+  },
+  {
+    from: 'Tom Walsh <tom.walsh@example.com>',
+    subject: `Re: ${THREAD_SUBJECT}`,
+    inReplyTo: THREAD_ROOT,
+    body: 'Had a look this morning. The folded replies are a real improvement — one row per exchange instead of nine.',
+  },
+  {
+    from: 'Priya Nair <priya.nair@example.com>',
+    subject: `Re: ${THREAD_SUBJECT}`,
+    inReplyTo: THREAD_ROOT,
+    body: 'Good. I will take the spacing notes into the next pass and send it round on Thursday.',
   },
 ]
 // Which one is open in the reading pane for the screenshot.
-const OPEN_SUBJECT = 'Design review: new inbox layout'
+const OPEN_SUBJECT = THREAD_SUBJECT
 
-async function sendMail({ from, subject, body }) {
-  const msg =
-    `From: ${from}\r\nTo: ${EMAIL}\r\nSubject: ${subject}\r\n` +
-    `Date: ${new Date().toUTCString()}\r\n` +
-    `Message-ID: <${Date.now()}.${Math.random().toString(36).slice(2)}@screenshot-readme>\r\n\r\n` +
-    `${body}\r\n`
+/** Message-ids are referenced by the replies, so they are decided up front. */
+const msgId = (tag) => `<${tag}.${Date.now()}@screenshot-readme>`
+
+/**
+ * One message, over plain SMTP against the dev Stalwart.
+ *
+ * `inReplyTo` is what makes a thread a thread: the server groups on
+ * References, and mel's conversation rows follow the threadId it hands back.
+ * `calendar` wraps the body in a multipart so the event travels as its own
+ * part — which is what the reading pane looks for before offering it.
+ */
+async function sendMail({ from, subject, body, id, inReplyTo, calendar }) {
+  const headers = [
+    `From: ${from}`,
+    `To: ${EMAIL}`,
+    `Subject: ${subject}`,
+    `Date: ${new Date().toUTCString()}`,
+    `Message-ID: ${id ?? msgId(Math.random().toString(36).slice(2))}`,
+    ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+  ]
+  let msg
+  if (calendar) {
+    const boundary = 'melshot-boundary'
+    headers.push('MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${boundary}"`)
+    msg =
+      `${headers.join('\r\n')}\r\n\r\n` +
+      `--${boundary}\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n${body}\r\n` +
+      `--${boundary}\r\nContent-Type: text/calendar; charset=utf-8; method=REQUEST; name="invite.ics"\r\n` +
+      `Content-Disposition: attachment; filename="invite.ics"\r\n\r\n` +
+      `${calendar.replace(/\n/g, '\r\n')}\r\n` +
+      `--${boundary}--\r\n`
+  } else {
+    msg = `${headers.join('\r\n')}\r\n\r\n${body}\r\n`
+  }
   // Piped through base64 so subject/body content can never break out of
   // the shell command (same SMTP relay trick as docker/stalwart/seed.sh).
   const b64 = Buffer.from(msg, 'utf8').toString('base64')
@@ -234,6 +310,8 @@ const DEMO_CONTACTS = [
     address: 'Chausseestraße 12, 10115 Berlin',
     url: 'https://auburn.example.com/elena',
     note: 'Prefers a call over a thread. Back from parental leave in March.',
+    // Day of the week the calendar is showing, so the birthday lands in it.
+    birthdayOn: 2,
   },
   {
     given: 'Tom',
@@ -250,6 +328,7 @@ const DEMO_CONTACTS = [
     org: 'Auburn Studio',
     title: 'Product',
     phone: '+44 20 7946 0813',
+    birthdayOn: 4,
   },
   {
     given: 'Jonas',
@@ -276,6 +355,19 @@ const DEMO_CONTACTS = [
     phone: '+46 8 505 12 90',
   },
 ]
+
+/** A birth anniversary on that weekday of the week the calendar is showing. */
+function birthdayOn(weekday) {
+  const d = new Date(mondayOfThisWeek())
+  d.setDate(d.getDate() + weekday)
+  return {
+    a0: {
+      '@type': 'Anniversary',
+      kind: 'birth',
+      date: { '@type': 'PartialDate', year: 1988, month: d.getMonth() + 1, day: d.getDate() },
+    },
+  }
+}
 
 async function createContacts(apiUrl, accountId) {
   const { methodResponses } = await jmapCall(
@@ -307,6 +399,7 @@ async function createContacts(apiUrl, accountId) {
       addresses: c.address ? { a0: { full: c.address } } : null,
       links: c.url ? { l0: { uri: c.url } } : null,
       notes: c.note ? { n0: { note: c.note } } : null,
+      anniversaries: c.birthdayOn === undefined ? null : birthdayOn(c.birthdayOn),
     }
   })
   const res = await jmapCall(
@@ -469,6 +562,16 @@ async function shootAll(browser, scheme) {
   const box = await iframeEl.boundingBox()
   const [baseBuffer, frameBuffer] = await Promise.all([page.screenshot(), iframeEl.screenshot()])
   shots.mail = await composite(browser, baseBuffer, frameBuffer, box)
+
+  // The invitation, with the card the reading pane offers for a text/calendar
+  // part. Its own shot rather than the mail one, because the conversation is
+  // what the mail screenshot is for.
+  await page.getByText(INVITE_SUBJECT, { exact: false }).first().click({ timeout: 15_000 })
+  await page.waitForTimeout(1500)
+  const inviteFrame = page.locator('iframe').first()
+  const inviteBox = await inviteFrame.boundingBox()
+  const [inviteBase, inviteInner] = await Promise.all([page.screenshot(), inviteFrame.screenshot()])
+  shots.invitation = await composite(browser, inviteBase, inviteInner, inviteBox)
 
   // Calendar, in the week view: it shows the time grid, which the month grid
   // cannot, and the demo events are laid out across this week for it.
