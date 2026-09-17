@@ -467,6 +467,9 @@ const en = {
   'files.deleteFolder.confirm': 'Delete this folder and everything in it?',
   'files.delete.confirm': 'Delete this file?',
   'files.folder': 'Folder',
+  'files.symlink': 'Link',
+  'files.symlink.explain':
+    'This is a link to another place in your files. mel shows where it points, but does not follow it.',
   'files.select': 'Select',
   'files.move': 'Move to…',
   'files.move.top': 'Top level',
@@ -1086,6 +1089,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'files.deleteFolder.confirm': 'Diesen Ordner mit seinem gesamten Inhalt löschen?',
   'files.delete.confirm': 'Diese Datei löschen?',
   'files.folder': 'Ordner',
+  'files.symlink': 'Verknüpfung',
+  'files.symlink.explain':
+    'Das ist eine Verknüpfung auf eine andere Stelle in deinen Dateien. mel zeigt das Ziel an, folgt ihm aber nicht.',
   'files.dropHere': 'Zum Hochladen loslassen',
   'files.preview.none': 'Für diesen Dateityp gibt es keine Vorschau.',
   'files.preview.open': 'Zum Öffnen herunterladen',

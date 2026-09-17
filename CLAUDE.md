@@ -110,9 +110,9 @@ working on that specific feature, not on every session:
   `docs/notes/panel-widths.md`
 - **Filter rules / JMAP Sieve** (script editor in Settings → Mail, server-side
   validation, the RFC-vs-Stalwart error names): `docs/notes/sieve.md`
-- **Files / JMAP FileNode** (the fourth app: browse, upload, preview; draft
-  extension, capability-gated, the blob-id, null-index and destroy-ordering
-  traps): `docs/notes/filenode.md`
+- **Files / JMAP FileNode** (the fourth app: browse, upload, preview, zip
+  download; draft extension, capability-gated, the blob-id, null-index,
+  destroy-ordering and nodeType-from-blobId traps): `docs/notes/filenode.md`
 - **Push notifications** (why naming the sender costs a request, why it is
   unencrypted-only, how the service worker reads IndexedDB without Dexie):
   `docs/notes/push-notifications.md`

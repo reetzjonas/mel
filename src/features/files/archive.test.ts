@@ -10,6 +10,7 @@ function node(part: Partial<FileNode> & { id: string; name: string }): FileNode 
     blobId: `blob-${part.id}`,
     type: 'text/plain',
     size: 1,
+    target: null,
     executable: false,
     created: '2026-01-01T00:00:00Z',
     modified: '2026-01-01T00:00:00Z',

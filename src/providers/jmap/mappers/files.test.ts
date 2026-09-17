@@ -24,6 +24,7 @@ describe('toFileNode', () => {
       blobId: 'b1',
       type: 'text/plain',
       size: 12,
+      target: null,
       executable: true,
       created: '2026-01-01T00:00:00Z',
       modified: '2026-02-02T00:00:00Z',
@@ -56,7 +57,18 @@ describe('toFileNode', () => {
     expect(toFileNode({ id: 'f1', nodeType: 'quantum' }).nodeType).toBe('file')
   })
 
-  it('reads a symlink as its own type', () => {
-    expect(toFileNode({ id: 'f1', nodeType: 'symlink' }).nodeType).toBe('symlink')
+  it('reads a symlink as its own type, with the path it points at', () => {
+    const link = toFileNode({ id: 'f1', nodeType: 'symlink', target: ['notes', 'today.txt'] })
+
+    expect(link.nodeType).toBe('symlink')
+    expect(link.target).toEqual(['notes', 'today.txt'])
+  })
+
+  it('refuses a target that is not a path', () => {
+    // The draft says a symlink's target must be non-null and everything else's
+    // must be null; a server that gets it wrong should leave a link pointing
+    // nowhere rather than something unprintable on the row.
+    expect(toFileNode({ id: 'f1', nodeType: 'symlink', target: [1, 2] as never }).target).toBeNull()
+    expect(toFileNode({ id: 'f1', nodeType: 'file' }).target).toBeNull()
   })
 })

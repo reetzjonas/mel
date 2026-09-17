@@ -1,8 +1,8 @@
 # Files (JMAP FileNode)
 
 A fourth app beside Mail, Contacts and Calendar: browse folders, upload, create
-folders, rename, move, delete, preview, and tick several items to move or
-delete them together. It rests on `urn:ietf:params:jmap:filenode`,
+folders, rename, move, delete, preview, and tick several items to move,
+download or delete them together. It rests on `urn:ietf:params:jmap:filenode`,
 a **draft** (`draft-ietf-jmap-filenode`, -14 at the time of writing) that few
 servers implement — so the tab only exists when the account advertises the
 capability, and `connection.files` is null otherwise.
@@ -164,6 +164,37 @@ behind `await import(...)`, so it is fetched the first time somebody downloads
 a selection and never on the path into the app. It is also what the e2e test
 reads the downloaded file back with: the assertion opens the zip and checks the
 paths inside it, rather than trusting a `.zip` suffix.
+
+## Symlinks: shown, never followed
+
+`FileNodeType` has claimed `'symlink'` since the first version of this app,
+while the mapper read no target at all — a type promising something nothing
+handled (#77). The target is now read and shown: the row and the preview pane
+say `Link → notes/today.txt`, with the draft's own spelling of a path (a
+leading empty element means absolute within the account, `..` steps up, and the
+target need not exist — dangling links are allowed).
+
+**Following one is deliberately not implemented.** The draft puts the work on
+the client: resolve the path yourself, guard against a link pointing at its own
+ancestor, and never leave the FileNode tree. None of that could be tried
+against anything here, because **Stalwart does not implement symlinks at all**:
+
+- A create with `nodeType: "symlink"` and a target **succeeds** and stores a
+  **directory** with `target: null`. No error.
+- The reason is that Stalwart **derives the node type from the blob**: a create
+  with `blobId: null` is a directory whatever `nodeType` says, and setting
+  `type` on it is then refused with "size, type and executable may only be set
+  on file nodes".
+
+So a symlink cannot be created, received or tested here, and the honest version
+is the small one: keep whatever a conforming server sends, show where it
+points, and say in the pane that mel does not follow it. There is no e2e test
+for it for the same reason — the server cannot produce the case.
+
+While that was in hand: **a node with no content used to leave the preview on
+"Loading…" for as long as it was open.** `readFile` returns null for a node
+without a blob, and the pane had no state to move to. It now says the file
+cannot be previewed, which is true of a symlink and of any content-less node.
 
 ## The executable bit, and the two flags next to it
 

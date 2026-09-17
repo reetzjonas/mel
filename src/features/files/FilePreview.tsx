@@ -6,6 +6,7 @@ import { t } from '../../lib/i18n'
 import { saveBlob } from '../../lib/saveBlob'
 import { canShareFiles, shareFile } from '../../lib/webShare'
 import { downloadNode, setExecutable as writeExecutable } from '../../services/files'
+import { symlinkPath } from './symlink'
 import { Icon } from '../../ui/Icon'
 import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
 
@@ -55,12 +56,24 @@ export function FilePreview({
     let cancelled = false
 
     const load = async () => {
+      // A node with nothing behind it — a symlink, or a file the server stored
+      // without content — cannot be shown whatever its media type says. Before,
+      // the pane sat on "Loading…" for as long as it was open, because the
+      // download came back null and nothing moved the state on.
+      if (node.nodeType !== 'file' || !node.blobId) {
+        setContent({ kind: 'none' })
+        return
+      }
       if (!IMAGE.test(type) && !TEXT.test(type) && !PDF.test(type)) {
         setContent({ kind: 'none' })
         return
       }
       const blob = await downloadNode(accountId, node)
-      if (cancelled || !blob) return
+      if (cancelled) return
+      if (!blob) {
+        setContent({ kind: 'none' })
+        return
+      }
       if (TEXT.test(type)) {
         setContent({ kind: 'text', text: await blob.text() })
         return
@@ -124,7 +137,9 @@ export function FilePreview({
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-medium text-ink">{node.name}</p>
           <p className="truncate text-xs text-ink-subtle">
-            {formatBytes(node.size ?? 0)} · {type || '—'}
+            {node.nodeType === 'symlink'
+              ? `${t('files.symlink')} → ${symlinkPath(node)}`
+              : `${formatBytes(node.size ?? 0)} · ${type || '—'}`}
           </p>
         </div>
         {canExpand && (
@@ -151,7 +166,9 @@ export function FilePreview({
           the browser running two copies of the same document for no gain, and
           nothing of the pane is visible underneath anyway. */}
       <div className="min-h-0 flex-1 overflow-auto p-3">
-        {!expanded && <PreviewBody content={content} type={type} name={node.name} />}
+        {!expanded && (
+          <PreviewBody content={content} type={type} nodeType={node.nodeType} name={node.name} />
+        )}
       </div>
 
       <div className="flex items-center gap-2 border-t border-line p-3">
@@ -205,7 +222,13 @@ export function FilePreview({
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-auto p-3">
-              <PreviewBody full content={content} type={type} name={node.name} />
+              <PreviewBody
+                full
+                content={content}
+                type={type}
+                nodeType={node.nodeType}
+                name={node.name}
+              />
             </div>
           </div>
         </div>
@@ -224,11 +247,13 @@ export function FilePreview({
 function PreviewBody({
   content,
   type,
+  nodeType,
   name,
   full = false,
 }: {
   content: Content
   type: string
+  nodeType: FileNode['nodeType']
   name: string
   full?: boolean
 }) {
@@ -261,7 +286,9 @@ function PreviewBody({
         />
       )}
       {content.kind === 'none' && (
-        <p className="text-xs text-ink-subtle">{t('files.preview.none')}</p>
+        <p className="text-xs text-ink-subtle">
+          {nodeType === 'symlink' ? t('files.symlink.explain') : t('files.preview.none')}
+        </p>
       )}
     </>
   )

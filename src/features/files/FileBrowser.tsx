@@ -27,6 +27,7 @@ import {
   suppressContextMenu,
 } from '../mail/dragAndDrop'
 import { archiveName } from './archive'
+import { symlinkPath } from './symlink'
 import { FilePreview } from './FilePreview'
 import { useAllNodes, useFilePath, useFolderChildren } from './hooks'
 import { moveTargets } from './tree'
@@ -600,7 +601,7 @@ function FileRow({
             been turned on. */}
         <span className="relative block h-[17px] w-[17px]">
           <Icon
-            name={isDir ? 'folder' : 'file'}
+            name={isDir ? 'folder' : node.nodeType === 'symlink' ? 'link' : 'file'}
             size={17}
             className={`${checked ? 'invisible' : ''} ${isDir ? 'text-accent' : 'text-ink-subtle'}`}
           />
@@ -640,7 +641,11 @@ function FileRow({
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[13px] font-medium text-ink">{node.name}</span>
           <span className="block truncate text-xs text-ink-subtle">
-            {isDir ? t('files.folder') : formatBytes(node.size ?? 0)}
+            {isDir
+              ? t('files.folder')
+              : node.nodeType === 'symlink'
+                ? `${t('files.symlink')} → ${symlinkPath(node)}`
+                : formatBytes(node.size ?? 0)}
           </span>
         </span>
       </button>

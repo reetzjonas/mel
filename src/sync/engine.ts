@@ -52,8 +52,9 @@ const MODEL_VERSION: Record<string, number> = {
   // 2: birthday, photo, online services and tags (RFC 9553 fields added after
   // the first contacts release).
   ContactCard: 2,
-  // 2: executable, which nothing asked the server for until now.
-  FileNode: 2,
+  // 2: executable; 3: a symlink's target — both fields nothing asked the
+  // server for until the release that added them.
+  FileNode: 3,
   // 2: recurrenceOverrides, so cached series carry their per-occurrence edits.
   CalendarEvent: 2,
 }

@@ -1,8 +1,8 @@
 import type { FileNode, FileNodeType } from '../../../domain/file'
 
 // FileNode objects as served by draft-ietf-jmap-filenode. Only what we use;
-// the spec also carries target, accessed, isSubscribed, myRights, shareWith
-// and role — see filenode.md for why the first three stay out.
+// the spec also carries accessed, isSubscribed, myRights, shareWith and role —
+// see filenode.md for why the first two stay out.
 
 export interface JmapFileNode {
   id: string
@@ -11,6 +11,7 @@ export interface JmapFileNode {
   name?: string | null
   blobId?: string | null
   type?: string | null
+  target?: string[] | null
   size?: number | null
   executable?: boolean | null
   created?: string | null
@@ -30,6 +31,19 @@ function toNodeType(v: string | null | undefined): FileNodeType {
   return NODE_TYPES.includes(v ?? '') ? (v as FileNodeType) : 'file'
 }
 
+/**
+ * A symlink's path, or null.
+ *
+ * Checked element by element because it is what a link *shows*: the draft says
+ * a symlink's target must be non-null and everything else's must be null, but a
+ * server that gets that wrong should leave the row looking like a link to
+ * nowhere rather than putting `[object Object]` on the screen.
+ */
+function toTarget(raw: string[] | null | undefined): string[] | null {
+  if (!Array.isArray(raw) || !raw.every((part) => typeof part === 'string')) return null
+  return raw
+}
+
 export function toFileNode(n: JmapFileNode): FileNode {
   const created = n.created ?? ''
   return {
@@ -40,6 +54,7 @@ export function toFileNode(n: JmapFileNode): FileNode {
     blobId: n.blobId ?? null,
     type: n.type ?? null,
     size: typeof n.size === 'number' ? n.size : null,
+    target: toTarget(n.target),
     executable: n.executable === true,
     created,
     // The spec lets a client leave modified unset; fall back to created so

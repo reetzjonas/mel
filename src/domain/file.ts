@@ -20,6 +20,14 @@ export interface FileNode {
   blobId: string | null
   /** Media type of a file, null for a directory. */
   type: string | null
+  /**
+   * Where a symlink points, as path elements; null for anything else.
+   *
+   * The draft's own shape: a leading empty element makes the path absolute
+   * within the account, `..` steps up, and the target need not exist — dangling
+   * links are allowed. mel shows it and never follows it; see filenode.md.
+   */
+  target: string[] | null
   /** Size of a file in bytes, null for a directory. */
   size: number | null
   /**
