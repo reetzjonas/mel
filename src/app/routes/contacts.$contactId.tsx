@@ -5,7 +5,7 @@ import { displayName, type LabeledValue } from '../../domain/contact'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
 import { birthdayLabel } from '../../features/contacts/birthday'
-import { mapHref, profileHref, telHref } from '../../features/contacts/links'
+import { mapHref, profileHref, telHref, webHref } from '../../features/contacts/links'
 import { useAccounts, useCanSend } from '../../features/mail/hooks'
 import { t } from '../../lib/i18n'
 import { deleteContact, updateContact } from '../../services/contacts'
@@ -134,7 +134,12 @@ function ContactDetail() {
         </Link>
       </div>
       <header className="flex items-center gap-4">
-        <Avatar name={name} email={contact.emails[0]?.value ?? name} size={56} src={contact.photo} />
+        <Avatar
+          name={name}
+          email={contact.emails[0]?.value ?? name}
+          size={56}
+          src={contact.photo}
+        />
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-semibold">{name}</h1>
           {(contact.jobTitle || contact.organization) && (
@@ -187,12 +192,14 @@ function ContactDetail() {
           values={contact.phones}
           action={(phone) => ({ href: telHref(phone), describe: t('contacts.call') })}
         />
-        <FieldList label={t('contacts.url')} values={contact.urls} />
+        <FieldList
+          label={t('contacts.url')}
+          values={contact.urls}
+          action={(url) => ({ href: webHref(url), describe: t('contacts.openLink') })}
+        />
         {contact.onlineServices.length > 0 && (
           <div>
-            <div className="text-xs font-medium text-ink-muted">
-              {t('contacts.onlineServices')}
-            </div>
+            <div className="text-xs font-medium text-ink-muted">{t('contacts.onlineServices')}</div>
             {contact.onlineServices.map((o, i) => {
               // Only a handle that came with a real link is one: mel does not
               // guess a profile URL from "@erika@chaos.social".

@@ -42,6 +42,37 @@ export function mapHref(address: string): string | null {
 }
 
 /**
+ * Schemes a card may put in front of the user as a link.
+ *
+ * An allow list, not a deny list. A contact card is somebody else's data — it
+ * arrives from the server and may have been written by anyone with access to
+ * the address book — and `javascript:` in an `href` runs in mel's own origin
+ * the moment it is clicked. Anything not named here is shown as text.
+ */
+const SAFE_SCHEMES = new Set(['http', 'https', 'mailto', 'tel', 'sip', 'sips', 'xmpp', 'matrix'])
+
+function schemeOf(uri: string): string | null {
+  const m = /^([a-z][a-z0-9+.-]*):/i.exec(uri)
+  return m ? m[1]!.toLowerCase() : null
+}
+
+/**
+ * A web address, or null for a field with nothing to open.
+ *
+ * Cards carry these both ways — "https://example.com" and a bare
+ * "example.com/erika" — and a bare host is by far the more common thing to
+ * type. It is assumed to be https rather than shown as dead text, since a card
+ * that says example.com plainly means the website.
+ */
+export function webHref(value: string): string | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+  const scheme = schemeOf(trimmed)
+  if (!scheme) return `https://${trimmed}`
+  return scheme === 'http' || scheme === 'https' ? trimmed : null
+}
+
+/**
  * A profile link, or null when the field holds a handle rather than a URI.
  *
  * The card's `uri` is where a handle opens, but it is also where mel has to put
@@ -50,5 +81,6 @@ export function mapHref(address: string): string | null {
  */
 export function profileHref(uri: string): string | null {
   const trimmed = uri.trim()
-  return /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : null
+  const scheme = schemeOf(trimmed)
+  return scheme && SAFE_SCHEMES.has(scheme) ? trimmed : null
 }

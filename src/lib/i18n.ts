@@ -516,6 +516,7 @@ const en = {
   'contacts.photo.failed': 'That file could not be read as an image.',
   'contacts.keywords': 'Tags',
   'contacts.keywordsPlaceholder': 'Separated by commas',
+  'contacts.openLink': 'Open',
   'contacts.call': 'Call',
   'contacts.showOnMap': 'Show on map',
 
@@ -1124,6 +1125,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'contacts.photo.failed': 'Diese Datei konnte nicht als Bild gelesen werden.',
   'contacts.keywords': 'Schlagwörter',
   'contacts.keywordsPlaceholder': 'Mit Komma getrennt',
+  'contacts.openLink': 'Öffnen',
   'contacts.call': 'Anrufen',
   'contacts.showOnMap': 'Auf der Karte zeigen',
 

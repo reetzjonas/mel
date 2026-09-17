@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapHref, profileHref, telHref } from './links'
+import { mapHref, profileHref, telHref, webHref } from './links'
 
 describe('dialling a stored number', () => {
   it('drops the separators that only help a reader', () => {
@@ -49,6 +49,39 @@ describe('opening a handle on another service', () => {
   // without one is dropped by the server — so it is not always a link.
   it('refuses a handle that only looks like an address', () => {
     expect(profileHref('@erika@chaos.social')).toBeNull()
-    expect(profileHref('erika:matrix')).toBe('erika:matrix')
+    // "erika:" parses as a scheme and used to come back as a link to nowhere.
+    expect(profileHref('erika:matrix')).toBeNull()
+  })
+
+  it('refuses a scheme that would run rather than open', () => {
+    /*
+     * A card is somebody else's data — it arrives from the server and anyone
+     * with access to the address book may have written it. `javascript:` in an
+     * href runs in mel's own origin the moment it is clicked, so the schemes
+     * are an allow list and everything else stays text.
+     */
+    expect(profileHref('javascript:alert(1)')).toBeNull()
+    expect(profileHref('JavaScript:alert(1)')).toBeNull()
+    expect(profileHref('data:text/html,<script>alert(1)</script>')).toBeNull()
+    expect(profileHref('vbscript:msgbox(1)')).toBeNull()
+  })
+})
+
+describe('opening a contact’s website', () => {
+  it('takes a full address as it is', () => {
+    expect(webHref('https://example.com/erika')).toBe('https://example.com/erika')
+    expect(webHref('http://example.com')).toBe('http://example.com')
+  })
+
+  it('assumes https for the bare host people actually type', () => {
+    expect(webHref('example.com/erika')).toBe('https://example.com/erika')
+    expect(webHref('  www.example.com  ')).toBe('https://www.example.com')
+  })
+
+  it('refuses anything that is not the web', () => {
+    // Same reasoning as the profile links: a card can carry any string.
+    expect(webHref('javascript:alert(1)')).toBeNull()
+    expect(webHref('mailto:erika@example.com')).toBeNull()
+    expect(webHref('')).toBeNull()
   })
 })
