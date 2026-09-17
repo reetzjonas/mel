@@ -76,3 +76,33 @@ handling exists is worse for the user than not claiming it.
 A manifest is one static file written at build time. It has nowhere to carry
 the translations `src/lib/i18n.ts` picks between at runtime, and the format has
 no localization of its own, so the shortcut names stay English.
+
+## Manifest images: bitmaps, at the size they claim
+
+Chrome's DevTools reported `favicon.svg` as "failed to load" on every visit,
+while the file itself served fine (200, `image/svg+xml`). Manifest icons are
+fetched and decoded without a renderer behind them, and that decoder does not
+do SVG — so a manifest may only point at bitmaps, however scalable the artwork
+is. The tab icon in `index.html` is still the SVG; that one is a document
+resource and every browser rasterizes it.
+
+The same applies to the shortcut icons, which additionally have to declare
+96×96 — the size a launcher draws them at. `scripts/shortcut-icons.mjs` draws
+the app's own glyphs on the brand violet and rasterizes them through the
+Chromium that Playwright already brings, rather than adding a native image
+library for three files under 3 KB.
+
+`screenshots` are what a browser shows in its install dialog, and it wants one
+per form factor: without a `wide` one the desktop dialog stays plain, and
+without a non-`wide` one the mobile dialog does. They are taken by
+`scripts/screenshot-readme.mjs` in the same run as the README's, against the
+same demo data, and land in `public/screenshots/`. They stay out of the service
+worker's precache (its glob only reaches the top level) — an install dialog is
+not something to have offline, and they are two thirds of the static payload.
+
+A `share_target` with `method: 'GET'` is only allowed one encoding, and it is
+the default — which is exactly why it is written out: a target that leaves it
+unstated is flagged for relying on a default rather than choosing it.
+
+All of this is checkable without opening DevTools: Chrome answers
+`Page.getAppManifest` over CDP with the same list of complaints.

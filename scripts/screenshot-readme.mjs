@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 /**
- * Regenerates docs/media/screenshot-<view>-{light,dark}.png for the README.
+ * Regenerates docs/media/screenshot-<view>-{light,dark}.png for the README,
+ * and public/screenshots/install-{wide,narrow}.png for the manifest — the
+ * images a browser shows in its install dialog. Same demo data, same login,
+ * so they are one run rather than two scripts seeding the same account.
  *
  * One pair per view — mail, the invitation card, calendar, contacts, files —
  * because a README that claims four apps and shows one is a README that shows
@@ -48,6 +51,8 @@ import { fileURLToPath } from 'node:url'
 const exec = promisify(execFile)
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT_DIR = path.join(ROOT, 'docs', 'media')
+/** Manifest screenshots are served, so they live with the other static files. */
+const INSTALL_DIR = path.join(ROOT, 'public', 'screenshots')
 
 const baseUrlFlagIndex = process.argv.indexOf('--base-url')
 const BASE_URL =
@@ -58,6 +63,12 @@ const BASE_URL =
 const EMAIL = 'alice@localhost'
 const PASSWORD = 'korrekt-pferd-batterie-alice'
 const VIEWPORT = { width: 1440, height: 900 }
+/*
+ * The phone the install screenshot is taken on. Chrome wants every screenshot
+ * of one form factor to share an aspect ratio, and none of them to be narrower
+ * than 1:2.3 — 430×932 is a current large phone and lands inside that.
+ */
+const PHONE_VIEWPORT = { width: 430, height: 932 }
 
 const THREAD_ROOT = `<design-review.${Date.now()}@screenshot-readme>`
 const THREAD_SUBJECT = 'Design review: new inbox layout'
@@ -509,8 +520,8 @@ async function destroyAll(apiUrl, accountId, made) {
 }
 
 /** Composites the iframe screenshot onto the page screenshot via canvas — see the file header for why this is needed instead of a single page.screenshot(). */
-async function composite(browser, baseBuffer, frameBuffer, box) {
-  const page = await browser.newPage({ viewport: VIEWPORT })
+async function composite(browser, baseBuffer, frameBuffer, box, viewport = VIEWPORT) {
+  const page = await browser.newPage({ viewport })
   await page.setContent('<canvas id="c"></canvas>')
   const toDataUrl = (buf) => 'data:image/png;base64,' + buf.toString('base64')
   const resultDataUrl = await page.evaluate(
@@ -531,7 +542,7 @@ async function composite(browser, baseBuffer, frameBuffer, box) {
       ctx.drawImage(frame, box.x, box.y, box.width, box.height)
       return canvas.toDataURL('image/png')
     },
-    { baseUrl: toDataUrl(baseBuffer), frameUrl: toDataUrl(frameBuffer), box, viewport: VIEWPORT },
+    { baseUrl: toDataUrl(baseBuffer), frameUrl: toDataUrl(frameBuffer), box, viewport },
   )
   await page.close()
   return Buffer.from(resultDataUrl.split(',')[1], 'base64')
@@ -543,25 +554,34 @@ async function composite(browser, baseBuffer, frameBuffer, box) {
  * One login rather than one per view: the first sync after signing in is the
  * slow part, and paying it four times over would double the run for nothing.
  */
-async function shootAll(browser, scheme) {
-  const ctx = await browser.newContext({ colorScheme: scheme, viewport: VIEWPORT })
-  const page = await ctx.newPage()
+async function signIn(page) {
   await page.goto(BASE_URL)
   await page.getByPlaceholder('you@example.com').fill(EMAIL)
   await page.locator('input[type="password"]').fill(PASSWORD)
   await page.locator('button[type="submit"]').click()
+}
 
-  const shots = {}
-
-  // Mail, with a message open. The reading pane is the one view that needs
-  // the compositing trick — see the file header.
+/** Opens the demo message and shoots the reading pane, iframe and all. */
+async function openMailShot(browser, page, viewport = VIEWPORT) {
   const row = page.getByText(OPEN_SUBJECT, { exact: false }).first()
   await row.click({ timeout: 30_000 }) // the first sync can take a few seconds
   await page.waitForTimeout(1500) // let the iframe finish painting
   const iframeEl = page.locator('iframe').first()
   const box = await iframeEl.boundingBox()
   const [baseBuffer, frameBuffer] = await Promise.all([page.screenshot(), iframeEl.screenshot()])
-  shots.mail = await composite(browser, baseBuffer, frameBuffer, box)
+  return composite(browser, baseBuffer, frameBuffer, box, viewport)
+}
+
+async function shootAll(browser, scheme) {
+  const ctx = await browser.newContext({ colorScheme: scheme, viewport: VIEWPORT })
+  const page = await ctx.newPage()
+  await signIn(page)
+
+  const shots = {}
+
+  // Mail, with a message open. The reading pane is the one view that needs
+  // the compositing trick — see the file header.
+  shots.mail = await openMailShot(browser, page)
 
   // The invitation, with the card the reading pane offers for a text/calendar
   // part. Its own shot rather than the mail one, because the conversation is
@@ -600,6 +620,40 @@ async function shootAll(browser, scheme) {
   return shots
 }
 
+/**
+ * The two screenshots the browser shows in its install dialog.
+ *
+ * Always dark, because the manifest's `theme_color` and `background_color`
+ * are, and the dialog draws them against it. Desktop gets a message open,
+ * phone gets the list: on that width they are separate screens, and the list
+ * is the one that says what the app is.
+ */
+async function shootInstall(browser) {
+  const shots = {}
+
+  const wide = await browser.newContext({ colorScheme: 'dark', viewport: VIEWPORT })
+  const widePage = await wide.newPage()
+  await signIn(widePage)
+  shots['install-wide'] = await openMailShot(browser, widePage)
+  await wide.close()
+
+  const narrow = await browser.newContext({
+    colorScheme: 'dark',
+    viewport: PHONE_VIEWPORT,
+    isMobile: true,
+    hasTouch: true,
+    deviceScaleFactor: 1,
+  })
+  const narrowPage = await narrow.newPage()
+  await signIn(narrowPage)
+  await narrowPage.getByText(OPEN_SUBJECT, { exact: false }).first().waitFor({ timeout: 30_000 })
+  await narrowPage.waitForTimeout(1200)
+  shots['install-narrow'] = await narrowPage.screenshot()
+  await narrow.close()
+
+  return shots
+}
+
 async function main() {
   const { apiUrl, uploadUrl, accountId } = await jmapSession()
   const made = {}
@@ -615,6 +669,13 @@ async function main() {
     made.files = await createFiles(apiUrl, uploadUrl, accountId)
 
     await mkdir(OUT_DIR, { recursive: true })
+    await mkdir(INSTALL_DIR, { recursive: true })
+    console.log('Shooting the install screenshots...')
+    for (const [view, png] of Object.entries(await shootInstall(browser))) {
+      const out = path.join(INSTALL_DIR, `${view}.png`)
+      await writeFile(out, png)
+      console.log(`Wrote ${path.relative(ROOT, out)}`)
+    }
     for (const scheme of /** @type {const} */ (['dark', 'light'])) {
       console.log(`Shooting ${scheme}...`)
       const shots = await shootAll(browser, scheme)
