@@ -24,7 +24,7 @@ import {
   readMailDrag,
   setFolderDrag,
   suppressContextMenu,
-} from './dragAndDrop'
+} from '../../lib/dragAndDrop'
 import { mailboxTree, moveTargets } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
 

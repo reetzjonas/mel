@@ -1,3 +1,4 @@
+import { unzipSync } from 'fflate'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { FileNode } from '../domain/file'
 import type { SetFailure } from '../providers/types'
@@ -48,7 +49,15 @@ vi.mock('../sync/connections', () => ({
   connectionFor: () => Promise.resolve({ files: hasProvider ? files : null }),
 }))
 
-const { createFolder, deleteNodes, downloadNode, moveNodes, uploadFiles } = await import('./files')
+const {
+  createFolder,
+  deleteNodes,
+  downloadNode,
+  moveNodes,
+  packArchive,
+  setExecutable,
+  uploadFiles,
+} = await import('./files')
 
 const node = (id: string, parentId: string | null): FileNode => ({
   id,
@@ -178,6 +187,64 @@ describe('reading a file', () => {
     hasProvider = false
 
     expect(await downloadNode('acc', node('f', 'root'))).toBeNull()
+  })
+})
+
+describe('the executable bit', () => {
+  it('is written as an edit to that one node, and the tree refreshed', async () => {
+    expect(await setExecutable('acc', 'f', true)).toBeNull()
+
+    expect(edited).toEqual([{ id: 'f', edit: { executable: true } }])
+    expect(synced).toEqual(['acc'])
+  })
+
+  it('reports a refusal instead of leaving the pane claiming it took', async () => {
+    editFailure = { type: 'forbidden', description: 'Read only', permanent: true }
+
+    expect(await setExecutable('acc', 'f', true)).toBe('Read only')
+  })
+})
+
+describe('packing an archive', () => {
+  /** A file the server has content for; one without is left out of the zip. */
+  const file = (id: string, parentId: string): FileNode => ({
+    ...node(id, parentId),
+    blobId: `blob-${id}`,
+  })
+
+  it('walks a selected folder and reads every file under it', async () => {
+    tree = [node('root', null), file('a.txt', 'root'), file('b.txt', 'root')]
+
+    const { blob, error } = await packArchive('acc', ['root'])
+
+    expect(error).toBeNull()
+    // A real zip, checked by unpacking it rather than by its length.
+    const unpacked = unzipSync(new Uint8Array(await blob!.arrayBuffer()))
+    expect(Object.keys(unpacked).sort()).toEqual(['root/a.txt', 'root/b.txt'])
+  })
+
+  it('reads the tree from the server, not from what the caller had', async () => {
+    // A stale local copy misses exactly the child that was just added, and the
+    // archive would quietly be short a file.
+    tree = [node('root', null), file('late.txt', 'root')]
+
+    const { blob } = await packArchive('acc', ['root'])
+
+    expect(Object.keys(unzipSync(new Uint8Array(await blob!.arrayBuffer())))).toContain(
+      'root/late.txt',
+    )
+  })
+
+  it('says there is nothing to pack rather than handing back an empty zip', async () => {
+    tree = [node('root', null)]
+
+    expect(await packArchive('acc', [])).toEqual({ blob: null, error: null })
+  })
+
+  it('has nothing to offer without a provider', async () => {
+    hasProvider = false
+
+    expect(await packArchive('acc', ['root'])).toEqual({ blob: null, error: 'noProvider' })
   })
 })
 

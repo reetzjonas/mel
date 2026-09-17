@@ -96,8 +96,7 @@ at a folder *above* the one being viewed. A folder may never be dropped into
 itself or its own descendants; the server would be left holding a cycle with
 no path to the root.
 
-Drag and drop reuses `features/mail/dragAndDrop.ts` rather than keeping a
-second copy: every touch lesson in `drag-and-drop.md` applies here unchanged,
+Drag and drop reuses `lib/dragAndDrop.ts` rather than keeping a second copy: every touch lesson in `drag-and-drop.md` applies here unchanged,
 including the two that cost the most — the in-flight payload is kept in module
 state because `dataTransfer` cannot be read during a touch drag, and what is
 being dragged lives in a `useRef`, since a touch drag can fire `dragenter`

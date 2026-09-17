@@ -25,7 +25,7 @@ import {
   readFileNodeDrag,
   setFileNodeDrag,
   suppressContextMenu,
-} from '../mail/dragAndDrop'
+} from '../../lib/dragAndDrop'
 import { archiveName } from './archive'
 import { symlinkPath } from './symlink'
 import { FilePreview } from './FilePreview'

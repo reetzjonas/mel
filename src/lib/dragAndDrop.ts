@@ -1,7 +1,13 @@
 import type { DragEvent, MouseEvent } from 'react'
 
 /*
- * What the mail list and the folder tree hand each other during a drag.
+ * What the app's drag sources and drop targets hand each other.
+ *
+ * Shared plumbing rather than any one app's: the mail list, the folder tree
+ * and the Files browser all drag through it, and the touch lessons below were
+ * expensive enough that a second copy of them would be strictly worse than an
+ * import. (It lived under features/mail until #51 for no reason but where it
+ * grew up.)
  *
  * Two MIME types rather than one with a discriminator inside, because the type
  * is the *only* thing a drop target may read while the drag is in flight: the
@@ -12,15 +18,7 @@ import type { DragEvent, MouseEvent } from 'react'
  */
 export const MAIL_DRAG = 'application/x-mel-mail'
 export const FOLDER_DRAG = 'application/x-mel-folder'
-/**
- * File nodes, dragged in the Files app onto a folder there.
- *
- * This module lives under mail/ because that is where it grew up; it is the
- * app's drag plumbing, not mail's. The touch lessons below were expensive and
- * apply to any drag, so Files reuses them rather than keeping a second copy.
- * Moving it somewhere shared is #51 — deliberately not done from a Files
- * commit, since it touches mail's drag handling for no reason of mail's own.
- */
+/** File nodes, dragged in the Files app onto a folder there. */
 export const FILENODE_DRAG = 'application/x-mel-filenode'
 
 export interface MailDrag {
@@ -83,27 +81,49 @@ function setDragLabel(e: DragEvent, label: string): void {
  */
 type DragKind = 'mail' | 'folder' | 'filenode'
 
-let liveDragKind: DragKind | null = null
-let mailPayload: MailDrag | null = null
-let fileNodePayload: string[] | null = null
+/** What each kind carries beside its type. A folder needs none: its id fits in
+ *  `dataTransfer`, and the sidebar keeps the row being dragged in its own
+ *  state, so there has never been anything here to read. */
+interface Payloads {
+  mail: MailDrag
+  folder: never
+  filenode: string[]
+}
 
-export function setMailDrag(e: DragEvent, payload: MailDrag, label: string): void {
-  liveDragKind = 'mail'
-  mailPayload = payload
-  e.dataTransfer.setData(MAIL_DRAG, '1')
+/**
+ * The drag in flight: one entry, not one variable per kind.
+ *
+ * Every kind that used to add a variable also had to remember to add a line to
+ * the reset below — which is the sort of thing that is only noticed when a
+ * stale payload turns up under a foreign drag.
+ */
+let live: { kind: DragKind; payload: unknown } | null = null
+
+/** The three lines every drag start shares, after `live` has been set. */
+function begin(e: DragEvent, mime: string, data: string, label: string): void {
+  e.dataTransfer.setData(mime, data)
   e.dataTransfer.effectAllowed = 'move'
   setDragLabel(e, label)
+}
+
+/** The payload of a drag of this kind, or null for anything else. */
+function read<K extends keyof Payloads>(e: DragEvent, kind: K): Payloads[K] | null {
+  if (dragKind(e) !== kind || live?.kind !== kind) return null
+  return live.payload as Payloads[K]
+}
+
+export function setMailDrag(e: DragEvent, payload: MailDrag, label: string): void {
+  live = { kind: 'mail', payload }
+  begin(e, MAIL_DRAG, '1', label)
 }
 
 export function readMailDrag(e: DragEvent): MailDrag | null {
-  return dragKind(e) === 'mail' ? mailPayload : null
+  return read(e, 'mail')
 }
 
 export function setFolderDrag(e: DragEvent, mailboxId: string, label: string): void {
-  liveDragKind = 'folder'
-  e.dataTransfer.setData(FOLDER_DRAG, mailboxId)
-  e.dataTransfer.effectAllowed = 'move'
-  setDragLabel(e, label)
+  live = { kind: 'folder', payload: null }
+  begin(e, FOLDER_DRAG, mailboxId, label)
 }
 
 /**
@@ -112,22 +132,17 @@ export function setFolderDrag(e: DragEvent, mailboxId: string, label: string): v
  * read nothing but the type until the drop lands anyway.
  */
 export function setFileNodeDrag(e: DragEvent, ids: string[], label: string): void {
-  liveDragKind = 'filenode'
-  fileNodePayload = ids
-  e.dataTransfer.setData(FILENODE_DRAG, '1')
-  e.dataTransfer.effectAllowed = 'move'
-  setDragLabel(e, label)
+  live = { kind: 'filenode', payload: ids }
+  begin(e, FILENODE_DRAG, '1', label)
 }
 
 export function readFileNodeDrag(e: DragEvent): string[] | null {
-  return dragKind(e) === 'filenode' ? fileNodePayload : null
+  return read(e, 'filenode')
 }
 
 /** Call on every dragend, so a later foreign drag cannot read as a stale one. */
 export function clearDragState(): void {
-  liveDragKind = null
-  mailPayload = null
-  fileNodePayload = null
+  live = null
 }
 
 /*
@@ -153,5 +168,5 @@ export function dragKind(e: DragEvent): DragKind | null {
   if (types.includes(MAIL_DRAG)) return 'mail'
   if (types.includes(FOLDER_DRAG)) return 'folder'
   if (types.includes(FILENODE_DRAG)) return 'filenode'
-  return types.length === 0 ? liveDragKind : null
+  return types.length === 0 ? (live?.kind ?? null) : null
 }

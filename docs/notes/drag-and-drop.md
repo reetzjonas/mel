@@ -1,4 +1,9 @@
-# Drag and drop (mail onto folders, folders into folders, events on the grid)
+# Drag and drop (mail onto folders, folders into folders, files, events on the grid)
+
+The plumbing is `src/lib/dragAndDrop.ts` — shared, not mail's, since Mail and
+Files both drag through it. It lived under `features/mail/` until #51 for no
+reason but where it grew up, and Files reached across into a sibling feature
+to use it.
 
 A pointer-only addition, with the menu, the selection toolbar and the
 keyboard shortcuts staying the accessible path. The mobile folder drawer is
@@ -10,7 +15,7 @@ sidebar, a long press on a draggable row **does** start a native HTML5 drag
 (confirmed on tablet Chrome/Safari). That gesture is also how the browser's
 own text-selection/context menu is triggered, so without `select-none` plus
 `-webkit-touch-callout: none` plus a `contextmenu` handler on every draggable
-row (`draggableTouchClass` / `suppressContextMenu` in `dragAndDrop.ts`), the
+row (`draggableTouchClass` / `suppressContextMenu` in `lib/dragAndDrop.ts`), the
 browser's menu pops up on top of the drag. Applied to both the mail rows and
 the draggable folder rows.
 
@@ -57,7 +62,10 @@ read and every drop target refused the hover before a payload ever mattered.
 The fix moves what a drag _is_ out of `dataTransfer` entirely: `dragstart` is
 the one lifecycle event that has proven reliable on touch, so `setMailDrag`/
 `setFolderDrag` now record the kind and the mail payload in module state in
-`dragAndDrop.ts`, cleared on every `dragend` (`clearDragState`). `dragKind`
+`lib/dragAndDrop.ts`, cleared on every `dragend` (`clearDragState`). That state
+is one entry — `{kind, payload}` — rather than a variable per kind, because
+each new kind used to mean remembering to clear one more of them, and a
+payload nobody cleared is one a later foreign drag can read. `dragKind`
 still checks `dataTransfer.types` first — keeping desktop and the Playwright
 `dragTo` coverage, which drives real `dataTransfer`, exactly as before — and
 only falls back to the recorded kind when `types` comes back empty, so a

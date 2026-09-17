@@ -16,7 +16,7 @@ import {
   draggableTouchClass,
   setMailDrag,
   suppressContextMenu,
-} from './dragAndDrop'
+} from '../../lib/dragAndDrop'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
