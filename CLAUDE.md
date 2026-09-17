@@ -143,6 +143,25 @@ npm run test:e2e        # Playwright (expects a running, seeded Stalwart)
 npm run build           # vite build + tsc (order matters: routeTree.gen)
 ```
 
+**Never `npm i` on the host** unless it is running the Node in `.nvmrc` (22).
+npm 11 writes a lockfile that omits optional entries npm 10 insists on, so the
+install succeeds here and `npm ci` fails in CI with "Missing:
+@floating-ui/dom@… from lock file" — twice now, once for the coverage reporter
+and once for fflate and CodeMirror. Add a dependency the way CI would read it:
+
+```sh
+docker run --rm -v "$PWD":/app -w /app node:22-alpine \
+  npm install --package-lock-only <package>
+```
+
+and check it the same way, in a copy so the host's node_modules keeps its own
+platform binaries:
+
+```sh
+docker run --rm -v "$PWD":/src:ro -w /tmp/check node:22-alpine \
+  sh -c 'mkdir -p /tmp/check && cp /src/package*.json . && npm ci --ignore-scripts'
+```
+
 Accounts: `alice@localhost` / `korrekt-pferd-batterie-alice` (bob likewise), admin
 password in `docker/stalwart/.admin-pass`. Full reset: see the README.
 
