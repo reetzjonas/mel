@@ -15,7 +15,11 @@ import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
-import { birthdayEvents, contactIdOfBirthday, isBirthdayEventId } from '../../features/calendar/birthdays'
+import {
+  birthdayEvents,
+  contactIdOfBirthday,
+  isBirthdayEventId,
+} from '../../features/calendar/birthdays'
 import { useContacts } from '../../features/contacts/hooks'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
@@ -215,7 +219,10 @@ function CalendarApp() {
     // A birthday has no event behind it to edit; the card it came from is the
     // only thing there is to open.
     if (isBirthdayEventId(eventId)) {
-      void navigate({ to: '/contacts/$contactId', params: { contactId: contactIdOfBirthday(eventId) } })
+      void navigate({
+        to: '/contacts/$contactId',
+        params: { contactId: contactIdOfBirthday(eventId) },
+      })
       return
     }
     const full = eventById.get(eventId)
@@ -425,34 +432,41 @@ function CalendarApp() {
         <div className="min-h-0 flex-1 overflow-y-auto sm:hidden">
           {[...byDay.entries()]
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([key, occs]) => (
-              <div key={key}>
-                <div className="sticky top-0 z-10 bg-surface/90 px-4 py-1 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase backdrop-blur-sm">
-                  {agendaFmt.format(new Date(`${key}T12:00:00`))}
+            .map(([key, occs]) => {
+              const past = key < today
+              return (
+                <div key={key}>
+                  {/* Only the text dims: the heading needs its opaque
+                      background to stay readable while it sticks. */}
+                  <div
+                    className={`sticky top-0 z-10 bg-surface/90 px-4 py-1 text-[11px] font-semibold tracking-[0.06em] uppercase backdrop-blur-sm ${key === today ? 'text-accent' : past ? 'text-ink-subtle/55' : 'text-ink-subtle'}`}
+                  >
+                    {agendaFmt.format(new Date(`${key}T12:00:00`))}
+                  </div>
+                  {occs.map((o, i) => {
+                    const ev = eventById.get(o.eventId)
+                    const color = ev ? eventColor(ev) : null
+                    return (
+                      <button
+                        key={`${o.eventId}-${i}`}
+                        type="button"
+                        onClick={() => openEdit(o.eventId)}
+                        className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-2 ${past ? 'opacity-55' : ''}`}
+                      >
+                        <span
+                          className="h-8 w-1 shrink-0 rounded-full"
+                          style={{ backgroundColor: color ?? 'var(--mel-accent)' }}
+                        />
+                        <span className="w-14 shrink-0 text-xs text-ink-subtle tabular-nums">
+                          {o.allDay ? '—' : timeFmt.format(o.start)}
+                        </span>
+                        <span className="truncate text-sm">{ev?.title}</span>
+                      </button>
+                    )
+                  })}
                 </div>
-                {occs.map((o, i) => {
-                  const ev = eventById.get(o.eventId)
-                  const color = ev ? eventColor(ev) : null
-                  return (
-                    <button
-                      key={`${o.eventId}-${i}`}
-                      type="button"
-                      onClick={() => openEdit(o.eventId)}
-                      className="flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-2"
-                    >
-                      <span
-                        className="h-8 w-1 shrink-0 rounded-full"
-                        style={{ backgroundColor: color ?? 'var(--mel-accent)' }}
-                      />
-                      <span className="w-14 shrink-0 text-xs text-ink-subtle tabular-nums">
-                        {o.allDay ? '—' : timeFmt.format(o.start)}
-                      </span>
-                      <span className="truncate text-sm">{ev?.title}</span>
-                    </button>
-                  )
-                })}
-              </div>
-            ))}
+              )
+            })}
         </div>
       </div>
 
