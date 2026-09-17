@@ -100,6 +100,31 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
   }
 }
 
+/**
+ * The strip a swipe uncovers, in the direction it is heading.
+ *
+ * Exactly as wide as the row has moved, so it only ever occupies the space the
+ * row vacates — the row itself can stay translucent (a checked row is tinted
+ * with a semi-transparent wash) without this bleeding through it. The icon
+ * reaches full size and opacity precisely at the trigger distance, which is
+ * what tells the thumb it can let go.
+ */
+function SwipeHint({ dx }: { dx: number }) {
+  const archive = dx > 0
+  const progress = Math.min(1, Math.abs(dx) / SWIPE_TRIGGER_PX)
+  return (
+    <span
+      aria-hidden
+      style={{ width: Math.abs(dx) }}
+      className={`absolute inset-y-0 flex items-center justify-center overflow-hidden text-canvas ${archive ? 'left-0 bg-honey' : 'right-0 bg-danger'}`}
+    >
+      <span style={{ opacity: 0.4 + progress * 0.6, transform: `scale(${0.6 + progress * 0.4})` }}>
+        <Icon name={archive ? 'archive' : 'trash'} size={18} />
+      </span>
+    </span>
+  )
+}
+
 function QuickAction({
   icon,
   label,
@@ -195,160 +220,163 @@ function Row({
   const { dx, handlers } = useSwipe(doArchive, doDelete)
 
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={onOpen}
-      onKeyDown={(e) => e.key === 'Enter' && onOpen()}
-      data-selected={selected || undefined}
-      data-checked={checked || undefined}
-      /*
-       * Dragging a row that is part of the selection takes the whole
-       * selection: the row is standing in for it, and moving one message out
-       * of a marked group is never what the gesture means. Otherwise it takes
-       * the row's own `ids`, which for a conversation is this folder's share
-       * of it — the same scope its archive and delete already use.
-       */
-      draggable
-      onDragStart={(e) =>
-        setMailDrag(
-          e,
-          { mailboxId, ids: checked ? selection : ids },
-          checked && selection.length > 1
-            ? `${selection.length} ${t('bulk.selected')}`
-            : email.subject || t('mail.noSubject'),
-        )
-      }
-      onDragEnd={clearDragState}
-      onContextMenu={suppressContextMenu}
-      {...handlers}
-      style={dx ? { transform: `translateX(${dx}px)` } : undefined}
-      className={`group relative mb-1 flex w-full cursor-pointer gap-3 rounded-control px-3 py-3.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash ${draggableTouchClass}`}
-    >
-      {/* The avatar doubles as the selection checkbox, but only reacts to the
+    <div className="relative mb-1 overflow-hidden rounded-control">
+      {dx !== 0 && <SwipeHint dx={dx} />}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={(e) => e.key === 'Enter' && onOpen()}
+        data-selected={selected || undefined}
+        data-checked={checked || undefined}
+        /*
+         * Dragging a row that is part of the selection takes the whole
+         * selection: the row is standing in for it, and moving one message out
+         * of a marked group is never what the gesture means. Otherwise it takes
+         * the row's own `ids`, which for a conversation is this folder's share
+         * of it — the same scope its archive and delete already use.
+         */
+        draggable
+        onDragStart={(e) =>
+          setMailDrag(
+            e,
+            { mailboxId, ids: checked ? selection : ids },
+            checked && selection.length > 1
+              ? `${selection.length} ${t('bulk.selected')}`
+              : email.subject || t('mail.noSubject'),
+          )
+        }
+        onDragEnd={clearDragState}
+        onContextMenu={suppressContextMenu}
+        {...handlers}
+        style={dx ? { transform: `translateX(${dx}px)` } : undefined}
+        className={`group relative flex w-full cursor-pointer gap-3 rounded-control px-3 py-3.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash ${draggableTouchClass}`}
+      >
+        {/* The avatar doubles as the selection checkbox, but only reacts to the
           pointer being on the avatar itself — hovering anywhere in the row used
           to blank it out, which read as the sender icon disappearing. Desktop
           only, as with the quick actions; touch has no hover to reveal it. */}
-      <span className="shrink-0 pt-0.5">
-        {/* Exactly avatar-sized, so the overlay covers it edge to edge. The
+        <span className="shrink-0 pt-0.5">
+          {/* Exactly avatar-sized, so the overlay covers it edge to edge. The
             padding above must not sit on this box or inset-0 is offset by it. */}
-        <span className="relative block h-9 w-9">
-          <span className={checked ? 'invisible' : undefined}>
-            <Avatar
-              name={sender?.name ?? sender?.email ?? '?'}
-              email={sender?.email ?? '?'}
-              size={36}
-            />
-          </span>
-          <button
-            type="button"
-            role="checkbox"
-            aria-checked={checked}
-            aria-label={t('bulk.select')}
-            onClick={(e) => {
-              e.stopPropagation()
-              onToggleSelect(e.shiftKey)
-            }}
-            className={`absolute inset-0 items-center justify-center rounded-full transition-opacity ${
-              checked
-                ? 'flex bg-accent text-accent-ink'
-                : 'hidden bg-surface-2 text-ink-muted opacity-0 ring-1 ring-line ring-inset hover:opacity-100 lg:flex'
-            }`}
-          >
-            <Icon name="check" size={18} />
-          </button>
-          {unread && !checked && (
-            <span className="absolute -top-0.5 -left-0.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-surface" />
-          )}
-        </span>
-      </span>
-
-      <span className="min-w-0 flex-1">
-        {/* Quick actions: desktop hover only (mobile has swipe gestures) */}
-        <span className="absolute top-1.5 right-2 z-10 hidden items-center rounded-control bg-raised p-0.5 shadow-raised ring-1 ring-line group-hover:lg:flex">
-          <QuickAction
-            icon={unread ? 'mail' : 'mailUnread'}
-            label={unread ? t('mail.markRead') : t('mail.markUnread')}
-            onClick={() => void bulkSetKeyword(accountId, ids, '$seen', unread)}
-          />
-          <QuickAction
-            icon="flag"
-            label={flagged ? t('mail.unflag') : t('mail.flag')}
-            active={flagged}
-            onClick={() => void bulkSetKeyword(accountId, ids, '$flagged', !flagged)}
-          />
-          {inJunk && (
-            <QuickAction
-              icon="inbox"
-              label={t('mail.notSpam')}
-              onClick={() =>
-                void bulkNotSpam(accountId, ids).then((undo) =>
-                  showSnackbar(
-                    undo
-                      ? {
-                          message: t('mail.movedToInbox'),
-                          actionLabel: t('mail.undo'),
-                          action: () => void undo(),
-                        }
-                      : { message: t('mail.notSpamFailed') },
-                  ),
-                )
-              }
-            />
-          )}
-          <QuickAction
-            icon="archive"
-            label={actionLabel('mail.archive', 'mail.archiveMessage', 'mail.archiveThread')}
-            onClick={doArchive}
-          />
-          <QuickAction
-            icon="trash"
-            label={actionLabel('mail.delete', 'mail.deleteMessage', 'mail.deleteThread')}
-            onClick={doDelete}
-          />
-        </span>
-
-        <span className="flex items-baseline justify-between gap-3">
-          <span className="flex min-w-0 items-baseline gap-1.5">
-            <span
-              className={`min-w-0 truncate text-[13px] ${unread ? 'font-semibold text-ink' : 'font-medium text-ink'}`}
-            >
-              {senderLabel(item.people)}
+          <span className="relative block h-9 w-9">
+            <span className={checked ? 'invisible' : undefined}>
+              <Avatar
+                name={sender?.name ?? sender?.email ?? '?'}
+                email={sender?.email ?? '?'}
+                size={36}
+              />
             </span>
-            {item.count > 1 && (
-              <span
-                // Spelled out for a screen reader: "3" on its own beside a
-                // list of names says nothing about what is being counted.
-                aria-label={`${item.count} ${t('mail.messagesCount')}`}
-                className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted"
-              >
-                {item.count}
-              </span>
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={checked}
+              aria-label={t('bulk.select')}
+              onClick={(e) => {
+                e.stopPropagation()
+                onToggleSelect(e.shiftKey)
+              }}
+              className={`absolute inset-0 items-center justify-center rounded-full transition-opacity ${
+                checked
+                  ? 'flex bg-accent text-accent-ink'
+                  : 'hidden bg-surface-2 text-ink-muted opacity-0 ring-1 ring-line ring-inset hover:opacity-100 lg:flex'
+              }`}
+            >
+              <Icon name="check" size={18} />
+            </button>
+            {unread && !checked && (
+              <span className="absolute -top-0.5 -left-0.5 h-2.5 w-2.5 rounded-full bg-accent ring-2 ring-surface" />
             )}
           </span>
-          <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-subtle group-hover:lg:invisible">
-            {flagged && <Icon name="flag" size={11} className="text-honey" />}
-            {item.hasAttachment && <Icon name="paperclip" size={11} />}
-            {formatListDate(email.receivedAt)}
+        </span>
+
+        <span className="min-w-0 flex-1">
+          {/* Quick actions: desktop hover only (mobile has swipe gestures) */}
+          <span className="absolute top-1.5 right-2 z-10 hidden items-center rounded-control bg-raised p-0.5 shadow-raised ring-1 ring-line group-hover:lg:flex">
+            <QuickAction
+              icon={unread ? 'mail' : 'mailUnread'}
+              label={unread ? t('mail.markRead') : t('mail.markUnread')}
+              onClick={() => void bulkSetKeyword(accountId, ids, '$seen', unread)}
+            />
+            <QuickAction
+              icon="flag"
+              label={flagged ? t('mail.unflag') : t('mail.flag')}
+              active={flagged}
+              onClick={() => void bulkSetKeyword(accountId, ids, '$flagged', !flagged)}
+            />
+            {inJunk && (
+              <QuickAction
+                icon="inbox"
+                label={t('mail.notSpam')}
+                onClick={() =>
+                  void bulkNotSpam(accountId, ids).then((undo) =>
+                    showSnackbar(
+                      undo
+                        ? {
+                            message: t('mail.movedToInbox'),
+                            actionLabel: t('mail.undo'),
+                            action: () => void undo(),
+                          }
+                        : { message: t('mail.notSpamFailed') },
+                    ),
+                  )
+                }
+              />
+            )}
+            <QuickAction
+              icon="archive"
+              label={actionLabel('mail.archive', 'mail.archiveMessage', 'mail.archiveThread')}
+              onClick={doArchive}
+            />
+            <QuickAction
+              icon="trash"
+              label={actionLabel('mail.delete', 'mail.deleteMessage', 'mail.deleteThread')}
+              onClick={doDelete}
+            />
           </span>
-        </span>
-        <span
-          data-testid="thread-subject"
-          className={`block truncate text-[13px] ${unread ? 'font-medium text-ink' : 'text-ink-muted'}`}
-        >
-          {email.subject || t('mail.noSubject')}
-        </span>
-        {snippet?.preview ? (
+
+          <span className="flex items-baseline justify-between gap-3">
+            <span className="flex min-w-0 items-baseline gap-1.5">
+              <span
+                className={`min-w-0 truncate text-[13px] ${unread ? 'font-semibold text-ink' : 'font-medium text-ink'}`}
+              >
+                {senderLabel(item.people)}
+              </span>
+              {item.count > 1 && (
+                <span
+                  // Spelled out for a screen reader: "3" on its own beside a
+                  // list of names says nothing about what is being counted.
+                  aria-label={`${item.count} ${t('mail.messagesCount')}`}
+                  className="shrink-0 rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted"
+                >
+                  {item.count}
+                </span>
+              )}
+            </span>
+            <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-subtle group-hover:lg:invisible">
+              {flagged && <Icon name="flag" size={11} className="text-honey" />}
+              {item.hasAttachment && <Icon name="paperclip" size={11} />}
+              {formatListDate(email.receivedAt)}
+            </span>
+          </span>
           <span
-            className="block truncate text-xs text-ink-subtle"
-            dangerouslySetInnerHTML={{ __html: snippetHtml(cleanPreview(snippet.preview)) }}
-          />
-        ) : (
-          <span className="block truncate text-xs text-ink-subtle">
-            {cleanPreview(email.preview)}
+            data-testid="thread-subject"
+            className={`block truncate text-[13px] ${unread ? 'font-medium text-ink' : 'text-ink-muted'}`}
+          >
+            {email.subject || t('mail.noSubject')}
           </span>
-        )}
-      </span>
+          {snippet?.preview ? (
+            <span
+              className="block truncate text-xs text-ink-subtle"
+              dangerouslySetInnerHTML={{ __html: snippetHtml(cleanPreview(snippet.preview)) }}
+            />
+          ) : (
+            <span className="block truncate text-xs text-ink-subtle">
+              {cleanPreview(email.preview)}
+            </span>
+          )}
+        </span>
+      </div>
     </div>
   )
 }
