@@ -88,6 +88,7 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
   const [dx, setDx] = useState(0)
   const start = useRef<{ x: number; y: number } | null>(null)
   const [trigger, setTrigger] = useState(SWIPE_TRIGGER_MIN_PX)
+  const wasArmed = useRef(false)
 
   return {
     dx,
@@ -106,12 +107,22 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
         if (!start.current || !touch) return
         const deltaX = touch.clientX - start.current.x
         const deltaY = touch.clientY - start.current.y
-        if (Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) setDx(deltaX)
+        if (Math.abs(deltaX) <= 12 || Math.abs(deltaX) <= Math.abs(deltaY) * 1.5) return
+        setDx(deltaX)
+        // A tap on crossing the line, so the thumb is told as well as the eye —
+        // the finger is usually covering the row it is dragging. Android only
+        // in practice; iOS Safari has no Vibration API and simply skips it.
+        const armed = Math.abs(deltaX) >= trigger
+        if (armed !== wasArmed.current) {
+          wasArmed.current = armed
+          if (armed) navigator.vibrate?.(10)
+        }
       },
       onTouchEnd: () => {
         if (dx > trigger) onArchive()
         else if (dx < -trigger) onDelete()
         setDx(0)
+        wasArmed.current = false
         start.current = null
       },
     },
@@ -123,21 +134,43 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
  *
  * Exactly as wide as the row has moved, so it only ever occupies the space the
  * row vacates — the row itself can stay translucent (a checked row is tinted
- * with a semi-transparent wash) without this bleeding through it. The icon
- * reaches full size and opacity precisely at the trigger distance, which is
- * what tells the thumb it can let go.
+ * with a semi-transparent wash) without this bleeding through it.
+ *
+ * Crossing the trigger distance is a state, not a gradient: up to it the strip
+ * is only a tint and the icon grows, at it the colour goes solid and the
+ * action names itself. Letting go is irreversible enough (and the row is under
+ * the thumb) that "will this fire?" should not be a judgement of shade.
  */
 function SwipeHint({ dx, progress }: { dx: number; progress: number }) {
   const archive = dx > 0
+  const armed = progress >= 1
+  const tone = archive
+    ? armed
+      ? 'left-0 bg-honey text-canvas'
+      : 'left-0 bg-honey/20 text-honey'
+    : armed
+      ? 'right-0 bg-danger text-canvas'
+      : 'right-0 bg-danger/20 text-danger'
   return (
     <span
       aria-hidden
       style={{ width: Math.abs(dx) }}
-      className={`absolute inset-y-0 flex items-center justify-center overflow-hidden text-canvas ${archive ? 'left-0 bg-honey' : 'right-0 bg-danger'}`}
+      className={`absolute inset-y-0 flex items-center justify-center gap-2 overflow-hidden transition-colors duration-150 ${tone}`}
     >
-      <span style={{ opacity: 0.4 + progress * 0.6, transform: `scale(${0.6 + progress * 0.4})` }}>
+      <span
+        className="transition-transform duration-150"
+        style={{
+          opacity: 0.4 + progress * 0.6,
+          transform: `scale(${armed ? 1.15 : 0.6 + progress * 0.4})`,
+        }}
+      >
         <Icon name={archive ? 'archive' : 'trash'} size={18} />
       </span>
+      {armed && (
+        <span className="text-xs font-semibold whitespace-nowrap">
+          {t(archive ? 'mail.archive' : 'mail.delete')}
+        </span>
+      )}
     </span>
   )
 }
