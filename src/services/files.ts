@@ -1,4 +1,5 @@
 import type { FileNode } from '../domain/file'
+import { archiveEntries, writeArchive } from '../features/files/archive'
 import { deepestFirst, withDescendants } from '../features/files/tree'
 import type { FilesProvider, SetFailure } from '../providers/types'
 import { connectionFor } from '../sync/connections'
@@ -137,4 +138,27 @@ export async function deleteNodes(accountId: string, ids: string[]): Promise<str
 export async function downloadNode(accountId: string, node: FileNode): Promise<Blob | null> {
   const files = await provider(accountId)
   return files ? files.readFile(node) : null
+}
+
+/**
+ * Pack a selection — files, folders, or both — into one zip.
+ *
+ * The tree comes from the server rather than the local mirror, for the same
+ * reason the recursive delete does: a stale copy would miss exactly the child
+ * that matters, and here that means quietly leaving a file out of an archive
+ * somebody is about to keep.
+ *
+ * Null with no error means there was nothing to pack — an empty selection, or
+ * one holding only nodes with no content.
+ */
+export async function packArchive(
+  accountId: string,
+  ids: string[],
+): Promise<{ blob: Blob | null; error: string | null }> {
+  const files = await provider(accountId)
+  if (!files) return { blob: null, error: 'noProvider' }
+  const all = (await files.syncNodes()).created
+  const entries = archiveEntries(all, ids)
+  if (!entries.length) return { blob: null, error: null }
+  return { blob: await writeArchive(entries, (node) => files.readFile(node)), error: null }
 }

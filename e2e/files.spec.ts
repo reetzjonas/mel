@@ -1,4 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import { strFromU8, unzipSync } from 'fflate'
 
 // Desktop-only (state-mutating, see playwright.config.ts).
 async function login(page: Page) {
@@ -61,6 +63,68 @@ test('select several items, move them into a folder, then delete them together',
 
   // Clean up the folder itself.
   await page.getByRole('link', { name: 'Files' }).last().click()
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: box })
+    .getByRole('button', { name: /^Delete / })
+    .click()
+  await expect(page.getByRole('button', { name: box, exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})
+
+test('download a folder and a file beside it as one zip', async ({ page }) => {
+  const box = `zip-${Date.now() % 100000}`
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+
+  await page.getByRole('button', { name: 'New folder' }).click()
+  await page.getByRole('textbox').fill(box)
+  await page.getByRole('button', { name: 'New folder' }).last().click()
+  await page.getByRole('button', { name: box, exact: true }).click()
+  // Wait for the folder's own listing: an upload started before the route has
+  // moved is an upload into whatever folder is still open, which is the top
+  // level — and the file then lands beside the folder rather than inside it.
+  await expect(page.getByText('This folder is empty')).toBeVisible({ timeout: 10_000 })
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'inside.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('in the folder'),
+  })
+  await expect(page.getByRole('button', { name: 'inside.txt', exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  await page.getByRole('link', { name: 'Files' }).last().click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'beside.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('next to it'),
+  })
+  await expect(page.getByRole('button', { name: 'beside.txt', exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  // A folder and a file together: the folder has to be walked, and a browser
+  // can neither download one nor take two files in a single save.
+  await page.getByRole('checkbox', { name: `Select ${box}` }).click()
+  await page.getByRole('checkbox', { name: 'Select beside.txt' }).click()
+  const started = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Download' }).click()
+  const download = await started
+
+  expect(download.suggestedFilename()).toBe('Files.zip')
+  const zip = unzipSync(readFileSync((await download.path())!))
+  expect(Object.keys(zip).sort()).toEqual([`${box}/inside.txt`, 'beside.txt'].sort())
+  expect(strFromU8(zip[`${box}/inside.txt`]!)).toBe('in the folder')
+
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: 'beside.txt' })
+    .getByRole('button', { name: /^Delete / })
+    .click()
   await page
     .getByRole('listitem')
     .filter({ hasText: box })

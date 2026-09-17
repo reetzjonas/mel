@@ -129,6 +129,42 @@ bounds differ. The one that matters is the image — `max-h-full object-contain`
 so a tall image is fitted to the window instead of running off the bottom of
 it, which is the whole point of asking for a bigger view.
 
+## Downloading more than one thing
+
+A browser saves one file at a time and a folder not at all, so the selection
+toolbar's **Download** packs whatever is ticked into a single zip: files as
+they are, folders walked to the leaves. Single-file download stays where it
+was, in the preview pane — that case needs no archive and no library.
+
+The tree for the walk comes from the server (`FileNode/query` + `/get`), not
+the local mirror, for the same reason the recursive delete does: a stale copy
+misses exactly the child that matters, and here that means quietly leaving a
+file out of an archive somebody is about to keep.
+
+`archive.ts` splits into the path maths and the zip writing, because only the
+first needs testing against awkward trees and only the second needs the
+dependency. Three decisions in there:
+
+**An empty folder gets an entry of its own** (`name/`), since nothing else can
+carry it — a zip without it is a zip where the folder never existed. A symlink
+gets none: the target is a property mel does not read (#77), so writing it
+would claim the content was empty rather than elsewhere.
+
+**A file that cannot be read is written empty rather than dropped.** Half an
+archive that says so beats a whole one that quietly lost a file.
+
+**Compression only where it pays.** Deflate runs on the main thread, so it is
+spent on text and skipped for a JPEG or a PDF, which are already compressed and
+would cost a pause for a percent. fflate's async path would move the work off
+the thread, but it builds a Worker from a blob URL — a dependency on a CSP that
+allows that, for a saving nobody would notice.
+
+`fflate` is the one new dependency (~11 kB as built, its own chunk) and it is
+behind `await import(...)`, so it is fetched the first time somebody downloads
+a selection and never on the path into the app. It is also what the e2e test
+reads the downloaded file back with: the assertion opens the zip and checks the
+paths inside it, rather than trusting a `.zip` suffix.
+
 ## The executable bit, and the two flags next to it
 
 `executable` is read into the domain object and shown as a checkbox in the

@@ -44,9 +44,10 @@ Files is the fourth app, where the server offers JMAP FileNode (a draft
 extension; the tab is hidden otherwise): folder browsing with breadcrumbs,
 upload by button or drop, create folder, rename, move (dialog, drag onto a
 folder, or drag onto a breadcrumb), delete (recursive), multi-select (Select toggle,
-shift-click for a range) for bulk move/delete, and a preview for images, text
-and PDF with a full-window view (a PDF is unreadable at panel width).
-Shift-click range selection works in the mail list too. See `docs/notes/filenode.md`.
+shift-click for a range) for bulk move/delete/download (a selection or a whole
+folder comes down as one zip, via fflate behind a dynamic import), and a
+preview for images, text and PDF with a full-window view (a PDF is unreadable
+at panel width). Shift-click range selection works in the mail list too. See `docs/notes/filenode.md`.
 
 Server-side filter rules (Sieve, RFC 9661) are a section in Settings → Mail
 where the server offers the capability: a guided rule form for rules mel wrote

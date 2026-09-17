@@ -4,7 +4,15 @@ import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
-import { createFolder, deleteNodes, moveNodes, renameNode, uploadFiles } from '../../services/files'
+import { saveBlob } from '../../lib/saveBlob'
+import {
+  createFolder,
+  deleteNodes,
+  moveNodes,
+  packArchive,
+  renameNode,
+  uploadFiles,
+} from '../../services/files'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
@@ -18,6 +26,7 @@ import {
   setFileNodeDrag,
   suppressContextMenu,
 } from '../mail/dragAndDrop'
+import { archiveName } from './archive'
 import { FilePreview } from './FilePreview'
 import { useAllNodes, useFilePath, useFolderChildren } from './hooks'
 import { moveTargets } from './tree'
@@ -121,6 +130,28 @@ export function FileBrowser({
     await run(() => moveNodes(accountId, ids, parentId))
   }
 
+  /**
+   * Download the selection as one zip.
+   *
+   * Always an archive, even for a single file: what is selected can be a
+   * folder, and six files would otherwise be six separate downloads and six
+   * prompts. Single-file download stays where it belongs, in the preview pane.
+   */
+  const downloadChecked = async () => {
+    const ids = [...checked]
+    const picked = (children ?? []).filter((n) => checked.has(n.id))
+    setBusy(true)
+    try {
+      const { blob, error } = await packArchive(accountId, ids)
+      if (error) report(error)
+      else if (!blob) report(t('files.download.nothing'))
+      else saveBlob(blob, archiveName(picked, trail?.at(-1)?.name ?? t('files.root')))
+    } finally {
+      setBusy(false)
+    }
+    clearChecked()
+  }
+
   const removeChecked = () => {
     if (!window.confirm(t('files.delete.selection'))) return
     const ids = [...checked]
@@ -192,6 +223,14 @@ export function FileBrowser({
                 {checked.size} {t('bulk.selected')}
               </span>
               <div className="ml-auto flex items-center gap-1.5">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void downloadChecked()}
+                  className={secondaryButtonClass}
+                >
+                  {t('files.download')}
+                </button>
                 <button
                   type="button"
                   disabled={busy}

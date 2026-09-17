@@ -3,6 +3,7 @@ import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
+import { saveBlob } from '../../lib/saveBlob'
 import { canShareFiles, shareFile } from '../../lib/webShare'
 import { downloadNode, setExecutable as writeExecutable } from '../../services/files'
 import { Icon } from '../../ui/Icon'
@@ -92,13 +93,7 @@ export function FilePreview({
 
   const save = async () => {
     const blob = await downloadNode(accountId, node)
-    if (!blob) return
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = node.name
-    a.click()
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    if (blob) saveBlob(blob, node.name)
   }
 
   // Falls back to saving when the platform turns this particular file down,
