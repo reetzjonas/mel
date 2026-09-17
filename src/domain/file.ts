@@ -22,6 +22,14 @@ export interface FileNode {
   type: string | null
   /** Size of a file in bytes, null for a directory. */
   size: number | null
+  /**
+   * Whether the file may be run, for a store that is also mounted somewhere.
+   *
+   * Meaningless inside a browser — nothing here executes anything — but the
+   * bit survives a round trip through mel rather than being quietly dropped
+   * when the same tree is a folder on a machine as well.
+   */
+  executable: boolean
   /** ISO 8601 UTC. */
   created: string
   modified: string

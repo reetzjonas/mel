@@ -158,6 +158,7 @@ export interface NewFile {
 export interface NodeEdit {
   name?: string
   parentId?: string | null
+  executable?: boolean
 }
 
 /**

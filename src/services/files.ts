@@ -46,6 +46,21 @@ export function renameNode(accountId: string, id: string, name: string): Promise
 }
 
 /**
+ * Set or clear the executable bit.
+ *
+ * Nothing in a browser runs a file, so this exists for the other end: a store
+ * that is also a mounted folder somewhere, where a script that arrived without
+ * the bit cannot be run until someone sets it.
+ */
+export function setExecutable(
+  accountId: string,
+  id: string,
+  executable: boolean,
+): Promise<string | null> {
+  return write(accountId, (files) => files.editNode(id, { executable }))
+}
+
+/**
  * Re-parent nodes; `null` moves them to the top level.
  *
  * One request per node — there is no batched re-parent — and the first

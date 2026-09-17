@@ -1,8 +1,8 @@
 import type { FileNode, FileNodeType } from '../../../domain/file'
 
 // FileNode objects as served by draft-ietf-jmap-filenode. Only what we use;
-// the spec also carries target, accessed, executable, isSubscribed, myRights,
-// shareWith and role.
+// the spec also carries target, accessed, isSubscribed, myRights, shareWith
+// and role — see filenode.md for why the first three stay out.
 
 export interface JmapFileNode {
   id: string
@@ -12,6 +12,7 @@ export interface JmapFileNode {
   blobId?: string | null
   type?: string | null
   size?: number | null
+  executable?: boolean | null
   created?: string | null
   modified?: string | null
 }
@@ -39,6 +40,7 @@ export function toFileNode(n: JmapFileNode): FileNode {
     blobId: n.blobId ?? null,
     type: n.type ?? null,
     size: typeof n.size === 'number' ? n.size : null,
+    executable: n.executable === true,
     created,
     // The spec lets a client leave modified unset; fall back to created so
     // sorting by it never has to deal with a hole.

@@ -129,6 +129,41 @@ bounds differ. The one that matters is the image — `max-h-full object-contain`
 so a tall image is fitted to the window instead of running off the bottom of
 it, which is the whole point of asking for a bigger view.
 
+## The executable bit, and the two flags next to it
+
+`executable` is read into the domain object and shown as a checkbox in the
+preview pane, the one place only files reach (clicking a folder navigates into
+it). Nothing in a browser runs anything, so this is for the other end of the
+store — the same tree mounted as a folder on a machine, where the bit is the
+difference between a script and a text file. Stalwart takes it in a
+`FileNode/set` update like any other property.
+
+The tick flips before the write finishes and is put back if the server refuses,
+because a round trip here is a request *plus* a full tree sync; a checkbox that
+sits still that long reads as broken. It is state beside the synced value
+rather than a lone `useState`, so the pane follows the node when the listing
+changes underneath — see the two-field state in `FilePreview`.
+
+The e2e assertion for it reloads the page and reopens the file: an optimistic
+tick proves nothing on its own, and a fresh page has nothing to go on but what
+the server hands back. Stashing the write turns that assertion red, which is
+how it was checked.
+
+The other two properties from the same issue (#78) are deliberately **not**
+surfaced, both for reasons found by asking the server rather than by reading
+the draft:
+
+**`accessed` is an atime, and it ticks on the read itself.** Two
+`FileNode/get` calls two seconds apart come back with two different values and
+the *same* state string. Whatever it is stored as, a client can never display
+anything but "just now", and keeping it would rewrite the row on every sync for
+a value that carries no information.
+
+**`isSubscribed` is read-only here.** Stalwart reports it as `true` on every
+node and refuses to change it: `invalidProperties`, "Field could not be set."
+A toggle would be a control that does nothing, and hiding nodes on a flag that
+is always true would be a filter nobody can turn off.
+
 ## What the server does that the spec does not say
 
 Each of these cost a round of probing; none is guessable from the draft.

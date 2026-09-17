@@ -52,6 +52,8 @@ const MODEL_VERSION: Record<string, number> = {
   // 2: birthday, photo, online services and tags (RFC 9553 fields added after
   // the first contacts release).
   ContactCard: 2,
+  // 2: executable, which nothing asked the server for until now.
+  FileNode: 2,
 }
 
 function modelVersion(collection: string): number {

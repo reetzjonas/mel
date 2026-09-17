@@ -12,6 +12,7 @@ describe('toFileNode', () => {
         blobId: 'b1',
         type: 'text/plain',
         size: 12,
+        executable: true,
         created: '2026-01-01T00:00:00Z',
         modified: '2026-02-02T00:00:00Z',
       }),
@@ -23,9 +24,17 @@ describe('toFileNode', () => {
       blobId: 'b1',
       type: 'text/plain',
       size: 12,
+      executable: true,
       created: '2026-01-01T00:00:00Z',
       modified: '2026-02-02T00:00:00Z',
     })
+  })
+
+  it('reads a node with no executable bit as not executable', () => {
+    // A server that leaves the property out is not saying "run me"; the domain
+    // object is a plain boolean so nothing downstream has to handle three
+    // states for a permission flag.
+    expect(toFileNode({ id: 'f1' }).executable).toBe(false)
   })
 
   it('reads a directory as having no content', () => {

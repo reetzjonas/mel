@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
+import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
 import { canShareFiles, shareFile } from '../../lib/webShare'
-import { downloadNode } from '../../services/files'
+import { downloadNode, setExecutable as writeExecutable } from '../../services/files'
 import { Icon } from '../../ui/Icon'
 import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
 
@@ -29,6 +30,19 @@ export function FilePreview({
 }) {
   const [content, setContent] = useState<Content>({ kind: 'loading' })
   const [expanded, setExpanded] = useState(false)
+  /*
+   * The executable bit as shown, beside the value the listing last had.
+   *
+   * Two fields rather than one, because the tick has to flip before the write
+   * finishes — a round trip here is a request plus a tree sync, and a checkbox
+   * that sits still for that long reads as broken — while still following the
+   * node when the synced value changes under it, whoever changed it.
+   */
+  const [exec, setExec] = useState({ shown: node.executable, synced: node.executable })
+  if (exec.synced !== node.executable) {
+    setExec({ shown: node.executable, synced: node.executable })
+  }
+  const { showSnackbar } = useUi()
   const type = node.type ?? ''
 
   // No reset of `content` in here: the pane is keyed on the node, so switching
@@ -95,6 +109,17 @@ export function FilePreview({
     if (!(await shareFile(blob, node.name))) await save()
   }
 
+  const toggleExecutable = async (next: boolean) => {
+    setExec((s) => ({ ...s, shown: next }))
+    const failure = await writeExecutable(accountId, node.id, next)
+    // A refused write puts the tick back where the server still has it, rather
+    // than leaving the pane claiming something that never happened.
+    if (failure) {
+      setExec((s) => ({ ...s, shown: s.synced }))
+      showSnackbar({ message: failure })
+    }
+  }
+
   // Only worth offering where there is something on screen to make bigger.
   const canExpand = content.kind === 'url' || content.kind === 'text'
 
@@ -134,7 +159,7 @@ export function FilePreview({
         {!expanded && <PreviewBody content={content} type={type} name={node.name} />}
       </div>
 
-      <div className="flex gap-2 border-t border-line p-3">
+      <div className="flex items-center gap-2 border-t border-line p-3">
         <button type="button" onClick={() => void save()} className={secondaryButtonClass}>
           {t('files.download')}
         </button>
@@ -142,6 +167,22 @@ export function FilePreview({
           <button type="button" onClick={() => void share()} className={secondaryButtonClass}>
             {t('files.share')}
           </button>
+        )}
+        {/* Nothing in a browser runs a file; this is for the same tree seen as
+            a folder on a machine, where the bit is the difference between a
+            script and a text file. */}
+        {node.nodeType === 'file' && (
+          <label
+            title={t('files.executable.hint')}
+            className="ml-auto flex items-center gap-1.5 text-xs text-ink-muted"
+          >
+            <input
+              type="checkbox"
+              checked={exec.shown}
+              onChange={(e) => void toggleExecutable(e.target.checked)}
+            />
+            {t('files.executable')}
+          </label>
         )}
       </div>
 

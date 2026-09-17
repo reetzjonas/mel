@@ -140,6 +140,14 @@ export function FileBrowser({
   /** Accept a node drop onto a folder, unless it is one of the nodes in flight. */
   const folderTakesDrop = (id: string) => !draggingRef.current.includes(id)
 
+  /*
+   * The previewed node as the listing currently has it, not as it was when it
+   * was clicked. The pane can change the node itself — the executable bit —
+   * and a snapshot taken on click would go on showing the old value after the
+   * write came back.
+   */
+  const previewLive = preview ? children?.find((n) => n.id === preview.id) : undefined
+
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <section
@@ -318,7 +326,7 @@ export function FileBrowser({
           <FilePreview
             key={preview.id}
             accountId={accountId}
-            node={preview}
+            node={previewLive ?? preview}
             onClose={() => setPreview(null)}
           />
         </aside>

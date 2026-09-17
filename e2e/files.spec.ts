@@ -277,6 +277,16 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
   await expect(full).toHaveCount(0)
   await expect(page.getByText('hello from mel')).toBeVisible()
 
+  // The executable bit is nothing a browser can act on, so the only proof it
+  // took is finding it again after a reload: the tick flips optimistically, and
+  // a fresh page has nothing to go on but what the server hands back.
+  const exec = page.getByRole('checkbox', { name: 'Executable' })
+  await expect(exec).not.toBeChecked()
+  await exec.check()
+  await page.reload()
+  await page.getByRole('button', { name: 'note.txt', exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: 'Executable' })).toBeChecked({ timeout: 15_000 })
+
   // Below lg the preview replaces the listing, so the row actions are only
   // reachable again once it is closed.
   await page.getByRole('button', { name: 'Back' }).click()
