@@ -2,6 +2,7 @@
 // App-shell service worker (injectManifest). Data lives in IndexedDB, never in SW
 // caches — authenticated JMAP responses must not be cached here.
 import { cleanupOutdatedCaches, precacheAndRoute } from 'workbox-precaching'
+import { showAppBadge } from './lib/appBadge'
 import { t } from './lib/i18n'
 import { mailNotificationFor } from './sw/mailNotification'
 
@@ -46,6 +47,13 @@ self.addEventListener('push', (event) => {
       (async () => {
         const clients = await self.clients.matchAll({ type: 'window' })
         if (clients.some((c) => c.visibilityState === 'visible')) return
+        /*
+         * A flag rather than a number: the push says only that mail changed,
+         * and the stored count is whatever the last sync saw, so any figure
+         * here would be a guess. The app replaces it with the real count the
+         * moment it is opened.
+         */
+        showAppBadge()
         // Naming the message is opt-in and costs a round trip, so the generic
         // body is both the default and the answer to anything going wrong.
         const detail =

@@ -2,6 +2,7 @@ import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
+import { useAppBadge } from '../features/mail/appBadge'
 import { useAccounts } from '../features/mail/hooks'
 import { SettingsDialog } from '../features/settings/SettingsDialog'
 import { StorageWarning } from '../features/settings/StorageQuota'
@@ -72,6 +73,7 @@ export function AppShell() {
   const account = accounts?.[0]
   const { compose } = useUi()
   const settings = useSettingsRoute()
+  useAppBadge(account?.id)
   const unlockVersion = useUi((s) => s.unlockVersion)
   const lockedIds = useLiveQuery(async () => {
     const rows = await db.accounts.toArray()

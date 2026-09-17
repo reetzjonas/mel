@@ -1,4 +1,5 @@
 import type { Account, Credentials } from '../domain/account'
+import { clearAppBadge } from '../lib/appBadge'
 import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { JmapError } from '../providers/jmap/client/transport'
 import { providerFor } from '../providers/registry'
@@ -110,6 +111,9 @@ export async function signOut(accountId: string): Promise<void> {
   dropConnection(accountId)
   await syncSettled(accountId)
   await removeAccount(accountId)
+  // The icon badge outlives the tab, so an unread count left behind would
+  // keep pointing at mail this device no longer has.
+  clearAppBadge()
 }
 
 /**
