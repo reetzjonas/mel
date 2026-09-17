@@ -313,8 +313,12 @@ export function TimeGrid({
                       } ${!color ? 'border-accent/30 bg-accent-wash text-accent' : ''}`}
                     >
                       <span className="font-medium">{ev?.title || '—'}</span>
+                      {/* Both ends, not just the start: the block's height is
+                          the only other clue to how long it runs, and reading
+                          a length off a rectangle is guesswork. */}
                       <span className="block opacity-80">
-                        {timeFmt.format(instantAt(d, shown.startMinutes))}
+                        {timeFmt.format(instantAt(d, shown.startMinutes))} –{' '}
+                        {timeFmt.format(instantAt(d, shown.endMinutes))}
                       </span>
                       {movable && (
                         <>
