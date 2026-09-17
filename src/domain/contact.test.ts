@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { contactSortKey, displayName, type Contact } from './contact'
+import { contactSortKey, displayName, storedContact, type Contact } from './contact'
 
 const contact = (over: Partial<Contact> = {}): Contact =>
   ({
@@ -63,5 +63,44 @@ describe('contactSortKey', () => {
     expect(contactSortKey(contact({ fullName: 'ada' }))).toBe(
       contactSortKey(contact({ fullName: 'ADA' })),
     )
+  })
+})
+
+describe('storedContact', () => {
+  /*
+   * A row written before a field existed does not have it, and nothing
+   * migrates it — the model grew handles, tags, a picture and a birthday
+   * after cards were already on disk. Reading one of those as a string or an
+   * array is what took the whole calendar down: it builds a birthday event
+   * out of every card, so one old row without `birthday` threw on `.trim()`
+   * and the screen went to the error boundary.
+   */
+  it('fills in what a card written by an older version has no key for', () => {
+    const old = { id: 'c1', addressBookIds: { ab: true }, fullName: 'Ada' } as unknown as Contact
+
+    const filled = storedContact(old)
+
+    expect(filled.birthday).toBe('')
+    expect(filled.photo).toBe('')
+    expect(filled.keywords).toEqual([])
+    expect(filled.onlineServices).toEqual([])
+    expect(filled.emails).toEqual([])
+    expect(displayName(filled)).toBe('Ada')
+  })
+
+  it('leaves everything the card does carry alone', () => {
+    const c = contact({
+      fullName: 'Ada',
+      birthday: '--12-10',
+      keywords: ['friend'],
+      emails: [{ label: null, value: 'ada@example.com' }],
+    })
+
+    expect(storedContact(c)).toMatchObject({
+      fullName: 'Ada',
+      birthday: '--12-10',
+      keywords: ['friend'],
+      emails: [{ label: null, value: 'ada@example.com' }],
+    })
   })
 })

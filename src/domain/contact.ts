@@ -71,6 +71,39 @@ export interface Contact {
   memberUids: string[]
 }
 
+/**
+ * A stored card, with whatever the model gained after it was written filled in.
+ *
+ * Rows are written by the version of mel that was installed at the time and
+ * are not migrated, so a card saved before handles, tags, a picture or a
+ * birthday existed simply has no such key. The first `.trim()` or `.map()`
+ * over one throws and takes the screen with it — which is what a missing
+ * `birthday` did to the whole calendar, since it builds birthday events out of
+ * every card. A later sync rewrites the row; this carries it until then.
+ */
+export function storedContact(stored: Contact): Contact {
+  return {
+    ...stored,
+    kind: stored.kind ?? 'individual',
+    fullName: stored.fullName ?? '',
+    given: stored.given ?? '',
+    surname: stored.surname ?? '',
+    nickname: stored.nickname ?? '',
+    organization: stored.organization ?? '',
+    jobTitle: stored.jobTitle ?? '',
+    emails: stored.emails ?? [],
+    phones: stored.phones ?? [],
+    addresses: stored.addresses ?? [],
+    urls: stored.urls ?? [],
+    onlineServices: stored.onlineServices ?? [],
+    keywords: stored.keywords ?? [],
+    photo: stored.photo ?? '',
+    birthday: stored.birthday ?? '',
+    note: stored.note ?? '',
+    memberUids: stored.memberUids ?? [],
+  }
+}
+
 export function displayName(c: Contact): string {
   return (
     c.fullName ||

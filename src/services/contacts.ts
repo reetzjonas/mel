@@ -1,4 +1,4 @@
-import { contactSortKey, type Contact } from '../domain/contact'
+import { contactSortKey, storedContact, type Contact } from '../domain/contact'
 import { db, type ContactRow } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { enqueue } from '../sync/outbox'
@@ -70,7 +70,7 @@ export async function suggestRecipients(accountId: string, input: string): Promi
   const rows = await db.contacts.where('accountId').equals(accountId).toArray()
   const out: Suggestion[] = []
   for (const row of rows) {
-    const c = openEnvelope(row.payload)
+    const c = storedContact(openEnvelope(row.payload))
     const name = [c.given, c.surname].filter(Boolean).join(' ') || c.fullName
     const hay = `${name} ${c.nickname} ${c.emails.map((e) => e.value).join(' ')}`.toLowerCase()
     if (!hay.includes(needle)) continue

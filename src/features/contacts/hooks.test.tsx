@@ -41,6 +41,31 @@ beforeEach(async () => {
 })
 
 describe('the contact list', () => {
+  it('fills in the fields a card written by an older version has no key for', async () => {
+    /*
+     * Nothing migrates stored cards, so one saved before birthdays existed
+     * has no such key. The calendar builds a birthday event out of every
+     * card it is handed, and reading the missing field threw — one old row
+     * took the whole calendar screen down.
+     */
+    await db.contacts.put({
+      accountId: ACC,
+      id: 'old',
+      addressBookIds: ['ab'],
+      sortKey: 'old',
+      payload: sealPlain({
+        id: 'old',
+        addressBookIds: { ab: true },
+        fullName: 'Ada',
+      } as unknown as Contact),
+    })
+
+    const { result } = renderHook(() => useContacts(ACC))
+
+    await waitFor(() => expect(result.current).toHaveLength(1))
+    expect(result.current![0]).toMatchObject({ birthday: '', photo: '', keywords: [], emails: [] })
+  })
+
   it('sorts by the name on screen, not by the stored key', async () => {
     /*
      * The sortKey column can predate the display-name ordering, and a card
