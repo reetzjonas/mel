@@ -2,6 +2,7 @@ import { Batch } from '../providers/jmap/client/request'
 import { createTransport } from '../providers/jmap/client/transport'
 import { fetchSession } from '../providers/jmap/client/session'
 import { Cap, type GetResponse, type SetResponse } from '../providers/jmap/client/types/core'
+import { db } from '../storage/db'
 import { connectionFor, storedAccount } from '../sync/connections'
 
 /**
@@ -35,8 +36,7 @@ async function transportFor(accountId: string) {
   const { account, credentials } = await storedAccount(accountId)
   const resolved = await fetchSession(account.sessionUrl, credentials)
   const vapid = resolved.session.capabilities[Cap.webpushVapid] as
-    | { applicationServerKey: string }
-    | undefined
+    { applicationServerKey: string } | undefined
   return {
     transport: createTransport(resolved.apiUrl, credentials),
     applicationServerKey: vapid?.applicationServerKey ?? null,
@@ -109,6 +109,26 @@ export async function enableWebPush(accountId: string): Promise<void> {
   await b2.send()
   const err = upd.result.notUpdated?.[id]
   if (err) throw new Error(err.description ?? err.type)
+}
+
+/**
+ * Whether push notifications may name the sender and subject.
+ *
+ * Off for an encrypted account whatever the stored flag says: the service
+ * worker would have to reach the account's credentials to fetch the message,
+ * and those sit behind the passphrase, which only the unlocked main thread
+ * holds. Reading it as "off" rather than trusting the flag keeps one answer
+ * for the UI and the service worker even if the two ever drift.
+ */
+export async function pushDetailsEnabled(accountId: string): Promise<boolean> {
+  const row = await db.accounts.get(accountId)
+  return Boolean(row && !row.encrypted && row.pushDetails)
+}
+
+export async function setPushDetails(accountId: string, on: boolean): Promise<void> {
+  const row = await db.accounts.get(accountId)
+  if (!row) return
+  await db.accounts.put({ ...row, pushDetails: on && !row.encrypted })
 }
 
 export async function disableWebPush(accountId: string): Promise<void> {

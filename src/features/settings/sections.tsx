@@ -19,6 +19,8 @@ import {
   disableWebPush,
   enableWebPush,
   isSubscribed,
+  pushDetailsEnabled,
+  setPushDetails,
   webPushSupported,
 } from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
@@ -190,6 +192,52 @@ export function VacationSetting({ accountId }: { accountId: string }) {
   )
 }
 
+/**
+ * Whether a push may name the sender and subject.
+ *
+ * Disabled rather than hidden for an encrypted account: the reason it cannot
+ * be had is worth reading, and a control that quietly vanishes when another
+ * tab is touched reads like a bug. Encryption is asked synchronously because
+ * the two settings sit on different tabs — turning it on over in Security and
+ * coming back here mounts this afresh, with the flag already cleared by
+ * enableEncryption().
+ */
+function PushDetailsSetting({ accountId }: { accountId: string }) {
+  const encrypted = isAccountEncrypted(accountId)
+  const [on, setOn] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    void pushDetailsEnabled(accountId).then(setOn)
+  }, [accountId])
+
+  if (on === null) return null
+  return (
+    <div className="space-y-1.5 border-t border-line pt-3">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={on}
+          disabled={encrypted}
+          onChange={(e) => {
+            const next = e.target.checked
+            setOn(next)
+            void setPushDetails(accountId, next)
+          }}
+        />
+        {t('push.details')}
+      </label>
+      <p className="text-sm text-ink-muted">
+        {encrypted
+          ? t('push.details.encrypted')
+          : on
+            ? t('push.details.on')
+            : t('push.details.off')}
+      </p>
+      {!encrypted && !on && <p className="text-xs text-ink-subtle">{t('push.details.hint')}</p>}
+    </div>
+  )
+}
+
 export function WebPushSetting({ accountId }: { accountId: string }) {
   const [state, setState] = useState<'loading' | 'unsupported' | 'off' | 'on' | 'busy'>('loading')
   const [error, setError] = useState<string | null>(null)
@@ -240,6 +288,7 @@ export function WebPushSetting({ accountId }: { accountId: string }) {
             ? t('push.disable')
             : t('push.enable')}
       </button>
+      <PushDetailsSetting accountId={accountId} />
       {error && <p className="text-sm text-danger">{error}</p>}
     </div>
   )

@@ -122,6 +122,18 @@ describe('turning encryption on', () => {
     expect((await db.accounts.get(ACC))!.encrypted).toBe(true)
   })
 
+  it('stops naming senders in push notifications', async () => {
+    // The service worker prepares those without the app running and so
+    // without the key; leaving the flag on would promise what cannot happen.
+    await seed(ACC)
+    const row = (await db.accounts.get(ACC))!
+    await db.accounts.put({ ...row, pushDetails: true })
+
+    await enableEncryption(ACC, PASS)
+
+    expect((await db.accounts.get(ACC))!.pushDetails).toBe(false)
+  })
+
   it('reports its progress, so a long migration is not a frozen screen', async () => {
     await seed(ACC)
     const seen: Array<[number, number]> = []

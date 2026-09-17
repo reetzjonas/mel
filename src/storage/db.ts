@@ -16,6 +16,15 @@ export interface AccountRow {
   id: string
   provider: string
   encrypted: boolean
+  /**
+   * Whether a push notification may name the sender and subject.
+   *
+   * A flag rather than payload, because the service worker is the only reader
+   * that matters and it has no Dexie, no middleware and — for an encrypted
+   * account — no key. Meaningful only while `encrypted` is false; enabling
+   * encryption clears it (services/encryption.ts).
+   */
+  pushDetails?: boolean
   payload: Envelope<{ account: Account; credentials: Credentials }>
 }
 

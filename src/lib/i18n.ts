@@ -591,6 +591,14 @@ const en = {
   'push.enabled': 'Push notifications are active',
   'push.unsupported': 'Not supported by this server or browser',
   'push.working': 'Setting up…',
+  'push.newMail': 'New mail',
+  'push.details': 'Name the sender and subject',
+  'push.details.hint':
+    'A push carries no content, so mel has to ask the server about the message before it can show anything about it — that costs a request and some battery on every notification.',
+  'push.details.on': 'Notifications name the sender and subject',
+  'push.details.off': 'Notifications only say that mail arrived',
+  'push.details.encrypted':
+    'Unavailable while this account is encrypted: notifications are prepared without the app running, and the key to your mail only exists while you are signed in.',
   'app.updateAvailable': 'Update available',
   'app.reload': 'Reload',
 } as const
@@ -1188,6 +1196,14 @@ const de: Partial<Record<MsgKey, string>> = {
   'push.enabled': 'Push-Benachrichtigungen sind aktiv',
   'push.unsupported': 'Von diesem Server oder Browser nicht unterstützt',
   'push.working': 'Richte ein…',
+  'push.newMail': 'Neue Nachricht',
+  'push.details': 'Absender und Betreff nennen',
+  'push.details.hint':
+    'Eine Push-Nachricht enthält keinen Inhalt, mel muss den Server also erst nach der Nachricht fragen — das kostet bei jeder Benachrichtigung eine Anfrage und etwas Akku.',
+  'push.details.on': 'Benachrichtigungen nennen Absender und Betreff',
+  'push.details.off': 'Benachrichtigungen melden nur, dass Post da ist',
+  'push.details.encrypted':
+    'Nicht möglich, solange dieses Konto verschlüsselt ist: Benachrichtigungen entstehen ohne laufende App, und der Schlüssel zu deiner Post existiert nur, solange du angemeldet bist.',
   'app.updateAvailable': 'Update verfügbar',
   'app.reload': 'Neu laden',
 }

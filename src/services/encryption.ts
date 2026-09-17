@@ -77,7 +77,10 @@ export async function enableEncryption(
   await initKeyring(accountId, passphrase)
   markAccountEncrypted(accountId, true)
   const row = await db.accounts.get(accountId)
-  if (row) await db.accounts.put({ ...row, encrypted: true })
+  // Detailed push notifications go with it: from here on the service worker
+  // cannot read the credentials it would need to fetch a message, so leaving
+  // the flag set would only promise something that silently never happens.
+  if (row) await db.accounts.put({ ...row, encrypted: true, pushDetails: false })
   await rewriteAccountRows(accountId, onProgress)
 }
 

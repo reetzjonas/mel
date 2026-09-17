@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Transport } from '../providers/jmap/client/transport'
 import type { Invocation, JmapRequest } from '../providers/jmap/client/types/core'
+import { db } from '../storage/db'
+import { sealPlain } from '../storage/envelope'
 
 /** What each method call is answered with; an array answers repeats in turn. */
 let answers: Record<string, unknown> = {}
@@ -53,7 +55,14 @@ vi.mock('../sync/connections', () => ({
   connectionFor: () => Promise.resolve({ capabilities: serverCapabilities }),
 }))
 
-const { disableWebPush, enableWebPush, isSubscribed, webPushSupported } = await import('./webPush')
+const {
+  disableWebPush,
+  enableWebPush,
+  isSubscribed,
+  pushDetailsEnabled,
+  setPushDetails,
+  webPushSupported,
+} = await import('./webPush')
 
 /*
  * Two bytes whose standard base64 is "+/8=" — both substituted characters and
@@ -306,5 +315,41 @@ describe('turning push off', () => {
     await expect(disableWebPush('acc')).rejects.toThrow('offline')
 
     expect(failing.unsubscribe).toHaveBeenCalled()
+  })
+})
+
+describe('naming the sender and subject in a notification', () => {
+  const seed = (encrypted: boolean) =>
+    db.accounts.put({
+      id: 'acc',
+      provider: 'jmap',
+      encrypted,
+      payload: sealPlain({ account: { id: 'acc' }, credentials: { secret: 'pw' } } as never),
+    })
+
+  beforeEach(() => db.accounts.clear())
+
+  it('is off until it is asked for', async () => {
+    await seed(false)
+
+    await expect(pushDetailsEnabled('acc')).resolves.toBe(false)
+  })
+
+  it('remembers being switched on', async () => {
+    await seed(false)
+
+    await setPushDetails('acc', true)
+
+    await expect(pushDetailsEnabled('acc')).resolves.toBe(true)
+  })
+
+  it('refuses to switch on for an encrypted account', async () => {
+    // The service worker has no key, so storing a yes here would only make
+    // the UI claim something the notification can never deliver.
+    await seed(true)
+
+    await setPushDetails('acc', true)
+
+    await expect(pushDetailsEnabled('acc')).resolves.toBe(false)
   })
 })
