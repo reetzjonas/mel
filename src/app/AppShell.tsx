@@ -1,5 +1,6 @@
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useEffect } from 'react'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAppBadge } from '../features/mail/appBadge'
@@ -14,6 +15,7 @@ import { Icon } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
+import { startScheduler } from '../sync/scheduler'
 import { Snackbar } from '../ui/Snackbar'
 import { visibleApps } from './apps'
 import { useTheme } from './theme'
@@ -79,6 +81,26 @@ export function AppShell() {
     const rows = await db.accounts.toArray()
     return rows.filter((r) => r.encrypted && !dekFor(r.id)).map((r) => r.id)
   }, [unlockVersion])
+
+  /*
+   * Live updates belong to the app, not to the mail screen.
+   *
+   * This used to start in the /mail route, so opening mel on a bookmark to
+   * /calendar or /contacts — or reloading while standing there — left the
+   * device with no sync at all: no polling, no SSE, nothing until someone
+   * happened to visit Mail. It hid behind `/` redirecting to /mail, which is
+   * how almost everyone arrives.
+   *
+   * Not while an account is still locked: a sync would write rows the crypto
+   * middleware has no key to seal, and every one of those writes throws.
+   * Depends on the id rather than the account object, so switching accounts
+   * restarts it but a changed label or capability list does not.
+   */
+  const accountId = account?.id
+  const locked = Boolean(lockedIds?.length)
+  useEffect(() => {
+    if (accountId && !locked) startScheduler(accountId)
+  }, [accountId, locked])
 
   if (lockedIds === undefined) return null
   if (lockedIds.length > 0) return <UnlockGate accountIds={lockedIds} />

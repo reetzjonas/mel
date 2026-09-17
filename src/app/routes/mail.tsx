@@ -16,7 +16,6 @@ import { PANEL_WIDTH_VAR, usePanelWidth } from '../../features/mail/panelWidths'
 import { useMailShortcuts } from '../../features/mail/shortcuts'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
-import { startScheduler } from '../../sync/scheduler'
 import { Icon } from '../../ui/Icon'
 import { useUi } from '../store'
 
@@ -37,13 +36,6 @@ function MailLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const sidebar = usePanelWidth('sidebar')
   const sidebarRef = useRef<HTMLElement | null>(null)
-
-  // Depends only on the id, not the account object: switching accounts should
-  // restart the scheduler, but other account field changes (label, caps)
-  // should not.
-  useEffect(() => {
-    if (accountId) startScheduler(accountId)
-  }, [accountId])
 
   /*
    * /mail without mailbox → jump to inbox once it is synced.

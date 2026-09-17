@@ -388,3 +388,90 @@ test('controls show a pointer, disabled ones do not', async ({ page }) => {
     await expect(control).toHaveCSS('cursor', 'pointer')
   }
 })
+
+/*
+ * Live updates used to start in the /mail route, so a bookmark straight to
+ * /calendar or /contacts — or a reload while standing there — left the device
+ * with no sync at all until someone happened to open Mail. It hid behind `/`
+ * redirecting to /mail, which is how almost everyone arrives.
+ */
+const BASE = 'http://localhost:8080'
+const AUTH =
+  'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
+const CORE = 'urn:ietf:params:jmap:core'
+const CALENDARS = 'urn:ietf:params:jmap:calendars'
+
+async function jmap(calls: Array<[string, Record<string, unknown>, string]>) {
+  const res = await fetch(`${BASE}/jmap/`, {
+    method: 'POST',
+    headers: { Authorization: AUTH, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ using: [CORE, CALENDARS], methodCalls: calls }),
+  })
+  if (!res.ok) throw new Error(`JMAP ${res.status} ${await res.text()}`)
+  return (await res.json()).methodResponses as Array<[string, Record<string, never>, string]>
+}
+
+/** Creates an event straight on the server, behind the app's back. */
+async function serverSideEvent(title: string) {
+  const session = await (
+    await fetch(`${BASE}/.well-known/jmap`, { headers: { Authorization: AUTH } })
+  ).json()
+  const accountId = Object.keys(session.accounts)[0]!
+  const [[, cals]] = await jmap([['Calendar/get', { accountId, ids: null }, 'c']])
+  const calendarId = (cals['list'] as unknown as Array<{ id: string }>)[0]!.id
+  const now = new Date()
+  const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    Math.min(28, now.getDate()),
+  ).padStart(2, '0')}T09:00:00`
+  const [[, set]] = await jmap([
+    [
+      'CalendarEvent/set',
+      {
+        accountId,
+        create: {
+          e0: {
+            '@type': 'Event',
+            calendarIds: { [calendarId]: true },
+            title,
+            start,
+            timeZone: 'Europe/Berlin',
+            duration: 'PT1H',
+          },
+        },
+      },
+      's',
+    ],
+  ])
+  if (!set['created']) throw new Error(`not created: ${JSON.stringify(set['notCreated'])}`)
+  return (set['created'] as unknown as Record<string, { id: string }>)['e0']!.id
+}
+
+async function destroyEvent(id: string) {
+  const session = await (
+    await fetch(`${BASE}/.well-known/jmap`, { headers: { Authorization: AUTH } })
+  ).json()
+  const accountId = Object.keys(session.accounts)[0]!
+  await jmap([['CalendarEvent/set', { accountId, destroy: [id] }, 's']])
+}
+
+test('the calendar keeps syncing without anyone visiting Mail', async ({ page }) => {
+  test.setTimeout(120_000)
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({ timeout: 25_000 })
+
+  // Land on the calendar the way a bookmark would, with no Mail screen in
+  // this page's life at all.
+  await page.goto('/calendar')
+  await expect(page.getByRole('button', { name: 'New event' })).toBeEnabled({ timeout: 20_000 })
+
+  const title = `Sched-${Date.now() % 100000}`
+  const id = await serverSideEvent(title)
+  try {
+    await expect(page.getByText(new RegExp(title)).first()).toBeVisible({ timeout: 45_000 })
+  } finally {
+    await destroyEvent(id)
+  }
+})
