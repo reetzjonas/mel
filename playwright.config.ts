@@ -64,6 +64,7 @@ export default defineConfig({
         '**/threads.spec.ts',
         '**/navigation.spec.ts',
         '**/compose.spec.ts',
+        '**/notes.spec.ts',
       ],
     },
   ],

@@ -20,6 +20,7 @@ import {
 import { sealPlain } from '../storage/envelope'
 import { toEmailRow } from '../storage/emailRow'
 import { connectionFor } from './connections'
+import { reconcileNotes } from './notes'
 import { setFullSyncProgress } from './progress'
 
 function mailboxRow(accountId: string, m: Mailbox): MailboxRow {
@@ -288,7 +289,10 @@ async function syncCalendarData(accountId: string, calendars: CalendarProvider) 
  */
 export async function syncFileTree(accountId: string): Promise<void> {
   const conn = await connectionFor(accountId)
-  if (conn.files) await syncFiles(accountId, conn.files)
+  if (!conn.files) return
+  await syncFiles(accountId, conn.files)
+  // Notes are files, so the tree is the only place a change to one shows up.
+  await reconcileNotes(accountId, conn.files)
 }
 
 function syncFiles(accountId: string, files: FilesProvider) {
@@ -330,7 +334,10 @@ export function syncAccount(accountId: string): Promise<void> {
       }
       if (conn.contacts) await syncContacts(accountId, conn.contacts)
       if (conn.calendars) await syncCalendarData(accountId, conn.calendars)
-      if (conn.files) await syncFiles(accountId, conn.files)
+      if (conn.files) {
+        await syncFiles(accountId, conn.files)
+        await reconcileNotes(accountId, conn.files)
+      }
     })
   })().finally(() => running.delete(accountId))
   running.set(accountId, run)

@@ -164,6 +164,10 @@ a selection and never on the path into the app. It is also what the e2e test
 reads the downloaded file back with: the assertion opens the zip and checks the
 paths inside it, rather than trusting a `.zip` suffix.
 
+Notes are files too, and live under `Notes/` — a folder per note. They are
+ordinary nodes, so the Files app shows them like anything else; what makes one
+a note is a `note.md` inside. See `notes-app.md`.
+
 ## Symlinks: shown, never followed
 
 `FileNodeType` has claimed `'symlink'` since the first version of this app,

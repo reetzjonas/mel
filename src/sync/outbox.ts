@@ -6,6 +6,7 @@ import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { connectionFor } from './connections'
 import { syncAccount } from './engine'
+import { saveNoteFile } from './noteWriter'
 
 export type OutboxAction =
   | { kind: 'email.update'; updates: Record<string, Record<string, unknown>> }
@@ -23,6 +24,14 @@ export type OutboxAction =
       participantId: string
       status: ParticipationStatus
     }
+  /**
+   * Write a note's file, creating its folder the first time.
+   *
+   * Carries the id, not the note: see `services/notes.ts` for why an editor
+   * that saves on every pause must not queue a snapshot per pause.
+   */
+  | { kind: 'note.save'; noteId: string }
+  | { kind: 'note.destroy'; folderId: string }
 
 /**
  * Actions that can be replayed without duplicating anything: they set a value
@@ -38,6 +47,10 @@ const REPLAYABLE = new Set([
   'event.update',
   'event.destroy',
   'event.rsvp',
+  // Both find their target before writing it — the note's folder by name, the
+  // file by the folder it is in — so a second run lands in the same place.
+  'note.save',
+  'note.destroy',
 ])
 
 const BASE_BACKOFF_MS = 5_000
@@ -308,6 +321,23 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
     }
     case 'event.destroy': {
       const failure = await need(conn.calendars, 'calendar').destroyEvents(action.ids)
+      if (failure && failure.type !== 'notFound') throw failureError(failure)
+      return
+    }
+    case 'note.save': {
+      await saveNoteFile(accountId, need(conn.files, 'files'), action.noteId)
+      return
+    }
+    case 'note.destroy': {
+      const files = need(conn.files, 'files')
+      // Deepest first: the server refuses a folder that still has children,
+      // and a note's folder holds its text and its images.
+      const children = await files.listChildren(action.folderId)
+      if (children.length) {
+        const failure = await files.destroyNodes(children.map((c) => c.id))
+        if (failure && failure.type !== 'notFound') throw failureError(failure)
+      }
+      const failure = await files.destroyNodes([action.folderId])
       if (failure && failure.type !== 'notFound') throw failureError(failure)
       return
     }

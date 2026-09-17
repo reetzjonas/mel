@@ -12,6 +12,8 @@ const ALL: AppTab[] = [
   { to: '/calendar', key: 'app.calendar', cap: 'calendars' },
   { to: '/contacts', key: 'app.contacts', cap: 'contacts' },
   { to: '/files', key: 'app.files', cap: 'files' },
+  // Notes are files, so the same capability answers for both.
+  { to: '/notes', key: 'app.notes', cap: 'files' },
 ]
 
 /**

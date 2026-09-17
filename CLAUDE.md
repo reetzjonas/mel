@@ -1,6 +1,6 @@
 # mel — context for the next session
 
-Backend-less JMAP webmail as a PWA (mail + contacts + calendar), all data in
+Backend-less JMAP webmail as a PWA (mail + contacts + calendar + files + notes), all data in
 IndexedDB, optionally encrypted behind a passphrase. React 19 + TS strict + Vite 8,
 Tailwind 4, TanStack Router, Dexie 4 (liveQuery = read model), Zustand for UI state.
 UI language: **English by default plus German** via `src/lib/i18n.ts` — never
@@ -51,6 +51,14 @@ folder comes down as one zip, via fflate behind a dynamic import), and a
 preview for images, text and PDF with a full-window view (a PDF is unreadable
 at panel width). Shift-click range selection works in the mail list too. See `docs/notes/filenode.md`.
 
+Notes are the fifth app, and are files too — a folder per note holding a
+Markdown `note.md` with front matter, its pictures beside it — so they need no
+JMAP capability of their own beyond FileNode (JMAP tasks is a dead draft).
+The editor is a live Markdown view (CodeMirror, Obsidian-style: markup hidden
+except on the cursor's line, checkboxes and images drawn inline) — the buffer
+stays the file, so nothing converts anything. Writes are offline-first through
+the outbox, unlike the rest of Files. See `docs/notes/notes-app.md`.
+
 Server-side filter rules (Sieve, RFC 9661) are a section in Settings → Mail
 where the server offers the capability: a guided rule form for rules mel wrote
 itself (round-tripped via a marker comment) plus a script editor for everything
@@ -69,7 +77,7 @@ mail, files, calendars, contacts and filter scripts — which is why it is not i
 any one app's sidebar. Stalwart only reports a quota once one is configured, so
 `seed.sh` sets one; see the quota entry in `docs/notes/gotchas-jmap-mail.md`.
 
-Tests: 1045 Vitest + 115 Playwright (desktop + mobile; state-mutating specs are
+Tests: 1110 Vitest + 118 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user. `npx tsc -b` is the typecheck that runs — `tsc -p
 tsconfig.json` is a no-op, since the root config is a solution file with
@@ -113,6 +121,9 @@ working on that specific feature, not on every session:
 - **Files / JMAP FileNode** (the fourth app: browse, upload, preview, zip
   download; draft extension, capability-gated, the blob-id, null-index,
   destroy-ordering and nodeType-from-blobId traps): `docs/notes/filenode.md`
+- **Notes** (the fifth app: why a note is a Markdown file and not a JSON blob,
+  why images are separate files, why the id lives in the file, and how the live
+  Markdown editor is built): `docs/notes/notes-app.md`
 - **Push notifications** (why naming the sender costs a request, why it is
   unencrypted-only, how the service worker reads IndexedDB without Dexie):
   `docs/notes/push-notifications.md`

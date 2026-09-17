@@ -177,6 +177,60 @@ summary {
   cursor: pointer;
 }
 
+/*
+ * The note editor (CodeMirror). Only the shell is styled here — everything
+ * with a colour comes from the app's own tokens, so a note follows the theme
+ * and the theme editor like every other surface. The markup decorations
+ * themselves live in features/notes/liveMarkdown.ts.
+ */
+.mel-note-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+  color: var(--mel-ink);
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+/* CodeMirror sets its own monospace on the scroller; a note is prose. */
+.mel-note-editor .cm-scroller {
+  font-family: inherit;
+}
+.mel-note-editor .cm-editor.cm-focused {
+  outline: none;
+}
+.mel-note-editor .cm-content {
+  padding: 0.625rem 0.75rem;
+  caret-color: var(--mel-accent);
+}
+.mel-note-editor .cm-line {
+  padding: 0;
+}
+.mel-note-editor .cm-placeholder {
+  color: var(--mel-ink-subtle);
+}
+.mel-note-editor .cm-selectionBackground,
+.mel-note-editor .cm-editor ::selection {
+  background: var(--mel-accent-wash);
+}
+.mel-note-editor .cm-cursor {
+  border-left-color: var(--mel-accent);
+}
+/* A checkbox drawn in place of `[ ]`, sitting on the text baseline. */
+.mel-note-editor .mel-task {
+  margin-right: 0.15rem;
+  vertical-align: -0.1em;
+}
+/* The picture a line refers to, under that line rather than in place of it:
+   the reference stays where it was written, so it can still be deleted. */
+.mel-note-editor .mel-note-image {
+  padding: 0.35rem 0 0.5rem;
+}
+.mel-note-editor .mel-note-image img {
+  max-height: 20rem;
+  max-width: 100%;
+  border-radius: var(--radius-control);
+  box-shadow: 0 0 0 1px var(--mel-line);
+}
+
 /* A focus ring you can actually see, only for keyboard users. */
 :focus-visible {
   outline: 2px solid var(--mel-accent);

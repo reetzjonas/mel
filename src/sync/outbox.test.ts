@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { db } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
+import { noteRow } from './notes'
 import { cancel, discardAction, enqueue, flush, retryAction } from './outbox'
 
 // jsdom has no Web Locks; the outbox takes one around every flush.
@@ -22,12 +23,33 @@ const recordAndSucceed: SetEmails = (updates) => {
 }
 let setEmailsImpl: SetEmails = recordAndSucceed
 
+/** What the file provider was asked to remove, in the order it was asked. */
+const destroyedNodes: string[][] = []
+const writtenFiles: string[] = []
+let noteChildren: Array<{ id: string }> = []
+
 vi.mock('./connections', () => ({
   connectionFor: () =>
     Promise.resolve({
       mail: {
         setEmails: (updates: Record<string, unknown>, destroy: string[]) =>
           setEmailsImpl(updates, destroy),
+      },
+      files: {
+        listChildren: () => Promise.resolve(noteChildren),
+        destroyNodes: (ids: string[]) => {
+          destroyedNodes.push(ids)
+          return Promise.resolve(null)
+        },
+        createDirectory: (name: string) => {
+          writtenFiles.push(`dir:${name}`)
+          return Promise.resolve({ id: `dir-${name}`, failure: null })
+        },
+        createFile: async (f: { name: string; data: Blob }) => {
+          writtenFiles.push(`${f.name}:${await f.data.text()}`)
+          return { id: 'file-1', failure: null }
+        },
+        writeFileContent: () => Promise.resolve(null),
       },
     }),
 }))
@@ -321,6 +343,73 @@ describe('a partially rejected set', () => {
     await flush(ACC)
 
     expect(await db.outbox.count()).toBe(0)
+  })
+})
+
+describe('saving a note', () => {
+  beforeEach(async () => {
+    await db.outbox.clear()
+    await db.notes.clear()
+    writtenFiles.length = 0
+    noteChildren = []
+  })
+
+  it('writes the note that is in the store when the action finally runs', async () => {
+    // The action carries an id, not a copy, so this is the edit that was made
+    // last — not the one that queued the write.
+    await db.notes.put(
+      noteRow(ACC, {
+        id: 'n1',
+        folderId: null,
+        fileId: null,
+        folderName: 'zug-1a2b',
+        title: 'Zug',
+        body: 'unterwegs',
+        pinned: false,
+        due: null,
+        linkedTo: null,
+        extra: {},
+        modified: '',
+      }),
+    )
+    await enqueue(ACC, { kind: 'note.save', noteId: 'n1' })
+
+    await flush(ACC)
+
+    expect(writtenFiles).toEqual([
+      'dir:Notes',
+      'dir:zug-1a2b',
+      expect.stringContaining('unterwegs'),
+    ])
+    expect(await db.outbox.count()).toBe(0)
+  })
+})
+
+describe('deleting a note', () => {
+  beforeEach(async () => {
+    await db.outbox.clear()
+    destroyedNodes.length = 0
+    noteChildren = []
+  })
+
+  it('empties the folder before removing it', async () => {
+    // A note is a folder holding its text and its pictures, and the server
+    // refuses a folder that still has children — the trap in filenode.md.
+    noteChildren = [{ id: 'note.md' }, { id: 'foto.png' }]
+    await enqueue(ACC, { kind: 'note.destroy', folderId: 'd1' })
+
+    await flush(ACC)
+
+    expect(destroyedNodes).toEqual([['note.md', 'foto.png'], ['d1']])
+    expect(await db.outbox.count()).toBe(0)
+  })
+
+  it('removes an empty note folder without an extra call', async () => {
+    await enqueue(ACC, { kind: 'note.destroy', folderId: 'd1' })
+
+    await flush(ACC)
+
+    expect(destroyedNodes).toEqual([['d1']])
   })
 })
 

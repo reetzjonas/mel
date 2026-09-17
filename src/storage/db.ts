@@ -5,6 +5,7 @@ import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { FileNode } from '../domain/file'
 import type { Mailbox } from '../domain/mailbox'
+import type { Note } from '../domain/note'
 import { cryptoMiddleware } from './crypto/middleware'
 import { mailboxDateKey } from './emailRow'
 import type { Envelope } from './envelope'
@@ -160,6 +161,24 @@ export interface KeyringRow {
   verifier: Uint8Array
 }
 
+/**
+ * A note's decoded fields, mirrored from the Markdown file it lives in.
+ *
+ * The file is the record; this is the read model, so the list can be drawn and
+ * searched without fetching a blob per note on every render. `modified` is the
+ * file node's own timestamp and is what decides whether the blob has to be
+ * read again at all.
+ */
+export interface NoteRow {
+  accountId: string
+  /** The note's folder id, or a local- id while it exists only here. */
+  id: string
+  /** Sorting, and nothing else, lives outside the envelope. */
+  pinned: 0 | 1
+  modified: string
+  payload: Envelope<Note>
+}
+
 export type AccountScopedKey = [string, string]
 
 export class MelDb extends Dexie {
@@ -177,6 +196,7 @@ export class MelDb extends Dexie {
   calendars!: Table<CalendarRow, AccountScopedKey>
   events!: Table<EventRow, AccountScopedKey>
   files!: Table<FileNodeRow, AccountScopedKey>
+  notes!: Table<NoteRow, AccountScopedKey>
 
   constructor() {
     super('mel')
@@ -218,6 +238,9 @@ export class MelDb extends Dexie {
     this.version(5).upgrade((tx) => backfillMailboxDates(tx))
     this.version(6).stores({
       files: '&[accountId+id], accountId, [accountId+parentKey]',
+    })
+    this.version(7).stores({
+      notes: '&[accountId+id], accountId, [accountId+pinned]',
     })
     this.use(cryptoMiddleware)
   }

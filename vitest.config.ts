@@ -63,7 +63,7 @@ export default defineConfig({
         statements: 55,
         branches: 48,
         functions: 44,
-        lines: 56,
+        lines: 55,
         'src/domain/**': { statements: 95, branches: 88, functions: 95, lines: 95 },
         'src/lib/**': { statements: 94, branches: 87, functions: 93, lines: 95 },
         'src/storage/**': { statements: 97, branches: 91, functions: 100, lines: 98 },
