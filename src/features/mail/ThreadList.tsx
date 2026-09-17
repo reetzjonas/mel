@@ -69,19 +69,37 @@ function conversationItem(conversation: Conversation): RowItem {
   }
 }
 
-const SWIPE_TRIGGER_PX = 90
+/*
+ * How far across the row a swipe has to travel before letting go acts.
+ *
+ * A fraction of the row rather than a fixed distance: "far enough to mean it"
+ * is how much of the row has been pushed aside, which a phone-width and a
+ * tablet-width list disagree about in pixels. The value is deliberately most
+ * of the way to the edge — archive and delete are easy to fire by accident
+ * while scrolling a list with the thumb, and the undo snackbar is a poor
+ * substitute for not triggering them. `SWIPE_TRIGGER_MIN_PX` keeps a narrow
+ * row from making the gesture trivially short.
+ */
+const SWIPE_TRIGGER_FRACTION = 0.45
+const SWIPE_TRIGGER_MIN_PX = 120
 
 /** Touch swipe: right = archive, left = delete. */
 function useSwipe(onArchive: () => void, onDelete: () => void) {
   const [dx, setDx] = useState(0)
   const start = useRef<{ x: number; y: number } | null>(null)
+  const [trigger, setTrigger] = useState(SWIPE_TRIGGER_MIN_PX)
 
   return {
     dx,
+    progress: Math.min(1, Math.abs(dx) / trigger),
     handlers: {
       onTouchStart: (e: React.TouchEvent) => {
         const touch = e.touches[0]
-        if (touch) start.current = { x: touch.clientX, y: touch.clientY }
+        if (!touch) return
+        start.current = { x: touch.clientX, y: touch.clientY }
+        setTrigger(
+          Math.max(SWIPE_TRIGGER_MIN_PX, e.currentTarget.clientWidth * SWIPE_TRIGGER_FRACTION),
+        )
       },
       onTouchMove: (e: React.TouchEvent) => {
         const touch = e.touches[0]
@@ -91,8 +109,8 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
         if (Math.abs(deltaX) > 12 && Math.abs(deltaX) > Math.abs(deltaY) * 1.5) setDx(deltaX)
       },
       onTouchEnd: () => {
-        if (dx > SWIPE_TRIGGER_PX) onArchive()
-        else if (dx < -SWIPE_TRIGGER_PX) onDelete()
+        if (dx > trigger) onArchive()
+        else if (dx < -trigger) onDelete()
         setDx(0)
         start.current = null
       },
@@ -109,9 +127,8 @@ function useSwipe(onArchive: () => void, onDelete: () => void) {
  * reaches full size and opacity precisely at the trigger distance, which is
  * what tells the thumb it can let go.
  */
-function SwipeHint({ dx }: { dx: number }) {
+function SwipeHint({ dx, progress }: { dx: number; progress: number }) {
   const archive = dx > 0
-  const progress = Math.min(1, Math.abs(dx) / SWIPE_TRIGGER_PX)
   return (
     <span
       aria-hidden
@@ -217,11 +234,11 @@ function Row({
       )
     })
 
-  const { dx, handlers } = useSwipe(doArchive, doDelete)
+  const { dx, progress, handlers } = useSwipe(doArchive, doDelete)
 
   return (
     <div className="relative mb-1 overflow-hidden rounded-control">
-      {dx !== 0 && <SwipeHint dx={dx} />}
+      {dx !== 0 && <SwipeHint dx={dx} progress={progress} />}
       <div
         role="button"
         tabIndex={0}
