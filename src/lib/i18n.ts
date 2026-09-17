@@ -100,6 +100,14 @@ const en = {
   'unsub.write': 'Unsubscribe by email',
   'mail.imagesBlocked': 'Remote images were not loaded — they can tell the sender you opened this.',
   'mail.loadImages': 'Load images',
+  'mail.alwaysLoadImages': 'Always load images from this sender',
+  'mail.imageSenderFailed': 'Could not save the image permission. Please try again.',
+  'settings.images.senders': 'Allowed senders',
+  'settings.images.sendersHint':
+    'Images from these addresses load automatically when asking is enabled, except in spam. Permissions apply to this account on this device.',
+  'settings.images.noSenders': 'No senders allowed yet.',
+  'settings.images.remove': 'Remove',
+  'settings.images.removeSender': 'Remove permission for {email}',
   'mail.filterLikeThis': 'Filter messages like this',
   'mail.details': 'Message details',
   'mail.details.overview': 'Overview',
@@ -750,6 +758,15 @@ const de: Partial<Record<MsgKey, string>> = {
   'mail.imagesBlocked':
     'Externe Bilder wurden nicht geladen — sie können dem Absender verraten, dass du die Mail geöffnet hast.',
   'mail.loadImages': 'Bilder laden',
+  'mail.alwaysLoadImages': 'Bilder von diesem Absender immer laden',
+  'mail.imageSenderFailed':
+    'Die Bildfreigabe konnte nicht gespeichert werden. Bitte erneut versuchen.',
+  'settings.images.senders': 'Erlaubte Absender',
+  'settings.images.sendersHint':
+    'Bei aktivierter Nachfrage werden Bilder dieser Adressen automatisch geladen, außer im Spam. Die Freigaben gelten für dieses Konto auf diesem Gerät.',
+  'settings.images.noSenders': 'Noch keine Absender freigegeben.',
+  'settings.images.remove': 'Entfernen',
+  'settings.images.removeSender': 'Freigabe für {email} entfernen',
   'mail.filterLikeThis': 'Ähnliche Nachrichten filtern',
   'mail.details': 'Nachrichtendetails',
   'mail.details.overview': 'Überblick',

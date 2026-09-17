@@ -181,6 +181,11 @@ export interface NoteRow {
 
 export type AccountScopedKey = [string, string]
 
+export interface ImageSendersRow {
+  accountId: string
+  payload: Envelope<string[]>
+}
+
 export class MelDb extends Dexie {
   accounts!: Table<AccountRow, string>
   syncState!: Table<SyncStateRow, AccountScopedKey>
@@ -197,6 +202,7 @@ export class MelDb extends Dexie {
   events!: Table<EventRow, AccountScopedKey>
   files!: Table<FileNodeRow, AccountScopedKey>
   notes!: Table<NoteRow, AccountScopedKey>
+  imageSenders!: Table<ImageSendersRow, string>
 
   constructor() {
     super('mel')
@@ -242,6 +248,7 @@ export class MelDb extends Dexie {
     this.version(7).stores({
       notes: '&[accountId+id], accountId, [accountId+pinned]',
     })
+    this.version(8).stores({ imageSenders: '&accountId' })
     this.use(cryptoMiddleware)
   }
 }

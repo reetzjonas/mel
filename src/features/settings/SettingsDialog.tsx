@@ -231,7 +231,7 @@ export function SettingsDialog({
                   <ConversationSetting />
                 </Section>
                 <Section title={t('settings.privacy')}>
-                  <ImageSetting />
+                  <ImageSetting accountId={account?.id} />
                 </Section>
                 {account?.capabilities.vacation && (
                   <Section title={t('settings.vacation')}>

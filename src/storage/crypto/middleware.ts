@@ -16,6 +16,7 @@ import { deserialize, serialize } from './serialize'
  */
 
 const ENCRYPTED_TABLES = new Set([
+  'imageSenders',
   'accounts',
   'mailboxes',
   'emails',

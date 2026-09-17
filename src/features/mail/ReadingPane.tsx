@@ -5,7 +5,9 @@ import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate, formatListDate } from '../../lib/dates'
 import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
-import { imagePolicy } from '../../lib/imagePolicy'
+import { useImagePolicy } from '../../lib/imagePolicy'
+import { normalizeImageSender, setImageSender } from '../../services/imageSenders'
+import { useImageSenders } from './useImageSenders'
 import { useCanFilter, useCanSend, useMailboxes, useThread } from './hooks'
 import { MessageDetails } from './MessageDetails'
 import { UnsubscribeBar } from './UnsubscribeBar'
@@ -447,17 +449,31 @@ export function ReadingPane({
   const [fetched, setFetched] = useState<{ id: string; body: EmailBody | null } | null>(null)
   const body: EmailBody | null | 'loading' =
     fetched && fetched.id === expanded.id ? fetched.body : 'loading'
-  // Releasing remote content is per message, never sticky: the next message is
-  // a different sender with a different reason to want your IP.
-  const [releasedId, setReleasedId] = useState<string | null>(null)
-  const released = releasedId === expanded.id
+  // The one-time release stays separate from persistent sender permission.
+  const [release, setRelease] = useState({ accountId, id: expanded.id, allowed: false })
+  const sameMessage = release.accountId === accountId && release.id === expanded.id
+  const released = sameMessage && release.allowed
+  if (!sameMessage) setRelease({ accountId, id: expanded.id, allowed: false })
   const mailboxes = useMailboxes(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
   const inJunk = Boolean(junkId && expanded.mailboxIds[junkId])
   // Junk keeps blocking even when the account is set to always load: a message
   // the server already thinks is spam is the last one to hand a confirmed
   // address to. Only an explicit per-message release opens it.
-  const allowRemote = released || (imagePolicy() === 'always' && !inJunk)
+  const policy = useImagePolicy()
+  const allowedSenders = useImageSenders(accountId)
+  // Multiple From addresses are ambiguous; never silently trust the first.
+  const imageSender =
+    expanded.from.length === 1 ? normalizeImageSender(expanded.from[0]!.email) : ''
+  // Both queries decide whether a request may leave the machine, so neither
+  // "still loading" answer may count as a permission.
+  const imagesKnown = mailboxes !== undefined && allowedSenders !== undefined
+  const allowRemote =
+    released ||
+    (imagesKnown &&
+      !inJunk &&
+      (policy === 'always' || Boolean(imageSender && allowedSenders.includes(imageSender))))
+  const [savingSender, setSavingSender] = useState(false)
   const navigate = useNavigate()
   const { openCompose, showSnackbar, messageDetailsOpen, setMessageDetailsOpen, setFilterSeed } =
     useUi()
@@ -535,8 +551,16 @@ export function ReadingPane({
   const isDraft = Boolean(expanded.keywords['$draft'])
   const flagged = Boolean(expanded.keywords['$flagged'])
   const isHtmlMail = body !== 'loading' && body !== null && Boolean(body.html)
+  /*
+   * An HTML body whose image permission has not been read yet keeps the
+   * skeleton up. Rendering it blocked and replacing the document once the
+   * permission lands is a second navigation of the same frame for the same
+   * message — a race whose loser is the document the user ends up looking at.
+   * Plain text never asks the network for anything, so it does not wait.
+   */
+  const framePending = body !== 'loading' && Boolean(body?.html) && !imagesKnown
   const doc =
-    body !== 'loading' && body
+    body !== 'loading' && body && !framePending
       ? body.html
         ? mailFrameDoc(body.html, allowRemote)
         : textFrameDoc(body.text ?? '', frameTheme)
@@ -549,7 +573,9 @@ export function ReadingPane({
     ).values(),
   ].join(', ')
   const blocked =
-    !allowRemote && body !== 'loading' && body?.html ? hasRemoteContent(body.html) : false
+    !allowRemote && !framePending && body !== 'loading' && body?.html
+      ? hasRemoteContent(body.html)
+      : false
   /*
    * An event travelling with the message. Senders label it inconsistently
    * (application/ics, or text/calendar with no name at all), so the file
@@ -779,7 +805,7 @@ export function ReadingPane({
             folded rows, and without one they would squeeze the body it belongs
             to down to nothing instead of letting the column scroll. */}
         <div className="min-h-96 flex-1 border-t border-line">
-          {body === 'loading' && (
+          {(body === 'loading' || framePending) && (
             <div className="animate-fade space-y-3 p-5">
               <Skeleton className="h-3 w-4/5" />
               <Skeleton className="h-3 w-full" />
@@ -802,15 +828,40 @@ export function ReadingPane({
               <span className="min-w-0 flex-1">{t('mail.imagesBlocked')}</span>
               <button
                 type="button"
-                onClick={() => setReleasedId(expanded.id)}
+                onClick={() => setRelease({ accountId, id: expanded.id, allowed: true })}
                 className="shrink-0 font-medium text-accent hover:underline"
               >
                 {t('mail.loadImages')}
               </button>
+              {!inJunk && imageSender && (
+                <button
+                  type="button"
+                  disabled={savingSender}
+                  title={imageSender}
+                  onClick={async () => {
+                    setSavingSender(true)
+                    try {
+                      await setImageSender(accountId, imageSender, true)
+                    } catch {
+                      showSnackbar({ message: t('mail.imageSenderFailed') })
+                    } finally {
+                      setSavingSender(false)
+                    }
+                  }}
+                  className="ml-1 border-l border-ink-subtle/40 pl-3 text-left font-medium text-accent hover:underline disabled:opacity-50"
+                >
+                  {t('mail.alwaysLoadImages')}
+                </button>
+              )}
             </div>
           )}
           {doc && (
             <iframe
+              // Keyed on the permission as well as the message: a frame that
+              // has to change its Content-Security-Policy is replaced rather
+              // than re-pointed, so the new document cannot lose a race with
+              // the one it supersedes.
+              key={`${expanded.id}:${String(allowRemote)}`}
               title={t('mail.messageFrame')}
               sandbox="allow-popups allow-popups-to-escape-sandbox"
               srcDoc={doc}

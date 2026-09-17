@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { imagePolicy, setImagePolicy } from './imagePolicy'
+import { act, renderHook } from '@testing-library/react'
+import { imagePolicy, setImagePolicy, useImagePolicy } from './imagePolicy'
 
 /*
  * A remote image is a network request to the sender the moment a message is
@@ -9,6 +10,19 @@ import { imagePolicy, setImagePolicy } from './imagePolicy'
  */
 describe('the remote-image policy', () => {
   beforeEach(() => localStorage.clear())
+
+  it('updates mounted readers for changes in this tab and other tabs', () => {
+    const { result, unmount } = renderHook(() => useImagePolicy())
+    expect(result.current).toBe('ask')
+    act(() => setImagePolicy('always'))
+    expect(result.current).toBe('always')
+    act(() => {
+      localStorage.setItem('mel:images', 'ask')
+      window.dispatchEvent(new StorageEvent('storage', { key: 'mel:images' }))
+    })
+    expect(result.current).toBe('ask')
+    unmount()
+  })
 
   it('asks when nothing has been decided', () => {
     expect(imagePolicy()).toBe('ask')

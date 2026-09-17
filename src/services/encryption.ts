@@ -13,6 +13,7 @@ export { changePassphrase, lock }
 
 /** Tables migrated when toggling encryption (all rows of the account). */
 const ACCOUNT_TABLES = [
+  'imageSenders',
   'mailboxes',
   'emails',
   'threads',

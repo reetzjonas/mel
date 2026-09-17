@@ -7,7 +7,9 @@ import { useNavigate } from '@tanstack/react-router'
 import { useTheme, type ThemePreference } from '../../app/theme'
 import { useUi } from '../../app/store'
 import { t } from '../../lib/i18n'
-import { imagePolicy, setImagePolicy, type ImagePolicy } from '../../lib/imagePolicy'
+import { useImagePolicy, setImagePolicy, type ImagePolicy } from '../../lib/imagePolicy'
+import { useImageSenders } from '../mail/useImageSenders'
+import { setImageSender } from '../../services/imageSenders'
 import { resyncAccount, signOut } from '../../services/accounts'
 import {
   disableEncryption,
@@ -405,8 +407,11 @@ export function ConversationSetting() {
   )
 }
 
-export function ImageSetting() {
-  const [policy, setPolicy] = useState<ImagePolicy>(() => imagePolicy())
+export function ImageSetting({ accountId }: { accountId?: string }) {
+  const policy = useImagePolicy()
+  const senders = useImageSenders(accountId)
+  const [removing, setRemoving] = useState<string | null>(null)
+  const { showSnackbar } = useUi()
   return (
     <div className="space-y-1">
       <Select
@@ -416,13 +421,47 @@ export function ImageSetting() {
         onChange={(e) => {
           const next = e.target.value as ImagePolicy
           setImagePolicy(next)
-          setPolicy(next)
         }}
       >
         <option value="ask">{t('settings.images.ask')}</option>
         <option value="always">{t('settings.images.always')}</option>
       </Select>
       <p className="text-xs text-ink-subtle">{t('settings.images.hint')}</p>
+      {accountId && senders !== undefined && (
+        <div className="space-y-2 pt-3">
+          <h3 className="text-sm font-medium">{t('settings.images.senders')}</h3>
+          <p className="text-xs text-ink-subtle">{t('settings.images.sendersHint')}</p>
+          {senders.length === 0 ? (
+            <p className="text-xs text-ink-muted">{t('settings.images.noSenders')}</p>
+          ) : (
+            <ul className="divide-y divide-line">
+              {senders.map((email) => (
+                <li key={email} className="flex items-center gap-3 py-2 text-sm">
+                  <span className="min-w-0 flex-1 break-all">{email}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-accent hover:underline disabled:opacity-50"
+                    aria-label={t('settings.images.removeSender').replace('{email}', email)}
+                    disabled={removing !== null}
+                    onClick={async () => {
+                      setRemoving(email)
+                      try {
+                        await setImageSender(accountId, email, false)
+                      } catch {
+                        showSnackbar({ message: t('mail.imageSenderFailed') })
+                      } finally {
+                        setRemoving(null)
+                      }
+                    }}
+                  >
+                    {t('settings.images.remove')}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   )
 }

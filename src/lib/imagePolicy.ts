@@ -6,6 +6,8 @@
  * work in email — and this client's whole premise is that it makes no
  * third-party request you did not ask for.
  */
+import { useSyncExternalStore } from 'react'
+
 export type ImagePolicy = 'ask' | 'always'
 
 const KEY = 'mel:images'
@@ -16,4 +18,18 @@ export function imagePolicy(): ImagePolicy {
 
 export function setImagePolicy(policy: ImagePolicy): void {
   localStorage.setItem(KEY, policy)
+  window.dispatchEvent(new Event('mel:image-policy'))
+}
+
+function subscribe(listener: () => void) {
+  window.addEventListener('storage', listener)
+  window.addEventListener('mel:image-policy', listener)
+  return () => {
+    window.removeEventListener('storage', listener)
+    window.removeEventListener('mel:image-policy', listener)
+  }
+}
+
+export function useImagePolicy(): ImagePolicy {
+  return useSyncExternalStore(subscribe, imagePolicy)
 }

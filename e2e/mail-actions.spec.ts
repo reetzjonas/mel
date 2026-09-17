@@ -11,6 +11,164 @@ async function login(page: Page, user: string, pass: string) {
 const ALICE = ['alice@localhost', 'korrekt-pferd-batterie-alice'] as const
 const BOB = ['bob@localhost', 'korrekt-pferd-batterie-bob'] as const
 
+test('sender image permissions persist, stay scoped, and can be revoked in settings', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  // Keep the seeded messages intact on the server, but give their fetched
+  // bodies remote content so this exercises the real reading pane and CSP.
+  await page.route('**/jmap/**', async (route) => {
+    if (route.request().method() !== 'POST') {
+      await route.continue()
+      return
+    }
+    const response = await route.fetch()
+    const json = await response.json()
+    for (const [method, data] of json.methodResponses ?? []) {
+      if (method !== 'Email/get') continue
+      for (const email of data.list ?? []) {
+        if (!email.bodyValues) continue
+        email.htmlBody = [{ partId: 'probe', type: 'text/html' }]
+        email.bodyValues = {
+          probe: {
+            value: '<p>Image permission test</p><img src="https://tracker.invalid/pixel.png">',
+            isTruncated: false,
+          },
+        }
+      }
+    }
+    await route.fulfill({ response, json })
+  })
+  let hits = 0
+  await page.route('https://tracker.invalid/**', async (route) => {
+    hits++
+    await route.fulfill({
+      status: 200,
+      contentType: 'image/png',
+      body: Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+        'base64',
+      ),
+    })
+  })
+  await login(page, ...ALICE)
+  const open = async (subject: string) => {
+    await page
+      .getByRole('button', { name: new RegExp(subject) })
+      .first()
+      .click()
+    await expect(
+      page.frameLocator('iframe[title="Message content"]').getByText('Image permission test'),
+    ).toBeVisible()
+  }
+  const always = page.getByRole('button', {
+    name: 'Always load images from this sender',
+    exact: true,
+  })
+  const load = page.getByRole('button', { name: 'Load images', exact: true })
+  await open('HTML-Test')
+  await expect(always).toBeVisible()
+  expect(hits).toBe(0)
+  await always.click()
+  await expect.poll(() => hits).toBeGreaterThan(0)
+  await expect(load).toBeHidden()
+  const image = page.frameLocator('iframe[title="Message content"]').locator('img')
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1)
+  const beforeReload = hits
+  /*
+   * On reload the body is cached, while the sender permission still has to
+   * arrive. Make that ordering deterministic instead of relying on disk speed,
+   * and record every policy the frame is ever given: the message must be
+   * rendered once, already allowed. Handing it a blocked document first and
+   * replacing it when the permission lands is a second navigation of the same
+   * frame, and which of the two documents survives is up to the engine.
+   */
+  await page.addInitScript(() => {
+    const policies: string[] = []
+    ;(window as unknown as { melFramePolicies: string[] }).melFramePolicies = policies
+    new MutationObserver(() => {
+      for (const frame of document.querySelectorAll('iframe[title="Message content"]')) {
+        const policy = frame.getAttribute('srcdoc')?.match(/img-src [^;]*/)?.[0]
+        if (policy && policies.at(-1) !== policy) policies.push(policy)
+      }
+      // `document`, not `documentElement`: an init script runs before the
+      // document has an element to hang an observer on.
+    }).observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['srcdoc'],
+    })
+    const descriptor = Object.getOwnPropertyDescriptor(IDBRequest.prototype, 'onsuccess')!
+    Object.defineProperty(IDBRequest.prototype, 'onsuccess', {
+      ...descriptor,
+      set(handler) {
+        if (
+          this.source instanceof IDBObjectStore &&
+          this.source.name === 'imageSenders' &&
+          this.source.transaction.mode === 'readonly' &&
+          handler
+        ) {
+          descriptor.set!.call(this, function (this: IDBRequest, event: Event) {
+            setTimeout(() => handler.call(this, event), 300)
+          })
+        } else descriptor.set!.call(this, handler)
+      },
+    })
+  })
+  await page.reload()
+  await expect(
+    page.frameLocator('iframe[title="Message content"]').getByText('Image permission test'),
+  ).toBeVisible()
+  await expect(load).toBeHidden()
+  await expect.poll(() => hits).toBeGreaterThan(beforeReload)
+  await expect.poll(() => image.evaluate((img: HTMLImageElement) => img.naturalWidth)).toBe(1)
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { melFramePolicies: string[] }).melFramePolicies,
+    ),
+  ).toEqual(['img-src http: https: data: cid:'])
+
+  // An allowed sender still cannot load images in Junk. Only the one-time
+  // action is available there; moving it back restores the sender permission.
+  await moveToJunk('HTML-Test')
+  await page.reload()
+  await page.getByRole('link', { name: /^Junk Mail( \d+)?$/ }).click()
+  const beforeJunk = hits
+  await open('HTML-Test')
+  await expect(load).toBeVisible()
+  await expect(always).toBeHidden()
+  expect(hits).toBe(beforeJunk)
+  await load.click()
+  await expect.poll(() => hits).toBeGreaterThan(beforeJunk)
+  await page.getByRole('article').getByRole('button', { name: 'Not spam', exact: true }).click()
+  await page.getByRole('link', { name: /^Inbox( \d+)?$/ }).click()
+
+  // Another message from Bob inherits the permission; the newsletter does not.
+  await open('Willkommen bei mel')
+  await expect(load).toBeHidden()
+  await open('Newsletter-Test')
+  await expect(load).toBeVisible()
+  await load.click()
+  await expect(load).toBeHidden()
+  await open('HTML-Test')
+  await open('Newsletter-Test')
+  await expect(load).toBeVisible()
+
+  await open('HTML-Test')
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const settings = page.getByRole('dialog', { name: 'Settings' })
+  await settings.getByRole('tab', { name: 'Mail', exact: true }).click()
+  await settings
+    .getByRole('button', { name: 'Remove permission for bob@localhost', exact: true })
+    .click()
+  await expect(settings.getByText('No senders allowed yet.')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(load).toBeVisible()
+  await page.reload()
+  await expect(load).toBeVisible()
+})
+
 test('archive a mail and undo it', async ({ page }) => {
   await login(page, ...ALICE)
   const firstRow = page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first()
@@ -282,7 +440,7 @@ test('hovering a row leaves the sender avatar alone', async ({ page }) => {
 })
 
 /** Files an inbox message into Junk over JMAP, returning its id. */
-async function moveToJunk(): Promise<string> {
+async function moveToJunk(subject?: string): Promise<string> {
   const auth =
     'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
   const call = async (methodCalls: unknown[]) => {
@@ -302,7 +460,15 @@ async function moveToJunk(): Promise<string> {
   const inbox = boxes.list.find((b) => b.role === 'inbox')!
   const q = (
     await call([
-      ['Email/query', { accountId: 'c', filter: { inMailbox: inbox.id }, limit: 1 }, 'c0'],
+      [
+        'Email/query',
+        {
+          accountId: 'c',
+          filter: { inMailbox: inbox.id, ...(subject ? { subject } : {}) },
+          limit: 1,
+        },
+        'c0',
+      ],
     ])
   ).methodResponses[0]![1] as unknown as { ids: string[] }
   const id = q.ids[0]!

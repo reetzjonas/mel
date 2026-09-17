@@ -104,6 +104,36 @@ Covered from both sides, which is the point: a unit test pins the exact policy
 strings, and an e2e proves the browser enforces them (0 requests blocked, 1
 after release) — neither half is worth much alone.
 
+**Per-sender image permissions (#41).** The blocked-content banner also offers
+"Always load images from this sender" for a message with exactly one From
+address outside Junk. The normalized, exact address is allowed only for the
+current account on this device; there are no domain-wide grants. Settings →
+Mail → Privacy lists the addresses and lets the user revoke each permission.
+The `imageSenders` IndexedDB table keeps addresses inside the payload envelope,
+participates in encryption enable/disable migrations, and is purged on sign-out.
+Live queries apply grants and revocations to an open message, including changes
+from another tab. Junk still requires a one-time release, even for allowed
+senders or the global "always" policy.
+
+The frame is not rendered at all until both queries it depends on — the
+mailboxes (for the Junk role) and the permitted senders — have answered; until
+then the body keeps the loading skeleton. That is not only about not releasing
+spam before the Junk role is known. Reading the permission from IndexedDB takes
+longer than reading the cached body, so on a reload the obvious version renders
+the message blocked and swaps `srcdoc` a tick later — two navigations of one
+frame for one message, and which document survives is the engine's business.
+Chromium resolves it to the second document every time, which is why no test
+caught it; the reported symptom was a reloaded message staying imageless until
+you left it and came back, so somewhere it resolves to the first.
+The frame is also keyed on the permission, so the one-time release replaces the
+element instead of re-pointing it. The e2e records every policy the frame is
+ever handed and insists there is exactly one.
+
+One-time permission resets when the displayed message changes, including when
+returning to a previously released message. Tests cover encrypted storage,
+account isolation and cleanup, plus real browser requests, reload persistence,
+the Junk exception and revocation against the built bundle.
+
 **J. "Everything in this folder" truncated silently at 5000 ids.**
 `queryMailboxIds()` now pages through the whole mailbox up to `SELECT_ALL_LIMIT`
 (50,000) and reads the server's real total via `calculateTotal`; if the ceiling is

@@ -72,6 +72,7 @@ export async function addAccount(candidates: string[], credentials: Credentials)
  */
 export async function removeAccount(accountId: string): Promise<void> {
   const owned = [
+    db.imageSenders,
     db.syncState,
     db.mailboxes,
     db.emails,
