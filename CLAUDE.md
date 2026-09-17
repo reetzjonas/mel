@@ -32,7 +32,8 @@ plus an invitation view with accept/maybe/decline, and the reply lands as a stat
 the organiser's copy. Full round trip covered end to end (`e2e/calendar.spec.ts`,
 alice invites bob and bob accepts).
 
-The calendar also has week/day time grids (click-to-create, overlap columns, now line),
+The calendar also has week/day time grids (click-to-create, overlap columns, now line,
+drag to move or resize a single event; month grid drags onto another day, with undo),
 multi-calendar colours plus visibility toggles (sidebar, localStorage) and calendar
 selection in the EventDialog. Mail follow-ups done: opening attachments (a real bug),
 quick actions in the list, folder management (create/rename/delete), draft
@@ -91,8 +92,9 @@ working on that specific feature, not on every session:
   purge-vs-sync-race): `docs/notes/login-discovery.md`
 - **Design system** (OKLCH tokens, scrollbar behaviour, hover-height rule):
   `docs/notes/design-system.md`
-- **Drag and drop** (mail onto folders, folders into folders; pointer-only,
-  menu stays the accessible path): `docs/notes/drag-and-drop.md`
+- **Drag and drop** (mail onto folders, folders into folders, events on the
+  week/day grid; pointer-only, menu and dialog stay the accessible path):
+  `docs/notes/drag-and-drop.md`
 - **Theme editor** (guided OKLCH tuning, why lightness is never exposed, the
   gamut and contrast maths): `docs/notes/theme-editor.md`
 - **Resizable panel widths** (two boundaries, lg and up only; why the handles

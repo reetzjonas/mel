@@ -289,3 +289,189 @@ test('birthdays are a calendar of their own, and can be switched off', async ({ 
   await page.getByRole('link', { name: `Geburtstag ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+/** The day after an ISO date, as the date input spells it. */
+function nextDay(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + 1)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** An hour later, as the time input spells it. */
+function oneHourOn(hhmm: string): string {
+  const [h, m] = hhmm.split(':')
+  return `${String((Number(h) + 1) % 24).padStart(2, '0')}:${m}`
+}
+
+/** Drags from the middle of a block by the given pixels. */
+async function dragBy(page: Page, block: ReturnType<Page['locator']>, dx: number, dy: number) {
+  const box = (await block.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  // Several steps: one jump would clear the threshold and the move in a single
+  // event, which is not how a hand does it.
+  for (let i = 1; i <= 6; i++) {
+    await page.mouse.move(
+      box.x + box.width / 2 + (dx * i) / 6,
+      box.y + box.height / 2 + (dy * i) / 6,
+    )
+  }
+  await page.mouse.up()
+}
+
+test('drag an event to another time and day, then resize it', async ({ page }) => {
+  test.setTimeout(120_000)
+  const title = `Drag-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  const block = page.getByRole('button', { name: new RegExp(title) }).first()
+  await expect(block).toBeVisible({ timeout: 15_000 })
+  await block.click()
+  const startedOn = await page.getByLabel('Date', { exact: true }).inputValue()
+  const startedAt = await page.getByLabel('Start', { exact: true }).inputValue()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  /*
+   * Asserted on the dialog's own fields rather than the block's pixels. Two
+   * workers share this account, and an event another spec happens to create in
+   * the same hour splits the column into two — which moves the block sideways
+   * for reasons that have nothing to do with the drag.
+   */
+  const width = (await block.boundingBox())!.width + 2
+  await dragBy(page, block, width, 48)
+  await page.waitForTimeout(1500)
+
+  // Survives a reload: it went to the server, not just to the screen.
+  await page.reload()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+  const reloaded = page.getByRole('button', { name: new RegExp(title) }).first()
+  await expect(reloaded).toBeVisible({ timeout: 20_000 })
+  await reloaded.click()
+  expect(await page.getByLabel('Date', { exact: true }).inputValue()).toBe(nextDay(startedOn))
+  expect(await page.getByLabel('Start', { exact: true }).inputValue()).toBe(oneHourOn(startedAt))
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  // Resize from the bottom edge: an hour longer, same start.
+  const box = (await reloaded.boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2)
+  await page.mouse.down()
+  for (let i = 1; i <= 6; i++) {
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height - 2 + (48 * i) / 6)
+  }
+  await page.mouse.up()
+  await page.waitForTimeout(1500)
+  const resized = (await reloaded.boundingBox())!
+  // Loosely: the block under the pointer is drawn at hover scale, a percent
+  // taller than what is stored.
+  expect(Math.abs(resized.height - box.height - 48)).toBeLessThan(3)
+  expect(Math.abs(resized.y - box.y)).toBeLessThan(3)
+
+  await reloaded.click()
+  await expect(page.getByLabel('Start', { exact: true })).toHaveValue(oneHourOn(startedAt))
+  await page.getByRole('button', { name: 'Delete event' }).click()
+})
+
+test('a series and a birthday stay put', async ({ page }) => {
+  test.setTimeout(120_000)
+  const weekly = `Series-${Date.now() % 100000}`
+  const surname = `Bday${Date.now() % 100000}`
+
+  await login(page)
+
+  // A contact with a birthday inside the week on screen.
+  const now = new Date()
+  const iso = `1985-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
+    Math.min(28, now.getDate()),
+  ).padStart(2, '0')}`
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Geburtstag')
+  await page.getByLabel('Last name').fill(surname)
+  await page.getByLabel('Birthday').fill(iso)
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Geburtstag ${surname}` })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(weekly)
+  await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  const series = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  await expect(series).toBeVisible({ timeout: 15_000 })
+  const seriesBefore = (await series.boundingBox())!
+  await dragBy(page, series, 0, 96)
+  await page.waitForTimeout(1200)
+  const seriesAfter = (await series.boundingBox())!
+  expect(Math.abs(seriesAfter.y - seriesBefore.y)).toBeLessThan(3)
+
+  const birthday = page.getByRole('button', { name: new RegExp(surname) }).first()
+  await expect(birthday).toBeVisible()
+  const bdayBefore = (await birthday.boundingBox())!
+  await dragBy(page, birthday, 0, 96)
+  await page.waitForTimeout(1200)
+  const bdayAfter = (await birthday.boundingBox())!
+  expect(Math.abs(bdayAfter.y - bdayBefore.y)).toBeLessThan(3)
+
+  await series.click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('link', { name: `Geburtstag ${surname}` }).click()
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+})
+
+test('drag an event to another day in the month grid, then undo', async ({ page }) => {
+  test.setTimeout(120_000)
+  const title = `Month-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+
+  // A day well inside the month so the target cell exists in both directions.
+  const now = new Date()
+  const day = Math.min(20, Math.max(8, now.getDate()))
+  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(iso)
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  const chip = page.getByRole('button', { name: new RegExp(title) }).first()
+  await expect(chip).toBeVisible({ timeout: 15_000 })
+
+  // The grid starts on the Monday on/before the 1st, so the cell index is
+  // arithmetic rather than something to hunt for in the DOM.
+  const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+  const startOffset = (firstOfMonth.getDay() + 6) % 7
+  const sourceIndex = startOffset + (day - 1)
+  const cells = page.locator('.grid-rows-6 > div')
+
+  await chip.dragTo(cells.nth(sourceIndex + 2))
+  await page.waitForTimeout(1500)
+
+  await chip.click()
+  const movedTo = await page.getByLabel('Date', { exact: true }).inputValue()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  expect(movedTo).not.toBe(iso)
+
+  // Undo puts it back.
+  await page.getByRole('button', { name: 'Undo' }).click()
+  await page.waitForTimeout(1500)
+  await page
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+    .click()
+  const undone = await page.getByLabel('Date', { exact: true }).inputValue()
+  expect(undone).toBe(iso)
+
+  await page.getByRole('button', { name: 'Delete event' }).click()
+})

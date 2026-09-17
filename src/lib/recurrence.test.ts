@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { CalendarEvent } from '../domain/calendar'
-import { expandAll, expandOccurrences, parseDuration } from './recurrence'
+import { expandAll, expandOccurrences, parseDuration, rescheduleEvent } from './recurrence'
 
 const base: CalendarEvent = {
   id: 'e1',
@@ -140,5 +140,73 @@ describe('expandAll', () => {
     const times = out.map((o) => o.start.getTime())
     expect([...times]).toEqual([...times].sort((a, b) => a - b))
     expect(out.map((o) => o.eventId)).toContain('one-off')
+  })
+})
+
+describe('rescheduleEvent', () => {
+  const single: CalendarEvent = { ...base, recurrenceRule: null }
+
+  it('stores the new time in the event’s own zone, not the viewer’s', () => {
+    /*
+     * The grid is the viewer's wall clock; the event keeps its own. A 10:00
+     * Berlin meeting dragged an hour later while the calendar is read in
+     * London has to land at 11:00 Berlin — re-serialising what the viewer saw
+     * would store 10:00 and walk the event an hour every time someone travels.
+     */
+    const start = new Date('2026-03-23T10:00:00Z') // 11:00 Berlin
+    const end = new Date('2026-03-23T11:00:00Z')
+
+    const moved = rescheduleEvent(single, start, end, 'Europe/London')
+
+    expect(moved.start).toBe('2026-03-23T11:00:00')
+    expect(moved.timeZone).toBe('Europe/Berlin')
+  })
+
+  it('follows the viewer’s zone for a floating event, which has none of its own', () => {
+    const floating = { ...single, timeZone: null }
+    const start = new Date('2026-03-23T09:30:00Z')
+
+    const moved = rescheduleEvent(floating, start, new Date('2026-03-23T10:00:00Z'), 'UTC')
+
+    expect(moved.start).toBe('2026-03-23T09:30:00')
+  })
+
+  it('writes the new length as the duration, the only place it lives', () => {
+    const start = new Date('2026-03-23T09:00:00Z')
+
+    expect(rescheduleEvent(single, start, new Date('2026-03-23T10:30:00Z'), 'UTC').duration).toBe(
+      'PT1H30M',
+    )
+    expect(rescheduleEvent(single, start, new Date('2026-03-23T09:15:00Z'), 'UTC').duration).toBe(
+      'PT15M',
+    )
+  })
+
+  it('round-trips: what it stores expands back to where it was dropped', () => {
+    // The real contract. Anything else is a detail of the string format.
+    const start = new Date('2026-03-30T08:00:00Z') // after the DST switch
+    const end = new Date('2026-03-30T09:00:00Z')
+
+    const moved = rescheduleEvent(single, start, end, 'Europe/Berlin')
+    const [occ] = expandOccurrences(
+      moved,
+      new Date('2026-03-29T00:00:00Z'),
+      new Date('2026-03-31T00:00:00Z'),
+      'Europe/Berlin',
+    )
+
+    expect(occ!.start.toISOString()).toBe(start.toISOString())
+    expect(occ!.end.toISOString()).toBe(end.toISOString())
+  })
+
+  it('leaves everything else about the event alone', () => {
+    const moved = rescheduleEvent(
+      single,
+      new Date('2026-03-23T09:00:00Z'),
+      new Date('2026-03-23T10:00:00Z'),
+      'UTC',
+    )
+
+    expect(moved).toMatchObject({ id: 'e1', title: 'Weekly', participants: [] })
   })
 })

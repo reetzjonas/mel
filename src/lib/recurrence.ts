@@ -112,3 +112,34 @@ export function expandAll(
   }
   return out.sort((a, b) => a.start.getTime() - b.start.getTime())
 }
+
+/**
+ * The event as it stands after being dragged to a new place on the grid.
+ *
+ * The grid works in the viewer's wall clock; the event stores its own. So a
+ * dropped instant has to be *read back* in the event's zone rather than
+ * re-serialised from the viewer's: a 10:00 Berlin meeting dragged while the
+ * calendar is being read in London must still be stored as 10:00, or it walks
+ * an hour every time someone travels.
+ *
+ * The duration is rewritten too, since that is the only place an event's
+ * length lives — there is no end field to move.
+ */
+export function rescheduleEvent(
+  event: CalendarEvent,
+  start: Date,
+  end: Date,
+  viewerZone: string,
+): CalendarEvent {
+  const zone = event.timeZone ?? viewerZone
+  const local = Temporal.Instant.fromEpochMilliseconds(start.getTime())
+    .toZonedDateTimeISO(zone)
+    .toPlainDateTime()
+    .toString({ smallestUnit: 'second' })
+  const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000))
+  return {
+    ...event,
+    start: local,
+    duration: Temporal.Duration.from({ minutes }).round({ largestUnit: 'hour' }).toString(),
+  }
+}

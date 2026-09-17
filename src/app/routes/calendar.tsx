@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useUi } from '../store'
 import type {
   Calendar,
@@ -10,11 +10,12 @@ import type {
 import { EventDialog } from '../../features/calendar/EventDialog'
 import { TimeGrid } from '../../features/calendar/TimeGrid'
 import { dayKey } from '../../lib/dates'
+import { instantAt } from '../../features/calendar/dragGeometry'
 import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t, currentLocale } from '../../lib/i18n'
-import { expandAll } from '../../lib/recurrence'
+import { expandAll, rescheduleEvent } from '../../lib/recurrence'
 import {
   BIRTHDAY_CALENDAR_ID,
   BIRTHDAY_COLOR,
@@ -32,6 +33,9 @@ export const Route = createFileRoute('/calendar')({
 })
 
 const VIEWER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
+
+/** Marks an event in flight; a day cell answers "may I take this?" from it. */
+const EVENT_DRAG_TYPE = 'application/x-mel-event'
 type ViewMode = 'month' | 'week' | 'day'
 
 // Fixed, deterministic palette for calendars the server didn't color.
@@ -163,6 +167,10 @@ function CalendarApp() {
   const [view, setView] = useState<ViewMode>('month')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const { hidden, toggle: toggleCalendar } = useHiddenCalendars(account?.id)
+  /* The occurrence in flight across the month grid, and the cell under it. The
+     payload cannot be read during a dragover, so the source keeps it here. */
+  const dragged = useRef<Occurrence | null>(null)
+  const [dropDay, setDropDay] = useState<string | null>(null)
   const self = useSelfIdentity(account)
 
   const visibleEvents = useMemo(
@@ -260,6 +268,55 @@ function CalendarApp() {
     }
     const full = eventById.get(eventId)
     if (full) setDialog({ isNew: false, event: full })
+  }
+
+  /**
+   * What a drag may pick up.
+   *
+   * A series is left alone because there is nowhere to put the answer: mel
+   * cannot yet override a single occurrence (#5), so dragging one instance
+   * would move every one of them — and on a rule with `byDay`, dragging it to
+   * another weekday would do nothing at all. Birthdays are not events on any
+   * server, and an invitation is somebody else's event to move.
+   */
+  function canMove(e: CalendarEvent): boolean {
+    return !isBirthdayEventId(e.id) && !e.recurrenceRule && e.isOrganizerCopy
+  }
+
+  /**
+   * Moving an event to another day in the month grid.
+   *
+   * Keeps the time of day and the length, changes only which day it is on —
+   * the month grid has no time axis, so that is the whole of what a drop here
+   * can mean.
+   */
+  function dropOnDay(day: Date) {
+    const occ = dragged.current
+    dragged.current = null
+    if (!occ || dayKey(occ.start) === dayKey(day)) return
+    const minutes = occ.start.getHours() * 60 + occ.start.getMinutes()
+    const start = instantAt(day, minutes)
+    onEventDrop(
+      occ.eventId,
+      start,
+      new Date(start.getTime() + (occ.end.getTime() - occ.start.getTime())),
+    )
+  }
+
+  function onEventDrop(eventId: string, start: Date, end: Date) {
+    const before = eventById.get(eventId)
+    if (!before || !canMove(before)) return
+    const accountId = account!.id
+    void updateEvent(accountId, rescheduleEvent(before, start, end, VIEWER_ZONE)).then(() =>
+      // The event as it was is the whole undo: a drag rewrites two fields and
+      // nothing else, so putting the old one back is exact rather than an
+      // inverse someone has to keep correct.
+      showSnackbar({
+        message: t('cal.moved'),
+        actionLabel: t('mail.undo'),
+        action: () => void updateEvent(accountId, before),
+      }),
+    )
   }
 
   function onDialogSave(e: CalendarEvent) {
@@ -405,7 +462,21 @@ function CalendarApp() {
                   <div
                     key={key}
                     onClick={() => openNew(day)}
-                    className={`min-h-0 cursor-pointer overflow-hidden border-r border-b border-line p-1 transition-colors hover:bg-surface-2/50 ${inMonth ? '' : 'bg-surface-2/30 text-ink-subtle'}`}
+                    onDragOver={(e) => {
+                      // Only the *types* are readable before the drop, which is
+                      // exactly what "may I take this?" has to be answered from.
+                      if (!e.dataTransfer.types.includes(EVENT_DRAG_TYPE)) return
+                      e.preventDefault()
+                      e.dataTransfer.dropEffect = 'move'
+                      setDropDay(key)
+                    }}
+                    onDragLeave={() => setDropDay((d) => (d === key ? null : d))}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      setDropDay(null)
+                      dropOnDay(day)
+                    }}
+                    className={`min-h-0 cursor-pointer overflow-hidden border-r border-b border-line p-1 transition-colors hover:bg-surface-2/50 ${inMonth ? '' : 'bg-surface-2/30 text-ink-subtle'} ${dropDay === key ? 'bg-accent-wash ring-1 ring-accent ring-inset' : ''}`}
                   >
                     <span
                       className={`mb-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${key === today ? 'bg-accent font-semibold text-accent-ink shadow-raised' : ''}`}
@@ -415,16 +486,31 @@ function CalendarApp() {
                     {occs.slice(0, 3).map((o, i) => {
                       const ev = eventById.get(o.eventId)
                       const color = ev ? eventColor(ev) : null
+                      const movable = Boolean(ev) && canMove(ev!)
                       return (
                         <button
                           key={`${o.eventId}-${i}`}
                           type="button"
+                          draggable={movable}
+                          onDragStart={(e) => {
+                            e.stopPropagation()
+                            dragged.current = o
+                            // The payload is a type more than a value: both ends
+                            // are this component, and a day cell only ever needs
+                            // to recognise the kind of thing in flight.
+                            e.dataTransfer.setData(EVENT_DRAG_TYPE, o.eventId)
+                            e.dataTransfer.effectAllowed = 'move'
+                          }}
+                          onDragEnd={() => {
+                            dragged.current = null
+                            setDropDay(null)
+                          }}
                           onClick={(e) => {
                             e.stopPropagation()
                             openEdit(o.eventId)
                           }}
                           style={color ? { backgroundColor: `${color}26`, color } : undefined}
-                          className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity hover:opacity-80 ${!color ? 'bg-accent-wash text-accent' : ''}`}
+                          className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity select-none hover:opacity-80 ${movable ? 'cursor-grab' : ''} ${!color ? 'bg-accent-wash text-accent' : ''}`}
                         >
                           {!o.allDay && (
                             <span className="tabular-nums">{timeFmt.format(o.start)} </span>
@@ -453,6 +539,8 @@ function CalendarApp() {
               calendarColor={eventColor}
               onSlotClick={openNew}
               onEventClick={openEdit}
+              onEventDrop={onEventDrop}
+              canMove={canMove}
               today={today}
             />
           </div>
