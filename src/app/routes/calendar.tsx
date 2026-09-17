@@ -16,6 +16,8 @@ import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t, currentLocale } from '../../lib/i18n'
 import { expandAll } from '../../lib/recurrence'
 import {
+  BIRTHDAY_CALENDAR_ID,
+  BIRTHDAY_COLOR,
   birthdayEvents,
   contactIdOfBirthday,
   isBirthdayEventId,
@@ -118,10 +120,35 @@ function useHiddenCalendars(accountId: string | undefined) {
 
 function colorFor(calendars: Calendar[], calendarId: string | undefined): string | null {
   if (!calendarId) return null
+  if (calendarId === BIRTHDAY_CALENDAR_ID) return BIRTHDAY_COLOR
   const cal = calendars.find((c) => c.id === calendarId)
   if (cal?.color) return cal.color
   const idx = calendars.findIndex((c) => c.id === calendarId)
   return idx >= 0 ? FALLBACK_COLORS[idx % FALLBACK_COLORS.length]! : null
+}
+
+/** One row of the calendar list: a colour, a name, and whether it is showing. */
+function CalendarToggle({
+  name,
+  color,
+  hidden,
+  onToggle,
+}: {
+  name: string
+  color: string
+  hidden: boolean
+  onToggle: () => void
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-[7px] text-[13px] transition-colors hover:bg-surface-2">
+      <input type="checkbox" checked={!hidden} onChange={onToggle} className="sr-only" />
+      <span
+        className="h-2.5 w-2.5 shrink-0 rounded-full"
+        style={{ backgroundColor: color, opacity: hidden ? 0.25 : 1 }}
+      />
+      <span className={`truncate ${hidden ? 'text-ink-muted line-through' : ''}`}>{name}</span>
+    </label>
+  )
 }
 
 function CalendarApp() {
@@ -159,10 +186,16 @@ function CalendarApp() {
     () => (grid.length ? birthdayEvents(contacts ?? [], grid[0]!) : []),
     [contacts, grid],
   )
+  // Built either way, so the sidebar can still offer the switch that is
+  // currently hiding them — asking the contacts again is what builds them.
+  const shownBirthdays = useMemo(
+    () => (hidden.has(BIRTHDAY_CALENDAR_ID) ? [] : birthdays),
+    [birthdays, hidden],
+  )
 
   const byDay = useMemo(() => {
     const map = new Map<string, Occurrence[]>()
-    const all = [...visibleEvents, ...birthdays]
+    const all = [...visibleEvents, ...shownBirthdays]
     if (!all.length || !grid.length) return map
     // Normalize to midnight: `anchor` (and thus week/day grids derived from
     // it) carries the real current time-of-day, which would otherwise shift
@@ -178,7 +211,7 @@ function CalendarApp() {
       map.set(key, list)
     }
     return map
-  }, [visibleEvents, birthdays, grid])
+  }, [visibleEvents, shownBirthdays, grid])
 
   if (!account?.capabilities.calendars)
     return <CapabilityNotice reason="caps.unsupported.calendar" />
@@ -275,28 +308,25 @@ function CalendarApp() {
           {t('cal.calendars')}
         </span>
         {(calendars ?? []).map((c, i) => (
-          <label
+          <CalendarToggle
             key={c.id}
-            className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-[7px] text-[13px] transition-colors hover:bg-surface-2"
-          >
-            <input
-              type="checkbox"
-              checked={!hidden.has(c.id)}
-              onChange={() => toggleCalendar(c.id)}
-              className="sr-only"
-            />
-            <span
-              className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={{
-                backgroundColor: c.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length],
-                opacity: hidden.has(c.id) ? 0.25 : 1,
-              }}
-            />
-            <span className={`truncate ${hidden.has(c.id) ? 'text-ink-muted line-through' : ''}`}>
-              {c.name}
-            </span>
-          </label>
+            name={c.name}
+            color={c.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]!}
+            hidden={hidden.has(c.id)}
+            onToggle={() => toggleCalendar(c.id)}
+          />
         ))}
+        {/* The contacts' birthdays, as a calendar that exists only here. Offered
+            only when there are some: a switch for an empty collection is a
+            question nobody asked. */}
+        {birthdays.length > 0 && (
+          <CalendarToggle
+            name={t('cal.birthdays')}
+            color={BIRTHDAY_COLOR}
+            hidden={hidden.has(BIRTHDAY_CALENDAR_ID)}
+            onToggle={() => toggleCalendar(BIRTHDAY_CALENDAR_ID)}
+          />
+        )}
       </aside>
 
       <div className="panel flex min-w-0 flex-1 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none">

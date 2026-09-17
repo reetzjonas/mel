@@ -16,6 +16,20 @@ import { t } from '../../lib/i18n'
 
 const PREFIX = 'birthday:'
 
+/**
+ * The collection birthdays pretend to belong to, so the sidebar can switch
+ * them off like any other calendar.
+ *
+ * Prefixed because it shares a namespace with the server's own calendar ids —
+ * a bare "birthdays" could one day be a real calendar's id, and the two would
+ * then hide each other.
+ */
+export const BIRTHDAY_CALENDAR_ID = 'mel:birthdays'
+
+/** Not from the palette the unnamed server calendars draw from, so it cannot
+ *  turn up twice in one sidebar. */
+export const BIRTHDAY_COLOR = '#d1477a'
+
 export function isBirthdayEventId(id: string): boolean {
   return id.startsWith(PREFIX)
 }
@@ -59,9 +73,9 @@ export function birthdayEvents(contacts: Contact[], windowStart: Date): Calendar
     const name = displayName(contact)
     out.push({
       id: `${PREFIX}${contact.id}`,
-      // No calendar: these belong to no collection, which is also what leaves
-      // them the default colour rather than borrowing one.
-      calendarIds: {},
+      // A calendar that exists only here: nothing on the server has this id,
+      // and it is what gives the sidebar something to switch off.
+      calendarIds: { [BIRTHDAY_CALENDAR_ID]: true },
       uid: `${PREFIX}${contact.id}`,
       // Name first: a month cell truncates, and the name is the half worth
       // keeping. The year is on the card, which this leads to anyway.

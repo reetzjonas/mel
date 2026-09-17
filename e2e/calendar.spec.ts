@@ -48,7 +48,10 @@ test('create a single and a weekly recurring event in the month view', async ({ 
 
   // Clean up so repeated runs don't fill the day cells past the chip cap.
   for (const name of [weekly, title]) {
-    await page.getByRole('button', { name: new RegExp(name) }).first().click()
+    await page
+      .getByRole('button', { name: new RegExp(name) })
+      .first()
+      .click()
     await page.getByRole('button', { name: 'Delete event' }).click()
     await expect(page.getByRole('button', { name: new RegExp(name) })).toHaveCount(0, {
       timeout: 10_000,
@@ -115,7 +118,10 @@ test('day view shows the same event as week/month, and calendar visibility toggl
   await firstCalendar.click() // restore for other tests
   await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible()
 
-  await page.getByRole('button', { name: new RegExp(title) }).first().click()
+  await page
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+    .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
     timeout: 10_000,
@@ -145,7 +151,10 @@ test('edit and delete an event', async ({ page }) => {
     timeout: 10_000,
   })
 
-  await page.getByRole('button', { name: new RegExp(`${title}-2`) }).first().click()
+  await page
+    .getByRole('button', { name: new RegExp(`${title}-2`) })
+    .first()
+    .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await expect(page.getByText('Event deleted')).toBeVisible()
   await expect(page.getByRole('button', { name: new RegExp(`${title}-2`) })).toHaveCount(0)
@@ -213,12 +222,18 @@ test('invite the other account, accept there, and see the reply on the organizer
   await expect(bobPage.getByText('Reply sent')).toBeVisible()
 
   // The iTIP reply travels by mail, so give it a moment to land.
-  await page.getByRole('button', { name: new RegExp(title) }).first().click()
+  await page
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+    .click()
   await expect
     .poll(
       async () => {
         await page.getByRole('button', { name: 'Cancel' }).click()
-        await page.getByRole('button', { name: new RegExp(title) }).first().click()
+        await page
+          .getByRole('button', { name: new RegExp(title) })
+          .first()
+          .click()
         return page.getByText('Accepted').count()
       },
       { timeout: 45_000, intervals: [3_000] },
@@ -231,4 +246,46 @@ test('invite the other account, accept there, and see the reply on the organizer
     timeout: 10_000,
   })
   await bobCtx.close()
+})
+
+test('birthdays are a calendar of their own, and can be switched off', async ({ page }) => {
+  /*
+   * They belong to no collection on the server, so they used to be the one
+   * thing in the calendar nobody could turn off. The sidebar row is offered
+   * only when there is a birthday to show.
+   */
+  const surname = `Vcal${Date.now() % 100000}`
+  const now = new Date()
+  const day = Math.min(28, Math.max(1, now.getDate() + 2))
+  const iso = `1985-${String(now.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Geburtstag')
+  await page.getByLabel('Last name').fill(surname)
+  await page.getByLabel('Birthday').fill(iso)
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Geburtstag ${surname}` })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await expect(page.getByText(new RegExp(surname)).first()).toBeVisible({ timeout: 15_000 })
+
+  const row = page.locator('aside label').filter({ hasText: 'Birthdays' })
+  await row.click()
+  await expect(page.getByText(new RegExp(surname))).toHaveCount(0)
+
+  // Kept across a reload, the way the real calendars' visibility is.
+  await page.reload()
+  await expect(page.getByRole('checkbox', { name: 'Birthdays' })).not.toBeChecked({
+    timeout: 15_000,
+  })
+
+  await page.locator('aside label').filter({ hasText: 'Birthdays' }).click()
+  await expect(page.getByText(new RegExp(surname)).first()).toBeVisible()
+
+  // Clean up, or every run leaves another birthday in the calendar.
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('link', { name: `Geburtstag ${surname}` }).click()
+  await page.getByRole('button', { name: 'Delete contact' }).click()
 })
