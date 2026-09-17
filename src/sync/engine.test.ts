@@ -323,6 +323,63 @@ describe('syncing contacts and calendars', () => {
     }
   })
 
+  it('refetches every card when the cached ones predate a field mel now keeps', async () => {
+    /*
+     * The bug this exists for: delta sync only rewrites a row the *server*
+     * calls changed, so adding `birthday` to the mapper reached rows already
+     * on disk — never. A device signed in before that release showed no
+     * birthdays in the calendar while a newer one, on the same account,
+     * showed them all, and the only cure anyone found was signing out.
+     */
+    await db.syncState.put({
+      accountId: ACCOUNT,
+      collection: 'ContactCard',
+      state: 'cursor-from-an-older-mel',
+      updatedAt: 0,
+    })
+    const asked: Array<string | undefined> = []
+    contacts = {
+      syncAddressBooks: () => Promise.resolve(page()),
+      syncContacts: (since?: string) => {
+        asked.push(since)
+        return Promise.resolve(page({ created: [contact('c1', 'Ada')], newState: 'card-2' }))
+      },
+    }
+
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    // Asked for everything, not for what changed since a cursor that cannot
+    // carry the missing field.
+    expect(asked).toEqual([undefined])
+    // And the new cursor records the shape, so this happens once and not on
+    // every sync from here on.
+    expect((await db.syncState.get([ACCOUNT, 'ContactCard']))!.modelVersion).toBe(2)
+  })
+
+  it('resumes from the cursor once the cached cards are the current shape', async () => {
+    await db.syncState.put({
+      accountId: ACCOUNT,
+      collection: 'ContactCard',
+      state: 'card-1',
+      modelVersion: 2,
+      updatedAt: 0,
+    })
+    const asked: Array<string | undefined> = []
+    contacts = {
+      syncAddressBooks: () => Promise.resolve(page()),
+      syncContacts: (since?: string) => {
+        asked.push(since)
+        return Promise.resolve(page({ newState: 'card-2' }))
+      },
+    }
+
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    expect(asked).toEqual(['card-1'])
+  })
+
   it('gives each collection its own cursor', async () => {
     /*
      * Address books and cards are separate JMAP collections with separate

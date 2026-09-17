@@ -32,6 +32,13 @@ export interface SyncStateRow {
   accountId: string
   collection: string // 'Mailbox' | 'Email' | 'Thread' | 'ContactCard' | ...
   state: string
+  /**
+   * How much of each object the app kept when these rows were written
+   * (sync/engine.ts). Absent on rows from before this existed, which counts
+   * as 1. A cursor whose version is behind is not a cursor worth resuming:
+   * delta sync would carry the gap forward for ever.
+   */
+  modelVersion?: number
   updatedAt: number
 }
 

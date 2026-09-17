@@ -1,5 +1,16 @@
 # Hard-won gotchas: JMAP protocol, sync, mail (do not rediscover)
 
+- **Delta sync never brings a field the app did not ask for last time.** A
+  cursor carries "what changed on the server", so teaching a mapper a new
+  property reaches rows already on disk exactly never — the server has no
+  reason to call those objects changed. Adding `birthday` to contacts this way
+  looked like a calendar bug: the phone, signed in after the release, showed
+  birthdays while the desktop, signed in before it, showed none, from the same
+  account. Signing out and back in was the only cure anyone found. `sync/engine.ts`
+  now keeps a `MODEL_VERSION` per collection and stores it beside the cursor
+  (`SyncStateRow.modelVersion`); a cursor whose version is behind is not
+  resumed, so the next sync refetches that collection once. **Bump the number
+  when a mapper starts keeping a field it used to drop.**
 - **An update is a patch, so an omitted property is one the server keeps.**
   `fromContact` used to emit `undefined` for a field the contact no longer had,
   which `JSON.stringify` drops — so deleting a contact's last email address

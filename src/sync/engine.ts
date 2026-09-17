@@ -33,8 +33,51 @@ function mailboxRow(accountId: string, m: Mailbox): MailboxRow {
   }
 }
 
+/**
+ * How much of each object this app knows how to store, as a number that goes
+ * up whenever a mapper starts keeping a field it used to drop.
+ *
+ * Delta sync only ever rewrites a row the *server* reports as changed, so a
+ * new field reaches rows already on disk — never. A card cached before mel
+ * learned about birthdays keeps no birthday for as long as nobody edits it on
+ * the server, and the calendar then shows none: exactly what happened between
+ * one device that had been signed in for a while and a newer one, against the
+ * same account, which looked for all the world like a rendering bug.
+ *
+ * Bumping the number here makes the next sync a full one for that collection,
+ * once, and nothing else. Leave Email alone unless it is truly worth making
+ * every device re-fetch a whole mailbox.
+ */
+const MODEL_VERSION: Record<string, number> = {
+  // 2: birthday, photo, online services and tags (RFC 9553 fields added after
+  // the first contacts release).
+  ContactCard: 2,
+}
+
+function modelVersion(collection: string): number {
+  return MODEL_VERSION[collection] ?? 1
+}
+
+/**
+ * Where the last sync of this collection got to, or undefined to fetch it all.
+ *
+ * Undefined also when the cached rows predate a field this app now keeps —
+ * there is no cursor that can bring a field nobody asked for at the time.
+ */
 async function getState(accountId: string, collection: string): Promise<string | undefined> {
-  return (await db.syncState.get([accountId, collection]))?.state
+  const row = await db.syncState.get([accountId, collection])
+  if (!row) return undefined
+  return (row.modelVersion ?? 1) === modelVersion(collection) ? row.state : undefined
+}
+
+function putState(accountId: string, collection: string, state: string) {
+  return db.syncState.put({
+    accountId,
+    collection,
+    state,
+    modelVersion: modelVersion(collection),
+    updatedAt: Date.now(),
+  })
 }
 
 /**
@@ -50,12 +93,7 @@ async function applyEmailPage(accountId: string, page: SyncPage<EmailHeader>) {
     if (rows.length) await db.emails.bulkPut(rows)
     if (page.destroyedIds.length)
       await db.emails.bulkDelete(page.destroyedIds.map((id) => [accountId, id]))
-    await db.syncState.put({
-      accountId,
-      collection: 'Email',
-      state: page.newState,
-      updatedAt: Date.now(),
-    })
+    await putState(accountId, 'Email', page.newState)
   })
 }
 
@@ -92,12 +130,7 @@ async function fullEmailSync(accountId: string, mail: MailProvider) {
     const local = await db.emails.where('accountId').equals(accountId).primaryKeys()
     const stale = local.filter((key) => !seen.has((key as [string, string])[1]))
     if (stale.length) await db.emails.bulkDelete(stale as [string, string][])
-    await db.syncState.put({
-      accountId,
-      collection: 'Email',
-      state: finalState,
-      updatedAt: Date.now(),
-    })
+    await putState(accountId, 'Email', finalState)
   } finally {
     // Including on the way out through an error: a progress line left standing
     // would claim a fetch is still running after it has given up.
@@ -170,7 +203,7 @@ async function syncCollection<T extends { id: string }, R extends SyncRow>(
       if (rows.length) await table.bulkPut(rows)
       if (page.destroyedIds.length)
         await table.bulkDelete(page.destroyedIds.map((id) => [accountId, id]))
-      await db.syncState.put({ accountId, collection, state: page.newState, updatedAt: Date.now() })
+      await putState(accountId, collection, page.newState)
     })
     if (!page.hasMore) return
     state = page.newState
