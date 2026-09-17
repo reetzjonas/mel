@@ -23,8 +23,8 @@ React 19 + TypeScript + Vite, Tailwind, TanStack Router, Dexie.
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-dark.png">
-    <img src="docs/media/screenshot-light.png" alt="mel's mail view, showing a conversation open next to the inbox list" width="800">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-mail-dark.png">
+    <img src="docs/media/screenshot-mail-light.png" alt="mel's mail view, showing a conversation open next to the inbox list" width="800">
   </picture>
 </p>
 
@@ -36,8 +36,34 @@ React 19 + TypeScript + Vite, Tailwind, TanStack Router, Dexie.
 - **Calendar** — month/week/day views, recurring events across DST, multiple
   calendars, invitations and RSVP over iTIP
 - **Contacts** — RFC 9610 contact cards, autocomplete while composing
+- **Files** — browse, upload and preview files on the server (JMAP FileNode)
 - **Privacy** — at-rest encryption (Argon2id → AES-GCM), Web Push without a
   backend (RFC 9749), no third-party requests unless you ask for one
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-calendar-dark.png">
+        <img src="docs/media/screenshot-calendar-light.png" alt="The week view, with events laid out across a time grid" width="100%">
+      </picture>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-contacts-dark.png">
+        <img src="docs/media/screenshot-contacts-light.png" alt="A contact card open beside the contact list" width="100%">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-files-dark.png">
+        <img src="docs/media/screenshot-files-light.png" alt="The files browser with a text file previewing in place" width="70%">
+      </picture>
+    </td>
+  </tr>
+</table>
 
 ## Deploying it
 
