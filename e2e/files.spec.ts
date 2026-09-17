@@ -265,6 +265,18 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
   // Preview reads the blob back off the server.
   await page.getByRole('button', { name: 'note.txt', exact: true }).click()
   await expect(page.getByText('hello from mel')).toBeVisible({ timeout: 10_000 })
+
+  // Full view is the same content over the whole window — a PDF is unreadable
+  // at panel width. Escape closes it and leaves the pane behind, rather than
+  // closing the preview along with it.
+  await page.getByRole('button', { name: 'Full view' }).click()
+  const full = page.getByRole('button', { name: 'Close full view' })
+  await expect(full).toBeVisible()
+  await expect(page.getByText('hello from mel')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(full).toHaveCount(0)
+  await expect(page.getByText('hello from mel')).toBeVisible()
+
   // Below lg the preview replaces the listing, so the row actions are only
   // reachable again once it is closed.
   await page.getByRole('button', { name: 'Back' }).click()

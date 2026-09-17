@@ -103,6 +103,32 @@ state because `dataTransfer` cannot be read during a touch drag, and what is
 being dragged lives in a `useRef`, since a touch drag can fire `dragenter`
 before any React render commits.
 
+## Preview, and the full view
+
+`FilePreview` renders images, text and PDFs from a blob URL it makes and
+revokes itself. In the pane that is fine for a photo and useless for a PDF: the
+pane is 24rem beside the listing and a phone's width below `lg`, and an A4 page
+at that width is not readable. **Full view** puts the same content over the
+whole window, closed by Escape, by the backdrop or by its own button.
+
+Two deliberate choices in there:
+
+**An overlay, not a new tab.** `window.open(blobUrl)` was the obvious route and
+is the fragile one: Safari refuses a top-level navigation to `blob:`, and in an
+installed PWA a new tab drops the user out of the app into a browser window.
+The overlay also keeps the blob URL owned by the component that revokes it,
+rather than handing it to a tab that may outlive the preview.
+
+**One viewer mounted at a time.** The pane's body is unmounted while the
+overlay is open (`{!expanded && <PreviewBody …/>}`). Leaving it there would have
+the browser running two copies of the same PDF, and nothing of the pane shows
+from under a full-window overlay anyway.
+
+`PreviewBody` is one renderer with a `full` flag rather than two: only the
+bounds differ. The one that matters is the image — `max-h-full object-contain`,
+so a tall image is fitted to the window instead of running off the bottom of
+it, which is the whole point of asking for a bigger view.
+
 ## What the server does that the spec does not say
 
 Each of these cost a round of probing; none is guessable from the draft.

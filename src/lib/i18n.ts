@@ -475,6 +475,8 @@ const en = {
   'files.dropHere': 'Drop to upload',
   'files.preview.none': 'This file type cannot be previewed.',
   'files.preview.open': 'Download to open it',
+  'files.preview.expand': 'Full view',
+  'files.preview.collapse': 'Close full view',
   'files.loading': 'Loading…',
   'files.modified': 'Changed',
 
@@ -1079,6 +1081,8 @@ const de: Partial<Record<MsgKey, string>> = {
   'files.dropHere': 'Zum Hochladen loslassen',
   'files.preview.none': 'Für diesen Dateityp gibt es keine Vorschau.',
   'files.preview.open': 'Zum Öffnen herunterladen',
+  'files.preview.expand': 'Große Ansicht',
+  'files.preview.collapse': 'Große Ansicht schließen',
   'files.select': 'Auswählen',
   'files.move': 'Verschieben nach…',
   'files.move.top': 'Oberste Ebene',
