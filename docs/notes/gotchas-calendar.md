@@ -11,6 +11,23 @@
 
 - Stalwart calendar: `recurrenceRule` is **singular** (not `recurrenceRules`);
   ContactCards are **flat** JSContact objects (no `card` wrapper).
+
+- **`recurrenceOverrides`, as Stalwart actually behaves** (probed against 0.16
+  before any of it was written; see `recurring-events.md` for the design):
+  - It **stamps `updated` into every patch it stores**. A client that models a
+    patch as a fixed set of fields and writes the whole map back deletes that
+    stamp — and anything another client wrote — which is why mel keeps each
+    patch as an open map.
+  - `recurrenceOverrides/<recurrenceId>` as a **whole-object pointer works**,
+    but a deeper pointer (`…/<recurrenceId>/title`) only works when that
+    override **already exists**; otherwise the whole `/set` fails with
+    `invalidProperties`, "Patch operation failed".
+  - `recurrenceOverrides: null` **clears them**, and a cleared event simply
+    omits the property on read. Leaving the property *out* of an update keeps
+    whatever the server has — so an occurrence being put back into the series
+    has to send the map explicitly, null included.
+  - A recurrence id the rule never produces is **kept** (RFC 8984 says it adds
+    an occurrence); a malformed one (`"nonsense"`) is **silently dropped**.
 - **Scheduling/iTIP has three traps, all silent** (worked out the hard way, see
   `providers/jmap/calendars.ts`):
   1. `CalendarEvent/set` needs the argument **`sendSchedulingMessages: true`**.

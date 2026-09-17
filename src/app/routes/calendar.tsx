@@ -8,6 +8,7 @@ import type {
   ParticipationStatus,
 } from '../../domain/calendar'
 import { EventDialog } from '../../features/calendar/EventDialog'
+import { ScopeDialog } from '../../features/calendar/ScopeDialog'
 import { TimeGrid } from '../../features/calendar/TimeGrid'
 import { dayKey } from '../../lib/dates'
 import { instantAt } from '../../features/calendar/dragGeometry'
@@ -15,6 +16,13 @@ import { useCalendars, useEvents, useSelfIdentity } from '../../features/calenda
 import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t, currentLocale } from '../../lib/i18n'
+import {
+  occurrenceEvent,
+  patchFor,
+  seriesFromOccurrence,
+  withOverride,
+  withoutOccurrence,
+} from '../../lib/occurrence'
 import { expandAll, rescheduleEvent } from '../../lib/recurrence'
 import {
   BIRTHDAY_CALENDAR_ID,
@@ -81,6 +89,24 @@ const weekRangeFmt = new Intl.DateTimeFormat(currentLocale, { day: 'numeric', mo
 interface DialogState {
   event: CalendarEvent
   isNew: boolean
+  /** Set when the dialog is showing one occurrence of a series. */
+  recurrenceId: string | null
+}
+
+/**
+ * An edit to one occurrence of a series, waiting for the user to say how far
+ * it reaches.
+ *
+ * The edit is already worked out by the time this exists — the question is
+ * only whether it is written as an override or applied to the series — so the
+ * answer costs one call either way, and cancelling costs nothing.
+ */
+interface ScopeQuestion {
+  kind: 'edit' | 'delete'
+  series: CalendarEvent
+  recurrenceId: string
+  /** The occurrence as edited; unused by a delete. */
+  edited: CalendarEvent
 }
 
 function hiddenCalendarsKey(accountId: string) {
@@ -166,6 +192,7 @@ function CalendarApp() {
   const [anchor, setAnchor] = useState(() => new Date())
   const [view, setView] = useState<ViewMode>('month')
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [scope, setScope] = useState<ScopeQuestion | null>(null)
   const { hidden, toggle: toggleCalendar } = useHiddenCalendars(account?.id)
   /* The occurrence in flight across the month grid, and the cell under it. The
      payload cannot be read during a dragover, so the source keeps it here. */
@@ -234,6 +261,7 @@ function CalendarApp() {
     if (minutes !== undefined) start.setHours(0, minutes, 0, 0)
     setDialog({
       isNew: true,
+      recurrenceId: null,
       event: {
         id: '',
         calendarIds: { [defaultCalendarId]: true },
@@ -250,37 +278,91 @@ function CalendarApp() {
         showWithoutTime: false,
         status: 'confirmed',
         recurrenceRule: null,
+        recurrenceOverrides: {},
         participants: [],
         isOrganizerCopy: true,
       },
     })
   }
 
-  function openEdit(eventId: string) {
+  /**
+   * The event as one occurrence of it stands.
+   *
+   * A series occurrence may carry its own title, time or place, so every
+   * screen asks for the occurrence rather than reading the series: showing
+   * "Standup" on the one that was renamed to "Standup (with Ana)" would be the
+   * override quietly not being there.
+   */
+  function eventFor(occ: Occurrence): CalendarEvent | undefined {
+    const base = eventById.get(occ.eventId)
+    if (!base) return undefined
+    return occ.recurrenceId ? occurrenceEvent(base, occ.recurrenceId) : base
+  }
+
+  function openEdit(occ: Occurrence) {
     // A birthday has no event behind it to edit; the card it came from is the
     // only thing there is to open.
-    if (isBirthdayEventId(eventId)) {
+    if (isBirthdayEventId(occ.eventId)) {
       void navigate({
         to: '/contacts/$contactId',
-        params: { contactId: contactIdOfBirthday(eventId) },
+        params: { contactId: contactIdOfBirthday(occ.eventId) },
       })
       return
     }
-    const full = eventById.get(eventId)
-    if (full) setDialog({ isNew: false, event: full })
+    const base = eventById.get(occ.eventId)
+    if (!base) return
+    // Only a real series gets an occurrence id in the dialog: an event with no
+    // rule has nothing to scope an edit against, and asking "this one or all?"
+    // about a single event is a question with one answer.
+    const recurrenceId = base.recurrenceRule ? occ.recurrenceId : null
+    setDialog({
+      isNew: false,
+      recurrenceId,
+      event: recurrenceId ? occurrenceEvent(base, recurrenceId) : base,
+    })
   }
 
   /**
    * What a drag may pick up.
    *
-   * A series is left alone because there is nowhere to put the answer: mel
-   * cannot yet override a single occurrence (#5), so dragging one instance
-   * would move every one of them — and on a rule with `byDay`, dragging it to
-   * another weekday would do nothing at all. Birthdays are not events on any
-   * server, and an invitation is somebody else's event to move.
+   * Birthdays are not events on any server, and an invitation is somebody
+   * else's event to move. A series may be dragged: where it lands is written
+   * as an override for that one occurrence, or applied to the whole series,
+   * depending on what the question after the drop is answered with.
    */
   function canMove(e: CalendarEvent): boolean {
-    return !isBirthdayEventId(e.id) && !e.recurrenceRule && e.isOrganizerCopy
+    return !isBirthdayEventId(e.id) && e.isOrganizerCopy
+  }
+
+  /**
+   * Apply an edit to one occurrence, or to the series it belongs to.
+   *
+   * Both are one write of the whole event, so both undo the same way: put back
+   * the event as it was. The override path keeps the series untouched, and the
+   * series path drops this occurrence's own patch — see seriesFromOccurrence.
+   */
+  function applyScope(q: ScopeQuestion, all: boolean) {
+    const accountId = account!.id
+    const before = q.series
+    const next =
+      q.kind === 'delete'
+        ? withoutOccurrence(before, q.recurrenceId)
+        : all
+          ? seriesFromOccurrence(before, q.recurrenceId, q.edited)
+          : withOverride(before, q.recurrenceId, patchFor(before, q.recurrenceId, q.edited))
+
+    setScope(null)
+    if (q.kind === 'delete' && all) {
+      void deleteEvent(accountId, before.id).then(() => showSnackbar({ message: t('cal.deleted') }))
+      return
+    }
+    void updateEvent(accountId, next).then(() =>
+      showSnackbar({
+        message: q.kind === 'delete' ? t('cal.deleted') : t('cal.moved'),
+        actionLabel: t('mail.undo'),
+        action: () => void updateEvent(accountId, before),
+      }),
+    )
   }
 
   /**
@@ -296,17 +378,28 @@ function CalendarApp() {
     if (!occ || dayKey(occ.start) === dayKey(day)) return
     const minutes = occ.start.getHours() * 60 + occ.start.getMinutes()
     const start = instantAt(day, minutes)
-    onEventDrop(
-      occ.eventId,
-      start,
-      new Date(start.getTime() + (occ.end.getTime() - occ.start.getTime())),
-    )
+    onEventDrop(occ, start, new Date(start.getTime() + (occ.end.getTime() - occ.start.getTime())))
   }
 
-  function onEventDrop(eventId: string, start: Date, end: Date) {
-    const before = eventById.get(eventId)
+  function onEventDrop(occ: Occurrence, start: Date, end: Date) {
+    const before = eventById.get(occ.eventId)
     if (!before || !canMove(before)) return
     const accountId = account!.id
+
+    // One occurrence of a series has to be asked about before anything is
+    // written: moving all of them and moving one of them are both reasonable
+    // readings of the same gesture.
+    if (before.recurrenceRule && occ.recurrenceId) {
+      const moved = rescheduleEvent(
+        occurrenceEvent(before, occ.recurrenceId),
+        start,
+        end,
+        VIEWER_ZONE,
+      )
+      setScope({ kind: 'edit', series: before, recurrenceId: occ.recurrenceId, edited: moved })
+      return
+    }
+
     void updateEvent(accountId, rescheduleEvent(before, start, end, VIEWER_ZONE)).then(() =>
       // The event as it was is the whole undo: a drag rewrites two fields and
       // nothing else, so putting the old one back is exact rather than an
@@ -320,14 +413,36 @@ function CalendarApp() {
   }
 
   function onDialogSave(e: CalendarEvent) {
-    const isNew = dialog?.isNew
+    const open = dialog
     setDialog(null)
-    if (isNew) {
+    if (!open) return
+    if (open.isNew) {
       const { id: _id, ...rest } = e
       void createEvent(account!.id, rest)
-    } else {
-      void updateEvent(account!.id, e)
+      return
     }
+    const series = open.recurrenceId ? eventById.get(e.id) : undefined
+    if (open.recurrenceId && series) {
+      /*
+       * The repeat picker and the calendar picker are series-wide: neither can
+       * be said about one occurrence, so changing one is an edit to the series
+       * whatever the answer would have been. Asking anyway would be offering a
+       * choice that only has one answer.
+       */
+      const seriesWide =
+        (e.recurrenceRule?.frequency ?? null) !== (series.recurrenceRule?.frequency ?? null) ||
+        Object.keys(e.calendarIds).join() !== Object.keys(series.calendarIds).join()
+      const question: ScopeQuestion = {
+        kind: 'edit',
+        series,
+        recurrenceId: open.recurrenceId,
+        edited: e,
+      }
+      if (seriesWide) applyScope(question, true)
+      else setScope(question)
+      return
+    }
+    void updateEvent(account!.id, e)
   }
 
   function onDialogRsvp(status: ParticipationStatus) {
@@ -484,7 +599,7 @@ function CalendarApp() {
                       {day.getDate()}
                     </span>
                     {occs.slice(0, 3).map((o, i) => {
-                      const ev = eventById.get(o.eventId)
+                      const ev = eventFor(o)
                       const color = ev ? eventColor(ev) : null
                       const movable = Boolean(ev) && canMove(ev!)
                       return (
@@ -507,7 +622,7 @@ function CalendarApp() {
                           }}
                           onClick={(e) => {
                             e.stopPropagation()
-                            openEdit(o.eventId)
+                            openEdit(o)
                           }}
                           style={color ? { backgroundColor: `${color}26`, color } : undefined}
                           className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity select-none hover:opacity-80 ${movable ? 'cursor-grab' : ''} ${!color ? 'bg-accent-wash text-accent' : ''}`}
@@ -535,7 +650,7 @@ function CalendarApp() {
             <TimeGrid
               days={grid}
               eventsByDay={byDay}
-              eventById={eventById}
+              eventFor={eventFor}
               calendarColor={eventColor}
               onSlotClick={openNew}
               onEventClick={openEdit}
@@ -562,13 +677,13 @@ function CalendarApp() {
                     {agendaFmt.format(new Date(`${key}T12:00:00`))}
                   </div>
                   {occs.map((o, i) => {
-                    const ev = eventById.get(o.eventId)
+                    const ev = eventFor(o)
                     const color = ev ? eventColor(ev) : null
                     return (
                       <button
                         key={`${o.eventId}-${i}`}
                         type="button"
-                        onClick={() => openEdit(o.eventId)}
+                        onClick={() => openEdit(o)}
                         className={`flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-2 ${past ? 'opacity-55' : ''}`}
                       >
                         <span
@@ -594,6 +709,7 @@ function CalendarApp() {
           calendars={calendars ?? []}
           accountId={account.id}
           self={self}
+          occurrence={dialog.recurrenceId !== null}
           onClose={() => setDialog(null)}
           onSave={onDialogSave}
           onRsvp={onDialogRsvp}
@@ -601,13 +717,26 @@ function CalendarApp() {
             dialog.isNew
               ? null
               : () => {
-                  const eventId = dialog.event.id
+                  const { event, recurrenceId } = dialog
+                  const series = recurrenceId ? eventById.get(event.id) : undefined
                   setDialog(null)
-                  void deleteEvent(account.id, eventId).then(() =>
+                  if (recurrenceId && series) {
+                    setScope({ kind: 'delete', series, recurrenceId, edited: event })
+                    return
+                  }
+                  void deleteEvent(account.id, event.id).then(() =>
                     showSnackbar({ message: t('cal.deleted') }),
                   )
                 }
           }
+        />
+      )}
+
+      {scope && (
+        <ScopeDialog
+          kind={scope.kind}
+          onChoose={(all) => applyScope(scope, all)}
+          onClose={() => setScope(null)}
         />
       )}
     </div>

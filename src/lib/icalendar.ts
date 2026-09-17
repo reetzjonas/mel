@@ -274,6 +274,10 @@ export function parseIcs(text: string): IcsInvitation | null {
       showWithoutTime: start.dateOnly,
       status: STATUSES[textOf('STATUS').toUpperCase()] ?? 'confirmed',
       recurrenceRule: rrule ? parseRule(rrule.value) : null,
+      // RECURRENCE-ID components arrive as separate VEVENTs in the same file,
+      // which this parser does not join back together; an invitation to one
+      // occurrence is read as the event it describes.
+      recurrenceOverrides: {},
       /*
        * Attendees are read for display only and never stored on the copy we
        * create. An event that carries participants is a *scheduled* one, and

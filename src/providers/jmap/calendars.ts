@@ -3,6 +3,7 @@ import type {
   CalendarEvent,
   Participant,
   ParticipationStatus,
+  RecurrencePatch,
   RecurrenceRule,
 } from '../../domain/calendar'
 import { type CalendarProvider, type SetFailure } from '../types'
@@ -13,7 +14,13 @@ import { syncCollection } from './collectionSync'
 
 const USING = [Cap.core, Cap.calendars]
 
-const PERMANENT = new Set(['invalidProperties', 'invalidPatch', 'notFound', 'forbidden', 'overQuota'])
+const PERMANENT = new Set([
+  'invalidProperties',
+  'invalidPatch',
+  'notFound',
+  'forbidden',
+  'overQuota',
+])
 
 function toFailure(e: SetError | undefined): SetFailure {
   return {
@@ -51,6 +58,7 @@ export interface JmapCalendarEvent {
     byDay?: Array<{ day: string }>
     byMonthDay?: number[]
   } | null
+  recurrenceOverrides?: Record<string, Record<string, unknown>> | null
   participants?: Record<string, JmapParticipant> | null
   organizerCalendarAddress?: string | null
   /** false on the invitation copy the server keeps for an attendee. */
@@ -138,6 +146,23 @@ function fromParticipants(ps: Participant[]): Record<string, unknown> | undefine
   return out
 }
 
+/**
+ * The per-occurrence patches, kept whole.
+ *
+ * Only the shape is checked — a map of objects — and nothing inside is read or
+ * dropped here: mel writes the whole map back on the next save, so a field it
+ * did not keep is a field it would delete on somebody else's behalf.
+ */
+function toOverrides(
+  raw: Record<string, Record<string, unknown>> | null | undefined,
+): Record<string, RecurrencePatch> {
+  const out: Record<string, RecurrencePatch> = {}
+  for (const [id, patch] of Object.entries(raw ?? {})) {
+    if (patch && typeof patch === 'object' && !Array.isArray(patch)) out[id] = patch
+  }
+  return out
+}
+
 export function toEvent(e: JmapCalendarEvent): CalendarEvent {
   const calendarIds: Record<string, true> = {}
   for (const [id, on] of Object.entries(e.calendarIds ?? {})) if (on) calendarIds[id] = true
@@ -163,9 +188,9 @@ export function toEvent(e: JmapCalendarEvent): CalendarEvent {
     timeZone: e.timeZone ?? null,
     duration: e.duration ?? 'PT0S',
     showWithoutTime: e.showWithoutTime ?? false,
-    status:
-      e.status === 'cancelled' || e.status === 'tentative' ? e.status : 'confirmed',
+    status: e.status === 'cancelled' || e.status === 'tentative' ? e.status : 'confirmed',
     recurrenceRule: rule,
+    recurrenceOverrides: toOverrides(e.recurrenceOverrides),
     participants: toParticipants(e),
     isOrganizerCopy: e.isOrigin ?? true,
   }
@@ -199,6 +224,12 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
           byMonthDay: ev.recurrenceRule.byMonthDay,
         }
       : undefined,
+    // Explicitly null when there are none: leaving the property out would keep
+    // whatever the server still has, and then an occurrence put back into the
+    // series — an undone delete — would stay excluded.
+    recurrenceOverrides: Object.keys(ev.recurrenceOverrides ?? {}).length
+      ? ev.recurrenceOverrides
+      : null,
     participants: fromParticipants(ev.participants),
     organizerCalendarAddress: organizerAddress(ev.participants),
   }

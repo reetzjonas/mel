@@ -47,6 +47,7 @@ export function EventDialog({
   calendars,
   accountId,
   self,
+  occurrence = false,
   onSave,
   onDelete,
   onRsvp,
@@ -58,6 +59,8 @@ export function EventDialog({
   accountId: string
   /** The address we invite people as, and the one we RSVP with. */
   self: { name: string; email: string }
+  /** True when this is one occurrence of a series rather than the series. */
+  occurrence?: boolean
   onSave: (e: CalendarEvent) => void
   onDelete: (() => void) | null
   onRsvp: (status: ParticipationStatus) => void
@@ -255,6 +258,10 @@ export function EventDialog({
         <option value="monthly">{t('cal.repeat.monthly')}</option>
         <option value="yearly">{t('cal.repeat.yearly')}</option>
       </Select>
+      {/* Neither can be said about a single occurrence, so changing one is an
+          edit to the series — which is worth saying before it is saved rather
+          than in the question afterwards. */}
+      {occurrence && <p className="text-xs text-ink-muted">{t('cal.scope.hint')}</p>}
       <input
         className={inputClass}
         placeholder={t('cal.location')}

@@ -1,6 +1,7 @@
 import { Temporal } from 'temporal-polyfill'
 import { Frequency, RRule, Weekday } from 'rrule'
 import type { CalendarEvent, Occurrence, RecurrenceRule } from '../domain/calendar'
+import { isExcluded, occurrenceEvent } from './occurrence'
 
 /**
  * Recurrence expansion. rrule has known DST edge cases, so we never let it
@@ -51,30 +52,57 @@ function durationMs(iso: string): number {
 
 const MAX_OCCURRENCES = 500
 
+/** The local date-time an occurrence is keyed by, from its fake-UTC start. */
+function recurrenceIdOf(fakeStart: Date): string {
+  return fakeStart.toISOString().slice(0, 19)
+}
+
 export function expandOccurrences(
   event: CalendarEvent,
   windowStartUtc: Date,
   windowEndUtc: Date,
   viewerZone: string,
 ): Occurrence[] {
-  const zone = event.timeZone ?? viewerZone
   const durMs = durationMs(event.duration)
 
-  const toOccurrence = (fakeStart: Date): Occurrence => {
-    const start = event.showWithoutTime
+  const toOccurrence = (
+    fakeStart: Date,
+    recurrenceId: string | null = null,
+    forEvent: CalendarEvent = event,
+  ): Occurrence => {
+    const start = forEvent.showWithoutTime
       ? fakeUtcToInstant(fakeStart, viewerZone)
-      : fakeUtcToInstant(fakeStart, zone)
+      : fakeUtcToInstant(fakeStart, forEvent.timeZone ?? viewerZone)
+    const ms = forEvent === event ? durMs : durationMs(forEvent.duration)
     return {
       eventId: event.id,
+      recurrenceId,
       start,
-      end: new Date(start.getTime() + Math.max(durMs, event.showWithoutTime ? 86_400_000 : 0)),
-      allDay: event.showWithoutTime,
+      end: new Date(start.getTime() + Math.max(ms, forEvent.showWithoutTime ? 86_400_000 : 0)),
+      allDay: forEvent.showWithoutTime,
     }
   }
 
   if (!event.recurrenceRule) {
     const occ = toOccurrence(localToFakeUtc(event.start))
     return occ.end > windowStartUtc && occ.start < windowEndUtc ? [occ] : []
+  }
+
+  const overrides = event.recurrenceOverrides ?? {}
+
+  /*
+   * An overridden occurrence is built from its patch instead of the rule, and
+   * every override is considered whatever the window is: one may have been
+   * moved *into* view from a date the rule's own window does not reach, and a
+   * recurrence id the rule never produces is an occurrence in its own right
+   * (RFC 8984 allows an override to add one).
+   */
+  const overridden: Occurrence[] = []
+  for (const [recurrenceId, patch] of Object.entries(overrides)) {
+    if (isExcluded(patch)) continue
+    const moved = occurrenceEvent(event, recurrenceId)
+    if (!moved.start) continue
+    overridden.push(toOccurrence(localToFakeUtc(moved.start), recurrenceId, moved))
   }
 
   const r = event.recurrenceRule
@@ -91,11 +119,13 @@ export function expandOccurrences(
   // Widen the fake-UTC window by a day to survive the wall-clock/zone offset.
   const fakeFrom = new Date(windowStartUtc.getTime() - 86_400_000 - durMs)
   const fakeTo = new Date(windowEndUtc.getTime() + 86_400_000)
-  return rule
+  const plain = rule
     .between(fakeFrom, fakeTo, true)
     .slice(0, MAX_OCCURRENCES)
-    .map(toOccurrence)
-    .filter((o) => o.end > windowStartUtc && o.start < windowEndUtc)
+    .filter((fake) => !(recurrenceIdOf(fake) in overrides))
+    .map((fake) => toOccurrence(fake, recurrenceIdOf(fake)))
+
+  return [...plain, ...overridden].filter((o) => o.end > windowStartUtc && o.start < windowEndUtc)
 }
 
 /** Occurrences of many events, sorted by start. */

@@ -49,8 +49,45 @@ const domainEvent = (participants: Participant[]): CalendarEvent => ({
   showWithoutTime: false,
   status: 'confirmed',
   recurrenceRule: null,
+  recurrenceOverrides: {},
   participants,
   isOrganizerCopy: true,
+})
+
+describe('recurrence overrides', () => {
+  it('keeps every patch whole, including fields mel has no use for', () => {
+    // Stalwart stamps `updated` into each patch, and another client may write
+    // anything else. mel rewrites the whole map when it saves, so whatever it
+    // fails to keep here is what it silently deletes there.
+    const e = toEvent({
+      ...base,
+      recurrenceOverrides: {
+        '2026-09-17T10:00:00': { start: '2026-09-17T14:00:00', updated: '2026-09-01T00:00:00Z' },
+        '2026-09-24T10:00:00': { excluded: true },
+      },
+    })
+
+    expect(e.recurrenceOverrides).toEqual({
+      '2026-09-17T10:00:00': { start: '2026-09-17T14:00:00', updated: '2026-09-01T00:00:00Z' },
+      '2026-09-24T10:00:00': { excluded: true },
+    })
+    expect(fromEvent(e)['recurrenceOverrides']).toEqual(e.recurrenceOverrides)
+  })
+
+  it('drops an entry that is not a patch at all', () => {
+    const e = toEvent({
+      ...base,
+      recurrenceOverrides: { '2026-09-17T10:00:00': null as never, ok: { excluded: true } },
+    })
+
+    expect(Object.keys(e.recurrenceOverrides)).toEqual(['ok'])
+  })
+
+  it('sends null rather than nothing when the last override is gone', () => {
+    // An omitted property leaves the server's copy alone, so an occurrence put
+    // back into the series would stay excluded.
+    expect(fromEvent(domainEvent([]))['recurrenceOverrides']).toBeNull()
+  })
 })
 
 describe('participant mapping', () => {

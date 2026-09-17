@@ -13,7 +13,7 @@ const DRAG_THRESHOLD_PX = 4
 interface Drag extends DragOrigin {
   /** Which block on screen, so only that one previews. */
   key: string
-  eventId: string
+  occ: Occurrence
   originX: number
   originY: number
   deltaMinutes: number
@@ -65,7 +65,7 @@ function layoutDay(occs: Occurrence[]): Positioned[] {
 export function TimeGrid({
   days,
   eventsByDay,
-  eventById,
+  eventFor,
   calendarColor,
   onSlotClick,
   onEventClick,
@@ -75,13 +75,14 @@ export function TimeGrid({
 }: {
   days: Date[]
   eventsByDay: Map<string, Occurrence[]>
-  eventById: Map<string, CalendarEvent>
+  /** The event as this occurrence stands, which for a series is not the series. */
+  eventFor: (occ: Occurrence) => CalendarEvent | undefined
   calendarColor: (event: CalendarEvent) => string | null
   onSlotClick: (day: Date, minutes: number) => void
-  onEventClick: (eventId: string) => void
+  onEventClick: (occ: Occurrence) => void
   /** A block dragged to a new time; the instants are in the viewer's zone. */
-  onEventDrop: (eventId: string, start: Date, end: Date) => void
-  /** Which events may be dragged at all — birthdays and series may not. */
+  onEventDrop: (occ: Occurrence, start: Date, end: Date) => void
+  /** Which events may be dragged at all — birthdays and invitations may not. */
   canMove: (event: CalendarEvent) => boolean
   today: string
 }) {
@@ -130,11 +131,7 @@ export function TimeGrid({
     if (drag.past && isMoved(drag, target)) {
       draggedRef.current = true
       const day = days[target.dayIndex]!
-      onEventDrop(
-        drag.eventId,
-        instantAt(day, target.startMinutes),
-        instantAt(day, target.endMinutes),
-      )
+      onEventDrop(drag.occ, instantAt(day, target.startMinutes), instantAt(day, target.endMinutes))
     }
     setDrag(null)
   }
@@ -173,13 +170,13 @@ export function TimeGrid({
               className="min-h-[1.5rem] flex-1 space-y-0.5 border-l border-line p-0.5"
             >
               {allDay.map((o, i) => {
-                const ev = eventById.get(o.eventId)
+                const ev = eventFor(o)
                 const color = ev ? calendarColor(ev) : null
                 return (
                   <button
                     key={`${o.eventId}-${i}`}
                     type="button"
-                    onClick={() => onEventClick(o.eventId)}
+                    onClick={() => onEventClick(o)}
                     style={color ? { backgroundColor: `${color}26`, color } : undefined}
                     className={`block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity hover:opacity-80 ${!color ? 'bg-accent-wash text-accent' : ''}`}
                   >
@@ -236,7 +233,7 @@ export function TimeGrid({
                   />
                 )}
                 {positioned.map((o, i) => {
-                  const ev = eventById.get(o.eventId)
+                  const ev = eventFor(o)
                   const color = ev ? calendarColor(ev) : null
                   const blockKey = `${key}-${o.eventId}-${i}`
                   const startMinutes = minutesOfDay(o.start)
@@ -260,7 +257,7 @@ export function TimeGrid({
                   const offColumn = dragging && shown.dayIndex !== dayIndex
                   const origin = {
                     key: blockKey,
-                    eventId: o.eventId,
+                    occ: o,
                     mode: 'move' as DragMode,
                     dayIndex,
                     startMinutes,
@@ -287,7 +284,7 @@ export function TimeGrid({
                           draggedRef.current = false
                           return
                         }
-                        onEventClick(o.eventId)
+                        onEventClick(o)
                       }}
                       onPointerDown={movable ? (e) => grab(e, 'move') : undefined}
                       onPointerMove={movable ? onPointerMove : undefined}

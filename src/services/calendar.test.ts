@@ -40,6 +40,7 @@ const sampleEvent: Omit<CalendarEvent, 'id'> = {
   showWithoutTime: false,
   status: 'confirmed',
   recurrenceRule: null,
+  recurrenceOverrides: {},
   participants: [],
   isOrganizerCopy: true,
 }

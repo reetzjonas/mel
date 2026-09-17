@@ -54,6 +54,7 @@ const node = (over: Partial<FileNode> = {}): FileNode => ({
   blobId: 'stored-blob',
   type: 'application/json',
   size: 3,
+  executable: false,
   created: '2026-01-01T00:00:00Z',
   modified: '2026-01-01T00:00:00Z',
   ...over,

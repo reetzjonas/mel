@@ -33,7 +33,9 @@ the organiser's copy. Full round trip covered end to end (`e2e/calendar.spec.ts`
 alice invites bob and bob accepts).
 
 The calendar also has week/day time grids (click-to-create, overlap columns, now line,
-drag to move or resize a single event; month grid drags onto another day, with undo),
+drag to move or resize, in the month grid too, with undo), single occurrences of a
+series editable, movable and deletable on their own (RFC 8984 recurrenceOverrides,
+with a "this one or all of them?" question — see `docs/notes/recurring-events.md`),
 multi-calendar colours plus visibility toggles (sidebar, localStorage) and calendar
 selection in the EventDialog. Mail follow-ups done: opening attachments (a real bug),
 quick actions in the list, folder management (create/rename/delete), draft
@@ -67,9 +69,11 @@ mail, files, calendars, contacts and filter scripts — which is why it is not i
 any one app's sidebar. Stalwart only reports a quota once one is configured, so
 `seed.sh` sets one; see the quota entry in `docs/notes/gotchas-jmap-mail.md`.
 
-Tests: 953 Vitest + 97 Playwright (desktop + mobile; state-mutating specs are
+Tests: 1045 Vitest + 115 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
-confirmed by the user.
+confirmed by the user. `npx tsc -b` is the typecheck that runs — `tsc -p
+tsconfig.json` is a no-op, since the root config is a solution file with
+references and no files of its own.
 
 Coverage runs with `npm run test:coverage` and is enforced per area in
 `vitest.config.ts` — `domain`/`lib`/`storage` near total, `providers` ~93%,
@@ -97,6 +101,8 @@ working on that specific feature, not on every session:
 - **Drag and drop** (mail onto folders, folders into folders, events on the
   week/day grid; pointer-only, menu and dialog stay the accessible path):
   `docs/notes/drag-and-drop.md`
+- **Recurring events** (editing one occurrence, the patch format, why the
+  scope question comes after the drag): `docs/notes/recurring-events.md`
 - **Theme editor** (guided OKLCH tuning, why lightness is never exposed, the
   gamut and contrast maths): `docs/notes/theme-editor.md`
 - **Resizable panel widths** (two boundaries, lg and up only; why the handles

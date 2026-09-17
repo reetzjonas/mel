@@ -88,6 +88,7 @@ export function birthdayEvents(contacts: Contact[], windowStart: Date): Calendar
       showWithoutTime: true,
       status: 'confirmed',
       recurrenceRule: { frequency: 'yearly' },
+      recurrenceOverrides: {},
       participants: [],
       isOrganizerCopy: false,
     })

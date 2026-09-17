@@ -54,6 +54,8 @@ const MODEL_VERSION: Record<string, number> = {
   ContactCard: 2,
   // 2: executable, which nothing asked the server for until now.
   FileNode: 2,
+  // 2: recurrenceOverrides, so cached series carry their per-occurrence edits.
+  CalendarEvent: 2,
 }
 
 function modelVersion(collection: string): number {

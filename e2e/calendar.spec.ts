@@ -46,17 +46,26 @@ test('create a single and a weekly recurring event in the month view', async ({ 
     })
     .toBeGreaterThan(1)
 
-  // Clean up so repeated runs don't fill the day cells past the chip cap.
-  for (const name of [weekly, title]) {
-    await page
-      .getByRole('button', { name: new RegExp(name) })
-      .first()
-      .click()
-    await page.getByRole('button', { name: 'Delete event' }).click()
-    await expect(page.getByRole('button', { name: new RegExp(name) })).toHaveCount(0, {
-      timeout: 10_000,
-    })
-  }
+  // Clean up so repeated runs don't fill the day cells past the chip cap. The
+  // weekly one is a series, so deleting it asks how far that reaches.
+  await page
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
+    .click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await page.getByRole('button', { name: 'All events' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+    timeout: 10_000,
+  })
+
+  await page
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+    .click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
+    timeout: 10_000,
+  })
 })
 
 test('week view: click a time slot creates an event, editing opens the same event', async ({
@@ -297,6 +306,13 @@ function nextDay(iso: string): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
+/** Seven days on, as the date input spells it. */
+function weekLater(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`)
+  d.setDate(d.getDate() + 7)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 /** An hour later, as the time input spells it. */
 function oneHourOn(hhmm: string): string {
   const [h, m] = hhmm.split(':')
@@ -378,9 +394,8 @@ test('drag an event to another time and day, then resize it', async ({ page }) =
   await page.getByRole('button', { name: 'Delete event' }).click()
 })
 
-test('a series and a birthday stay put', async ({ page }) => {
+test('a birthday stays put', async ({ page }) => {
   test.setTimeout(120_000)
-  const weekly = `Series-${Date.now() % 100000}`
   const surname = `Bday${Date.now() % 100000}`
 
   await login(page)
@@ -401,32 +416,127 @@ test('a series and a birthday stay put', async ({ page }) => {
   await page.getByRole('link', { name: 'Calendar' }).first().click()
   await page.getByRole('button', { name: 'Week', exact: true }).click()
 
-  await page.getByRole('button', { name: 'New event' }).click()
-  await page.getByPlaceholder('Title').fill(weekly)
-  await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
-  await page.getByRole('button', { name: 'Save', exact: true }).click()
-
-  const series = page.getByRole('button', { name: new RegExp(weekly) }).first()
-  await expect(series).toBeVisible({ timeout: 15_000 })
-  const seriesBefore = (await series.boundingBox())!
-  await dragBy(page, series, 0, 96)
-  await page.waitForTimeout(1200)
-  const seriesAfter = (await series.boundingBox())!
-  expect(Math.abs(seriesAfter.y - seriesBefore.y)).toBeLessThan(3)
-
+  // Nothing on any server holds it, so there is nowhere for a move to go.
   const birthday = page.getByRole('button', { name: new RegExp(surname) }).first()
-  await expect(birthday).toBeVisible()
+  await expect(birthday).toBeVisible({ timeout: 15_000 })
   const bdayBefore = (await birthday.boundingBox())!
   await dragBy(page, birthday, 0, 96)
   await page.waitForTimeout(1200)
   const bdayAfter = (await birthday.boundingBox())!
   expect(Math.abs(bdayAfter.y - bdayBefore.y)).toBeLessThan(3)
 
-  await series.click()
-  await page.getByRole('button', { name: 'Delete event' }).click()
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Geburtstag ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
+})
+
+test('move one occurrence of a series and leave the rest where they were', async ({ page }) => {
+  test.setTimeout(120_000)
+  const weekly = `Once-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(weekly)
+  await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  const block = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  await expect(block).toBeVisible({ timeout: 15_000 })
+  await block.click()
+  const startedAt = await page.getByLabel('Start', { exact: true }).inputValue()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  // An hour down, and then the question that only a series raises.
+  await dragBy(page, block, 0, 48)
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByRole('button', { name: 'This event' }).click()
+  await page.waitForTimeout(1500)
+
+  // Reloaded, so this is what the server kept rather than what the screen did.
+  await page.reload()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+  const moved = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  await expect(moved).toBeVisible({ timeout: 20_000 })
+  await moved.click()
+  expect(await page.getByLabel('Start', { exact: true }).inputValue()).toBe(oneHourOn(startedAt))
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  // Next week's occurrence is the point of the exercise: it did not move.
+  await page.getByRole('button', { name: 'next' }).click()
+  const untouched = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  await expect(untouched).toBeVisible({ timeout: 10_000 })
+  await untouched.click()
+  expect(await page.getByLabel('Start', { exact: true }).inputValue()).toBe(startedAt)
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  // Delete that one occurrence only: the following week keeps its own.
+  await untouched.click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await page.getByRole('button', { name: 'This event' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+  await page.getByRole('button', { name: 'next' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(weekly) }).first()).toBeVisible({
+    timeout: 10_000,
+  })
+
+  // And the series, which takes the moved occurrence with it.
+  await page
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
+    .click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await page.getByRole('button', { name: 'All events' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})
+
+test('drag a whole series onto another weekday', async ({ page }) => {
+  test.setTimeout(120_000)
+  const weekly = `Series-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(weekly)
+  await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  const block = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  await expect(block).toBeVisible({ timeout: 15_000 })
+  await block.click()
+  const startedOn = await page.getByLabel('Date', { exact: true }).inputValue()
+  await page.getByRole('button', { name: 'Cancel' }).click()
+
+  // One column to the right, for every occurrence. The rule names the weekday
+  // it repeats on, so "all events" has to rewrite that too — otherwise the
+  // series goes on producing the old day and the drag appears to do nothing.
+  await dragBy(page, block, (await block.boundingBox())!.width + 2, 0)
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByRole('button', { name: 'All events' }).click()
+  await page.waitForTimeout(1500)
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
+  await page.getByRole('button', { name: 'next' }).click()
+  const nextWeek = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  await expect(nextWeek).toBeVisible({ timeout: 20_000 })
+  await nextWeek.click()
+  expect(await page.getByLabel('Date', { exact: true }).inputValue()).toBe(
+    nextDay(weekLater(startedOn)),
+  )
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await page.getByRole('button', { name: 'All events' }).click()
+  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+    timeout: 15_000,
+  })
 })
 
 test('drag an event to another day in the month grid, then undo', async ({ page }) => {

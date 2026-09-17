@@ -19,6 +19,17 @@ export interface RecurrenceRule {
   byMonthDay?: number[]
 }
 
+/**
+ * What one occurrence of a series does differently (RFC 8984 PatchObject).
+ *
+ * An open map rather than a typed subset, unlike RecurrenceRule above. Its keys
+ * are JSON pointers into the event (`locations/l0/name`), servers add their own
+ * (Stalwart writes `updated`), and mel rewrites the whole map whenever it saves
+ * an event — so a typed shape would quietly throw away whatever another client
+ * put there. `excluded: true` means the occurrence does not happen at all.
+ */
+export type RecurrencePatch = Record<string, unknown>
+
 export type ParticipationStatus = 'needs-action' | 'accepted' | 'declined' | 'tentative'
 
 /**
@@ -56,6 +67,12 @@ export interface CalendarEvent {
   showWithoutTime: boolean
   status: 'confirmed' | 'cancelled' | 'tentative'
   recurrenceRule: RecurrenceRule | null
+  /**
+   * Changes to single occurrences, keyed by the occurrence's *original* local
+   * start — the one the rule produced, which stays the key even after the
+   * occurrence has been moved somewhere else.
+   */
+  recurrenceOverrides: Record<string, RecurrencePatch>
   /** Empty for a plain, unscheduled event. */
   participants: Participant[]
   /**
@@ -67,6 +84,12 @@ export interface CalendarEvent {
 
 export interface Occurrence {
   eventId: string
+  /**
+   * Which occurrence of a series this is, as its original local start; null for
+   * an event that does not recur. It is the key an override is written under,
+   * so it identifies the occurrence even once it has been moved.
+   */
+  recurrenceId: string | null
   /** UTC instants. */
   start: Date
   end: Date

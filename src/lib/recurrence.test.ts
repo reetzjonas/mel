@@ -15,6 +15,7 @@ const base: CalendarEvent = {
   showWithoutTime: false,
   status: 'confirmed',
   recurrenceRule: { frequency: 'weekly', byDay: ['mo'] },
+  recurrenceOverrides: {},
   participants: [],
   isOrganizerCopy: true,
 }
@@ -65,6 +66,78 @@ describe('expandOccurrences', () => {
     const occ = expandOccurrences(allDay, from, to, 'Europe/Berlin')
     expect(occ).toHaveLength(1)
     expect(occ[0]!.allDay).toBe(true)
+  })
+
+  it('names each occurrence by its own start, and a one-off by nothing', () => {
+    const [from, to] = win('2026-03-20T00:00:00Z', '2026-04-10T00:00:00Z')
+    const occ = expandOccurrences(base, from, to, 'Europe/Berlin')
+    expect(occ.map((o) => o.recurrenceId)).toEqual([
+      '2026-03-23T10:00:00',
+      '2026-03-30T10:00:00',
+      '2026-04-06T10:00:00',
+    ])
+
+    const single = { ...base, recurrenceRule: null }
+    const [f2, t2] = win('2026-03-23T00:00:00Z', '2026-03-24T00:00:00Z')
+    expect(expandOccurrences(single, f2, t2, 'Europe/Berlin')[0]!.recurrenceId).toBeNull()
+  })
+
+  it('leaves out an occurrence the series excludes', () => {
+    const event = {
+      ...base,
+      recurrenceOverrides: { '2026-03-30T10:00:00': { excluded: true } },
+    }
+    const [from, to] = win('2026-03-20T00:00:00Z', '2026-04-10T00:00:00Z')
+
+    expect(expandOccurrences(event, from, to, 'Europe/Berlin').map((o) => o.recurrenceId)).toEqual([
+      '2026-03-23T10:00:00',
+      '2026-04-06T10:00:00',
+    ])
+  })
+
+  it('puts a moved occurrence where its override says, keeping its id', () => {
+    const event = {
+      ...base,
+      recurrenceOverrides: {
+        '2026-03-30T10:00:00': { start: '2026-04-01T15:00:00', duration: 'PT30M' },
+      },
+    }
+    const [from, to] = win('2026-03-20T00:00:00Z', '2026-04-10T00:00:00Z')
+    const moved = expandOccurrences(event, from, to, 'Europe/Berlin').find(
+      (o) => o.recurrenceId === '2026-03-30T10:00:00',
+    )!
+
+    // 15:00 Berlin in summer time is 13:00Z, and the length came from the patch.
+    expect(moved.start.toISOString()).toBe('2026-04-01T13:00:00.000Z')
+    expect(moved.end.getTime() - moved.start.getTime()).toBe(30 * 60_000)
+  })
+
+  it('shows an occurrence moved into view from outside the window', () => {
+    // The rule's own expansion never reaches May, so an occurrence dragged
+    // from there into April is only found by walking the overrides.
+    const event = {
+      ...base,
+      recurrenceOverrides: { '2026-05-04T10:00:00': { start: '2026-04-07T10:00:00' } },
+    }
+    const [from, to] = win('2026-04-06T00:00:00Z', '2026-04-08T00:00:00Z')
+
+    expect(
+      expandOccurrences(event, from, to, 'Europe/Berlin').map((o) => o.recurrenceId),
+    ).toContain('2026-05-04T10:00:00')
+  })
+
+  it('keeps an occurrence another client added off the rule', () => {
+    // RFC 8984 lets an override name a date the rule never produces; dropping
+    // it would hide an event mel simply did not create itself.
+    const event = {
+      ...base,
+      recurrenceOverrides: { '2026-03-25T09:00:00': { title: 'Extra' } },
+    }
+    const [from, to] = win('2026-03-24T00:00:00Z', '2026-03-26T00:00:00Z')
+    const occ = expandOccurrences(event, from, to, 'Europe/Berlin')
+
+    expect(occ).toHaveLength(1)
+    expect(occ[0]!.start.toISOString()).toBe('2026-03-25T08:00:00.000Z')
   })
 })
 

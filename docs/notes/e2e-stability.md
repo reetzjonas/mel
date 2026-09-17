@@ -174,3 +174,18 @@ Worth stressing for the next one: the green re-run would have been enough to fil
 this under "intermittent, moving on", and the trace was sitting in the CI artefacts
 either way. **Download it.** Two 429s among 112 responses is not something load
 produces.
+
+## One more cause to rule out: the dev server is still recompiling
+
+A run started seconds after editing anything under `src/` races Vite's HMR.
+The page can take a full reload in the middle of a test, and the tests that
+notice are the ones holding state across a step: a drag, or a step that
+asserts on a dialog that was open before the reload. Twice in one session the
+symptom was a dialog that had reopened empty, and three calendar drag tests
+failing in a full run that passed, unchanged, both alone and in the next full
+run.
+
+So before reading anything into a red run: **did the last edit land before the
+run started?** Wait for the dev server to settle, then re-run. That is not the
+same as "it was load" — the run is repeatable and the cause is on this machine,
+not in the number of workers.

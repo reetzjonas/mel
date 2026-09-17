@@ -10,6 +10,7 @@ const dir = (id: string, parentId: string | null = null): FileNode => ({
   blobId: null,
   type: null,
   size: null,
+  executable: false,
   created: '2026-01-01T00:00:00Z',
   modified: '2026-01-01T00:00:00Z',
 })
