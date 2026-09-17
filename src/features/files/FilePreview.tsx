@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
+import { canShareFiles, shareFile } from '../../lib/webShare'
 import { downloadNode } from '../../services/files'
 import { Icon } from '../../ui/Icon'
 import { secondaryButtonClass } from '../../ui/styles'
@@ -76,6 +77,14 @@ export function FilePreview({
     setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
 
+  // Falls back to saving when the platform turns this particular file down,
+  // so the button always does something rather than going quiet.
+  const share = async () => {
+    const blob = await downloadNode(accountId, node)
+    if (!blob) return
+    if (!(await shareFile(blob, node.name))) await save()
+  }
+
   return (
     <div className="flex h-full min-w-0 flex-1 flex-col">
       <div className="flex items-start gap-2 border-b border-line px-3 py-2.5">
@@ -113,10 +122,15 @@ export function FilePreview({
         )}
       </div>
 
-      <div className="border-t border-line p-3">
+      <div className="flex gap-2 border-t border-line p-3">
         <button type="button" onClick={() => void save()} className={secondaryButtonClass}>
           {t('files.download')}
         </button>
+        {canShareFiles() && (
+          <button type="button" onClick={() => void share()} className={secondaryButtonClass}>
+            {t('files.share')}
+          </button>
+        )}
       </div>
     </div>
   )

@@ -41,6 +41,26 @@ export default defineConfig(({ mode }) => {
             { src: '/android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },
             { src: '/android-chrome-512x512.png', sizes: '512x512', type: 'image/png' },
           ],
+          /*
+           * The three ways the rest of the system can reach into mel once it
+           * is installed. All of them land on /compose or an app route, which
+           * are in scope because start_url is the origin root.
+           *
+           * The labels are English and stay that way: a manifest is one static
+           * file written at build time, and it has no place to carry the
+           * translations src/lib/i18n.ts picks from at runtime.
+           */
+          protocol_handlers: [{ protocol: 'mailto', url: '/compose?mailto=%s' }],
+          share_target: {
+            action: '/compose',
+            method: 'GET',
+            params: { title: 'subject', text: 'body', url: 'url' },
+          },
+          shortcuts: [
+            { name: 'New message', url: '/compose' },
+            { name: 'Calendar', url: '/calendar' },
+            { name: 'Contacts', url: '/contacts' },
+          ],
         },
         devOptions: { enabled: false },
       }),

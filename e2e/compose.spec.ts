@@ -129,3 +129,35 @@ test('Cc and Bcc reveal a recipient field each, independently', async ({ page })
   await page.getByPlaceholder('Cc', { exact: true }).fill('bob@localhost')
   await page.getByPlaceholder('Bcc', { exact: true }).fill('bob@localhost')
 })
+
+test('a mailto: link and a share both open the composer filled in', async ({ page }) => {
+  /*
+   * The two ways the rest of the system reaches into mel once it is installed
+   * (manifest protocol_handlers and share_target, see vite.config.ts). Both
+   * land on /compose, which is not a screen — it opens the composer and
+   * replaces itself with /mail, so the handover never sits in the history.
+   */
+  await login(page, ...ALICE)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+
+  const mailto =
+    'mailto:erika+news@example.com?cc=bob@localhost&subject=Rechnung März&body=Hallo\nGruss'
+  await page.goto(`/compose?mailto=${encodeURIComponent(mailto)}`)
+
+  await expect(page).toHaveURL(/\/mail$/, { timeout: 15_000 })
+  // The plus is part of the address, not a space: a mailto query is
+  // percent-encoded, never form-encoded.
+  await expect(page.getByPlaceholder('To', { exact: true })).toHaveValue('erika+news@example.com')
+  await expect(page.getByPlaceholder('Cc', { exact: true })).toHaveValue('bob@localhost')
+  await expect(page.getByPlaceholder('Subject', { exact: true })).toHaveValue('Rechnung März')
+
+  await page.goBack()
+  await expect(page).not.toHaveURL(/compose/)
+
+  // A share arrives as separate title, text and link.
+  await page.goto('/compose?subject=Look+at+this&body=some+text&url=https%3A%2F%2Fexample.com')
+
+  await expect(page).toHaveURL(/\/mail$/, { timeout: 15_000 })
+  await expect(page.getByPlaceholder('Subject', { exact: true })).toHaveValue('Look at this')
+  await expect(page.getByText('https://example.com')).toBeVisible()
+})

@@ -23,7 +23,8 @@ swipe and pull-to-refresh, contacts (RFC 9610, autocomplete while composing), ca
 (Argon2id→KEK→DEK, synchronous AES-GCM via @noble/ciphers as Dexie middleware, AAD
 binding, UnlockGate), Web Push without a backend (RFC 9749, full PushVerification
 handshake, optionally naming sender and subject), PWA (update toast,
-storage.persist).
+storage.persist, mailto handler, share target, icon shortcuts, unread icon
+badge, sharing a file out).
 
 Invitations and RSVP are done: participant editor in the EventDialog (with contact
 autocomplete), Stalwart sends the iMIP invitations, the other side receives the event
@@ -105,6 +106,9 @@ working on that specific feature, not on every session:
 - **Push notifications** (why naming the sender costs a request, why it is
   unencrypted-only, how the service worker reads IndexedDB without Dexie):
   `docs/notes/push-notifications.md`
+- **PWA integration** (the `/compose` entry point behind mailto and share, the
+  RFC 6068 plus-address trap, the icon badge, why there are no file handlers):
+  `docs/notes/pwa-integration.md`
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
 
 ## Dev workflow
