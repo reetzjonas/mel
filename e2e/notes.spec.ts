@@ -170,3 +170,53 @@ test('a note written offline is waiting on the server once the connection is bac
   await page.getByRole('button', { name: 'Delete note' }).click()
   await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
 })
+
+test('the toolbar writes the markdown, and the file has it', async ({ page }) => {
+  test.setTimeout(120_000)
+  const title = `Werkzeug-${Date.now() % 100000}`
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Notes' }).first().click()
+  await page.getByRole('button', { name: 'New note' }).click()
+  await page.getByRole('textbox', { name: 'Title' }).fill(title)
+
+  const body = page.getByRole('textbox', { name: 'Note', exact: true })
+  await body.click()
+  await page.keyboard.type('Wochenplan')
+  await page.getByRole('button', { name: 'Heading' }).click()
+  await page.keyboard.press('End')
+  await page.keyboard.type('\nBrot')
+  // The word under the cursor, without selecting it first.
+  await page.keyboard.press('Control+b')
+  await page.getByRole('button', { name: 'Checklist item' }).click()
+
+  // What the editor shows once the cursor is out of that line: a heading, a
+  // checkbox, and no asterisks. (On the line being edited they are there, on
+  // purpose — that is the line whose text is being changed.)
+  await expect(page.getByRole('checkbox', { name: 'Brot' })).toBeVisible()
+  await expect(body).toContainText('**Brot**')
+  await page.getByRole('textbox', { name: 'Title' }).click()
+  await expect(body).not.toContainText('**')
+  await page.waitForTimeout(3000)
+
+  /*
+   * And what is in the file, read through the Files app: the markers the
+   * buttons wrote. This is the claim the whole editor rests on — the buffer is
+   * the document, so a note formatted here is a Markdown file elsewhere.
+   */
+  await page.getByRole('link', { name: 'Files' }).first().click()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page
+    .getByRole('button', { name: /^werkzeug-/ })
+    .first()
+    .click()
+  await page.getByRole('button', { name: 'note.md', exact: true }).click()
+  await expect(page.getByText('## Wochenplan')).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('- [ ] **Brot**')).toBeVisible()
+
+  await page.getByRole('link', { name: 'Notes' }).first().click()
+  await page.getByRole('link', { name: title }).click()
+  await page.getByRole('button', { name: 'Delete note' }).click()
+  await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
+})

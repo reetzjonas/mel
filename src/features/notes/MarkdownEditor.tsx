@@ -4,8 +4,16 @@ import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { EditorState } from '@codemirror/state'
 import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view'
 import { tags } from '@lezer/highlight'
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { liveMarkdown, setNoteImages } from './liveMarkdown'
+import {
+  insertLink,
+  looksLikeUrl,
+  toggleTask,
+  toggleWrap,
+  type MarkdownCommand,
+} from './markdownCommands'
+import { NoteToolbar } from './NoteToolbar'
 
 /*
  * Sizes and weights only: every colour comes from the app's own tokens, so a
@@ -23,6 +31,14 @@ const look = HighlightStyle.define([
   { tag: tags.monospace, fontFamily: 'ui-monospace, monospace' },
   { tag: tags.quote, color: 'var(--mel-ink-muted)', fontStyle: 'italic' },
 ])
+
+/** A command from `markdownCommands` as a key binding. */
+function apply(command: MarkdownCommand) {
+  return (editor: EditorView) => {
+    editor.dispatch(command(editor.state))
+    return true
+  }
+}
 
 /**
  * The note's text, shown the way it will read.
@@ -51,6 +67,9 @@ export default function MarkdownEditor({
 }) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
+  // Also as state, because the toolbar above is rendered from it and has
+  // nothing to act on until the editor exists.
+  const [ready, setReady] = useState<EditorView | null>(null)
   /*
    * What the editor is built from and what it reports to, both as refs. It is
    * built once: rebuilding it on a prop change — which is every keystroke —
@@ -71,7 +90,32 @@ export default function MarkdownEditor({
         doc: initial.current.value,
         extensions: [
           history(),
+          /*
+           * The shortcuts anyone who has used an editor will try first, ahead
+           * of the defaults so Mod-i is italic rather than whatever else may
+           * claim it. Everything they do is also a button in the toolbar.
+           */
+          keymap.of([
+            { key: 'Mod-b', run: apply((state) => toggleWrap(state, '**')) },
+            { key: 'Mod-i', run: apply((state) => toggleWrap(state, '*')) },
+            { key: 'Mod-k', run: apply((state) => insertLink(state)) },
+            { key: 'Mod-Enter', run: apply(toggleTask) },
+          ]),
           keymap.of([...defaultKeymap, ...historyKeymap]),
+          /*
+           * A pasted address over selected words becomes a link, which is the
+           * one Markdown construction nobody enjoys typing. Anything else is
+           * pasted as it is — this is a plain text editor, not a converter.
+           */
+          EditorView.domEventHandlers({
+            paste(event, editor) {
+              const text = event.clipboardData?.getData('text/plain') ?? ''
+              if (editor.state.selection.main.empty || !looksLikeUrl(text)) return false
+              event.preventDefault()
+              editor.dispatch(insertLink(editor.state, text.trim()))
+              return true
+            },
+          }),
           markdown({ base: markdownLanguage }),
           syntaxHighlighting(look),
           liveMarkdown(),
@@ -88,9 +132,11 @@ export default function MarkdownEditor({
       }),
     })
     view.current = editor
+    setReady(editor)
     return () => {
       editor.destroy()
       view.current = null
+      setReady(null)
     }
   }, [])
 
@@ -108,5 +154,10 @@ export default function MarkdownEditor({
     view.current?.dispatch({ effects: setNoteImages.of(images) })
   }, [images])
 
-  return <div ref={host} className="mel-note-editor min-h-0 flex-1 overflow-y-auto" />
+  return (
+    <>
+      <NoteToolbar view={ready} />
+      <div ref={host} className="mel-note-editor min-h-0 flex-1 overflow-y-auto" />
+    </>
+  )
 }

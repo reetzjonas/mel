@@ -55,8 +55,9 @@ Notes are the fifth app, and are files too — a folder per note holding a
 Markdown `note.md` with front matter, its pictures beside it — so they need no
 JMAP capability of their own beyond FileNode (JMAP tasks is a dead draft).
 The editor is a live Markdown view (CodeMirror, Obsidian-style: markup hidden
-except on the cursor's line, checkboxes and images drawn inline) — the buffer
-stays the file, so nothing converts anything. Writes are offline-first through
+except on the cursor's line, checkboxes and images drawn inline), with a
+formatting toolbar and shortcuts so the markup never has to be typed — the
+buffer stays the file, so nothing converts anything. Writes are offline-first through
 the outbox, unlike the rest of Files. See `docs/notes/notes-app.md`.
 
 Server-side filter rules (Sieve, RFC 9661) are a section in Settings → Mail

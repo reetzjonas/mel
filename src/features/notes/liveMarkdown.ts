@@ -28,6 +28,24 @@ import { Decoration, EditorView, WidgetType, type DecorationSet } from '@codemir
 /** Picture URLs by file name, handed in as they resolve. */
 export const setNoteImages = StateEffect.define<Record<string, string>>()
 
+const setFocused = StateEffect.define<boolean>()
+
+/**
+ * Whether the editor has the focus.
+ *
+ * Markup opens on the line the cursor is in — but CodeMirror keeps its
+ * selection when the focus goes elsewhere, so without this a note left by
+ * clicking into the title field goes on showing its asterisks on whichever
+ * line was last touched, for as long as it is open.
+ */
+const focused = StateField.define<boolean>({
+  create: () => false,
+  update(value, tr) {
+    for (const effect of tr.effects) if (effect.is(setFocused)) return effect.value
+    return value
+  },
+})
+
 const noteImages = StateField.define<Record<string, string>>({
   create: () => ({}),
   update(value, tr) {
@@ -42,10 +60,12 @@ const MARKS = new Set([
   'EmphasisMark',
   'StrongEmphasisMark',
   'CodeMark',
-  'LinkMark',
   'QuoteMark',
   'StrikethroughMark',
 ])
+
+/** `[label](target)`, whose target is hidden while the label stays. */
+const INLINE_LINK = /^\[([^\]]*)\]\(.*\)$/
 
 class CheckboxWidget extends WidgetType {
   readonly checked: boolean
@@ -137,7 +157,7 @@ function decorate(state: EditorState): DecorationSet {
    * character that cannot be deleted by anyone who cannot see it.
    */
   const open = new Set<number>()
-  for (const range of state.selection.ranges) {
+  for (const range of state.field(focused) ? state.selection.ranges : []) {
     const from = state.doc.lineAt(range.from).number
     const to = state.doc.lineAt(range.to).number
     for (let line = from; line <= to; line++) open.add(line)
@@ -163,6 +183,21 @@ function decorate(state: EditorState): DecorationSet {
             node.to,
           ),
         )
+        return
+      }
+      if (node.name === 'Link' && !isOpen(node.from)) {
+        /*
+         * `[label](target)` reads as the label, underlined. Only this spelling:
+         * a bare address is a Link too, and hiding *its* target would hide the
+         * only text there is.
+         */
+        const text = state.doc.sliceString(node.from, node.to)
+        const label = INLINE_LINK.exec(text)?.[1]
+        if (label !== undefined) {
+          marks.push(hidden.range(node.from, node.from + 1))
+          marks.push(hidden.range(node.from + 1 + label.length, node.to))
+          return false
+        }
         return
       }
       if (node.name === 'Image') {
@@ -191,10 +226,15 @@ function decorate(state: EditorState): DecorationSet {
 const livePreview = StateField.define<DecorationSet>({
   create: (state) => decorate(state),
   update(value, tr) {
-    // A selection change matters as much as an edit here: that is what opens
-    // and closes a line's markup.
-    const images = tr.effects.some((e) => e.is(setNoteImages))
-    if (!tr.docChanged && !tr.selection && !images) return value.map(tr.changes)
+    /*
+     * A selection change matters as much as an edit here — that is what opens
+     * and closes a line's markup — and so does losing the focus, which closes
+     * all of them. Leaving the effects out of this condition is why the first
+     * version went on showing the asterisks of the last line touched after the
+     * editor was left: the state said "not focused" and nothing redrew.
+     */
+    const effect = tr.effects.some((e) => e.is(setNoteImages) || e.is(setFocused))
+    if (!tr.docChanged && !tr.selection && !effect) return value.map(tr.changes)
     return decorate(tr.state)
   },
   provide: (field) => [
@@ -209,6 +249,11 @@ const livePreview = StateField.define<DecorationSet>({
 })
 
 export function liveMarkdown(): Extension {
-  // The images field first: the decorations read it as they are built.
-  return [noteImages, livePreview]
+  // The two fields the decorations read, before the field that reads them.
+  return [
+    noteImages,
+    focused,
+    EditorView.focusChangeEffect.of((_state, focusing) => setFocused.of(focusing)),
+    livePreview,
+  ]
 }

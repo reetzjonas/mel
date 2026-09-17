@@ -15,6 +15,7 @@ does: no file storage, nowhere to keep a note.
 | Read model | `db.notes`, filled by `src/sync/notes.ts` |
 | Writes | `src/services/notes.ts` (local) + `src/sync/noteWriter.ts` (server) |
 | Editor | `src/features/notes/MarkdownEditor.tsx` + `liveMarkdown.ts` (CodeMirror) |
+| Formatting | `src/features/notes/markdownCommands.ts`, `NoteToolbar.tsx` |
 | UI | `src/features/notes/`, routes `notes.tsx` / `notes.index.tsx` / `notes.$noteId.tsx` |
 
 ## A note is a Markdown file, not a blob mel invented
@@ -103,6 +104,31 @@ the file being an ordinary Markdown document that other things can write too,
 and a converter quietly undermines exactly that. Decorations cannot: they
 change nothing.
 
+## Nobody has to type the markup
+
+A toolbar and the shortcuts anyone would try first: **Mod-B**, **Mod-I**,
+**Mod-K** for a link, **Mod-Enter** for a checklist item. Every button and every
+shortcut runs the same command, and every command writes *plain text* — bold
+inserts the asterisks the file would have had anyway. There is still no
+converter anywhere.
+
+The commands live apart from the toolbar (`markdownCommands.ts`) as
+`(state) => TransactionSpec`, which is what makes the awkward parts testable
+without a browser — and they are all awkward parts:
+
+- **Bold with nothing selected** takes the word under the cursor. Asking
+  someone to select a word first is exactly the work a toolbar is for.
+- **Unwrapping looks outside the selection too.** Double-clicking a bold word
+  selects the word, not the asterisks around it, so a bold button that only
+  looked inside would bold it twice and could never undo itself.
+- **Line markers replace each other.** A bullet made into a heading is a
+  heading, not a bulleted heading — and the indentation of a nested item stays.
+- **A pasted address over selected words becomes a link**, the one construction
+  nobody enjoys typing. Anything else pastes as it is.
+
+Enter continuing a list comes free with the Markdown keymap, which is also why
+the specs *type* into the editor instead of `fill()`ing it.
+
 Two things to know when touching it:
 
 **Block widgets must come from a `StateField`, not a `ViewPlugin`** — the
@@ -110,6 +136,15 @@ picture under a line is one, and CodeMirror refuses it from a plugin with
 "Block decorations may not be specified via plugins". So the whole decoration
 set is a field over the whole document, rather than a plugin over the
 viewport. A note is a page of text, so walking all of it costs nothing.
+
+**Markup opens on the cursor's line — but only while the editor has the
+focus.** CodeMirror keeps its selection when the focus goes elsewhere, so
+without tracking focus a note left by clicking into the title field goes on
+showing the asterisks of whichever line was last touched. That took two goes:
+the focus is a `StateField` fed by `EditorView.focusChangeEffect`, *and* the
+decoration field has to list that effect among the things it redraws for —
+leaving it out of the update condition is a state that knows it is not focused
+and a screen that never hears about it.
 
 **It is lazily loaded, and that needs the import to be dynamic all the way
 down.** The first attempt used `await import()` inside the component while
@@ -198,6 +233,10 @@ successfully read while the folder sits happily on the server.
 browser comes back after a reload (so it really is a file on the server), a
 picture is an ordinary file the **Files app** can see beside `note.md`, and a
 note written with the network off arrives once it is back.
+
+The toolbar has a test of its own, and it asserts the point of the whole
+design: format a note with the buttons, then open `note.md` in the **Files**
+app and find `## Wochenplan` and `- [ ] **Brot**` in it.
 
 Two things the specs have to do that look odd:
 

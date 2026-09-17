@@ -112,18 +112,6 @@ export function NoteEditor({
         </button>
         <button
           type="button"
-          aria-label={t('notes.checklist')}
-          onClick={() => {
-            // A list starts where the writing is: an empty note gets its first
-            // item, one with text gets another line under it.
-            setBody(`${body.replace(/\s+$/, '')}${body.trim() ? '\n' : ''}- [ ] `)
-          }}
-          className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          <Icon name="check" size={15} />
-        </button>
-        <button
-          type="button"
           aria-label={t('notes.addImage')}
           onClick={() => picker.current?.click()}
           className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
