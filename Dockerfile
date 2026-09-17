@@ -4,7 +4,7 @@
 # an old build far more stubbornly than a stale asset does.
 
 # Keep in step with .nvmrc, which CI and local development read.
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Dependencies first: this layer only rebuilds when the lockfile moves.

@@ -118,8 +118,14 @@ a third-party resolver.
 
 ## Development
 
+Use Node.js 24 (at least 24.15.0) for local development, CI and Docker builds.
+CI reads `.nvmrc`; keep the Dockerfile's build image on the same version.
+With nvm installed:
+
 ```sh
-npm install
+nvm install
+nvm use
+npm ci
 npm run stalwart:seed   # starts and provisions a local Stalwart (Docker)
 npm run dev             # app on http://localhost:5173
 ```
