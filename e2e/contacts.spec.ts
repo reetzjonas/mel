@@ -288,3 +288,37 @@ test('a public key on a contact survives the server and comes back out', async (
 
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+test('select several contacts and delete them together', async ({ page }) => {
+  const tag = Date.now() % 100000
+  const nameA = `BulkAlpha${tag}`
+  const nameB = `BulkBeta${tag}`
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+
+  for (const surname of [nameA, nameB]) {
+    await page.getByRole('button', { name: 'New contact' }).click()
+    await page.getByLabel('First name').fill('Erika')
+    await page.getByLabel('Last name').fill(surname)
+    await page
+      .locator('input[type="email"]')
+      .first()
+      .fill(`erika.${surname.toLowerCase()}@example.org`)
+    await page.getByRole('button', { name: 'Save' }).click()
+    await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+  }
+
+  // Tick both, and the row toolbar turns into the selection one.
+  await page.getByRole('checkbox', { name: `Select Erika ${nameA}` }).click()
+  await page.getByRole('checkbox', { name: `Select Erika ${nameB}` }).click()
+  await expect(page.getByText('2 selected')).toBeVisible()
+
+  await page
+    .getByTestId('selection-toolbar')
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
+  await expect(page.getByRole('link', { name: `Erika ${nameA}` })).toHaveCount(0)
+  await expect(page.getByRole('link', { name: `Erika ${nameB}` })).toHaveCount(0)
+})

@@ -20,7 +20,7 @@ vi.mock('../sync/connections', () => ({
     Promise.resolve({ contacts: { createContact: () => Promise.resolve(createOnServer()) } }),
 }))
 
-const { createContact, deleteContact, updateContact } = await import('./contacts')
+const { createContact, deleteContact, deleteContacts, updateContact } = await import('./contacts')
 
 const ACC = 'acc'
 
@@ -139,5 +139,27 @@ describe('editing and removing a contact', () => {
   it('queues the destroy for one the server does know', async () => {
     await deleteContact(ACC, 'server-id')
     expect(enqueued[0]).toMatchObject({ kind: 'contact.destroy', ids: ['server-id'] })
+  })
+
+  it('deletes a batch as one outbox action, leaving queued-only ids out of it', async () => {
+    const full = { ...contact(), id: 'server-id' } as Contact
+    await updateContact(ACC, full)
+    const local = { ...contact(), id: 'local-abc' } as Contact
+    await updateContact(ACC, local)
+
+    await deleteContacts(ACC, ['server-id', 'local-abc'])
+
+    expect(await db.contacts.get([ACC, 'server-id'])).toBeUndefined()
+    expect(await db.contacts.get([ACC, 'local-abc'])).toBeUndefined()
+    expect(enqueued.at(-1)).toMatchObject({ kind: 'contact.destroy', ids: ['server-id'] })
+  })
+
+  it('enqueues nothing when the whole batch is still queued-only', async () => {
+    const local = { ...contact(), id: 'local-abc' } as Contact
+    await updateContact(ACC, local)
+
+    await deleteContacts(ACC, ['local-abc'])
+
+    expect(enqueued).toEqual([])
   })
 })

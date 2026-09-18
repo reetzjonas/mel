@@ -3,6 +3,7 @@ import { useUi } from '../../app/store'
 import type { MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
+import type { Selection } from '../../lib/selection'
 import {
   bulkArchive,
   bulkDelete,
@@ -11,37 +12,13 @@ import {
   bulkSetKeyword,
 } from '../../services/mailActions'
 import { connectionFor } from '../../sync/connections'
-import { Icon, type IconName } from '../../ui/Icon'
-import { Tooltip } from '../../ui/Tooltip'
+import {
+  SelectionActionButton,
+  SelectionToolbar as SharedSelectionToolbar,
+} from '../../ui/SelectionToolbar'
 
 /** Ceiling for "select everything in this folder"; anything beyond is reported, not hidden. */
 const SELECT_ALL_LIMIT = 50_000
-
-function ToolbarButton({
-  icon,
-  label,
-  onClick,
-  disabled,
-}: {
-  icon: IconName
-  label: string
-  onClick: () => void
-  disabled?: boolean
-}) {
-  return (
-    <Tooltip label={label}>
-      <button
-        type="button"
-        aria-label={label}
-        disabled={disabled}
-        onClick={onClick}
-        className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40"
-      >
-        <Icon name={icon} size={15} />
-      </button>
-    </Tooltip>
-  )
-}
 
 /**
  * Actions for the current multi-selection. Replaces the search row while a
@@ -52,17 +29,22 @@ export function SelectionToolbar({
   mailboxId,
   mailboxes,
   filter,
+  selection,
 }: {
   accountId: string
   mailboxId: string
   mailboxes: Mailbox[]
   /** The list's active filter, so "select everything" means what is on screen. */
   filter?: MailFilter
+  /** Owned by `mail.$mailboxId.tsx`, which also renders the sibling
+   *  `ThreadList` — see `lib/selection.ts`. */
+  selection: Selection
 }) {
-  const { selection, setSelection, clearSelection, showSnackbar } = useUi()
+  const { showSnackbar } = useUi()
   const [busy, setBusy] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
-  const count = selection.length
+  const ids = [...selection.selected]
+  const count = ids.length
 
   async function run(
     action: () => Promise<(() => Promise<void>) | null | void>,
@@ -73,7 +55,7 @@ export function SelectionToolbar({
     setBusy(true)
     try {
       const undo = await action()
-      clearSelection()
+      selection.clear()
       if (typeof undo === 'function') {
         showSnackbar({ message, actionLabel: t('mail.undo'), action: () => void undo() })
       } else {
@@ -91,7 +73,7 @@ export function SelectionToolbar({
       const conn = await connectionFor(accountId)
       const r = await conn.mail?.queryMailboxIds(mailboxId, SELECT_ALL_LIMIT, filter)
       if (!r?.ids.length) return
-      setSelection(mailboxId, r.ids)
+      selection.setSelected(r.ids)
       // Say so when the folder is larger than the ceiling, rather than quietly
       // acting on the newest slice and leaving the rest behind.
       if (r.total > r.ids.length) {
@@ -108,124 +90,90 @@ export function SelectionToolbar({
   const inJunk = mailboxes.find((m) => m.id === mailboxId)?.role === 'junk'
 
   return (
-    <div className="px-2.5 pt-2.5 pb-1.5" data-testid="selection-toolbar">
-      <div className="flex items-center gap-1">
-        <Tooltip label={t('bulk.clear')}>
-          <button
-            type="button"
-            aria-label={t('bulk.clear')}
-            onClick={clearSelection}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Icon name="close" size={15} />
-          </button>
-        </Tooltip>
-        <span className="text-[13px] font-medium whitespace-nowrap">
-          {count} {t('bulk.selected')}
-        </span>
-
-        <span className="ml-auto flex items-center">
-          {inJunk && (
-            <ToolbarButton
-              icon="inbox"
-              label={t('mail.notSpam')}
-              disabled={busy}
-              onClick={() =>
-                void run(
-                  () => bulkNotSpam(accountId, selection),
-                  t('mail.movedToInbox'),
-                  t('mail.notSpamFailed'),
-                )
-              }
-            />
-          )}
-          <ToolbarButton
-            icon="mail"
-            label={t('mail.markRead')}
-            disabled={busy}
-            onClick={() =>
-              void run(() => bulkSetKeyword(accountId, selection, '$seen', true), t('bulk.marked'))
-            }
-          />
-          <ToolbarButton
-            icon="mailUnread"
-            label={t('mail.markUnread')}
-            disabled={busy}
-            onClick={() =>
-              void run(() => bulkSetKeyword(accountId, selection, '$seen', false), t('bulk.marked'))
-            }
-          />
-          <ToolbarButton
-            icon="flag"
-            label={t('mail.flag')}
-            disabled={busy}
-            onClick={() =>
-              void run(
-                () => bulkSetKeyword(accountId, selection, '$flagged', true),
-                t('bulk.marked'),
-              )
-            }
-          />
-          <span className="relative">
-            <ToolbarButton
-              icon="folder"
-              label={t('bulk.move')}
-              disabled={busy}
-              onClick={() => setMoveOpen((o) => !o)}
-            />
-            {moveOpen && (
-              <span className="animate-rise absolute top-full right-0 z-20 mt-1 max-h-64 w-48 overflow-y-auto rounded-control bg-raised py-1 shadow-overlay ring-1 ring-line">
-                {targets.map((m) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className="block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
-                    onClick={() => {
-                      setMoveOpen(false)
-                      void run(() => bulkMove(accountId, selection, m.id), t('bulk.moved'))
-                    }}
-                  >
-                    {m.name}
-                  </button>
-                ))}
-              </span>
-            )}
-          </span>
-          <ToolbarButton
-            icon="archive"
-            label={t('mail.archive')}
-            disabled={busy}
-            onClick={() =>
-              void run(
-                () => bulkArchive(accountId, selection),
-                t('mail.archived'),
-                t('mail.archiveFailed'),
-              )
-            }
-          />
-          <ToolbarButton
-            icon="trash"
-            label={t('mail.delete')}
-            disabled={busy}
-            onClick={() => void run(() => bulkDelete(accountId, selection), t('mail.deleted'))}
-          />
-        </span>
-      </div>
-
-      {/*
-        Its own line: the actions are the point of this bar and must stay
-        reachable, and the label is far too long to share a 24rem-wide panel
-        with six icon buttons. Offered from the first tick onwards — making
-        someone tick every row by hand first defeats the shortcut.
-      */}
-      <button
-        type="button"
-        onClick={() => void selectWholeFolder()}
+    <SharedSelectionToolbar
+      count={count}
+      onClear={selection.clear}
+      busy={busy}
+      onSelectAll={() => void selectWholeFolder()}
+      selectAllLabel={busy ? t('bulk.selectingAll') : t('bulk.selectAll')}
+    >
+      {inJunk && (
+        <SelectionActionButton
+          icon="inbox"
+          label={t('mail.notSpam')}
+          disabled={busy}
+          onClick={() =>
+            void run(
+              () => bulkNotSpam(accountId, ids),
+              t('mail.movedToInbox'),
+              t('mail.notSpamFailed'),
+            )
+          }
+        />
+      )}
+      <SelectionActionButton
+        icon="mail"
+        label={t('mail.markRead')}
         disabled={busy}
-        className="mt-0.5 ml-8 block text-xs text-accent hover:underline disabled:opacity-40"
-      >
-        {busy ? t('bulk.selectingAll') : t('bulk.selectAll')}
-      </button>
-    </div>
+        onClick={() =>
+          void run(() => bulkSetKeyword(accountId, ids, '$seen', true), t('bulk.marked'))
+        }
+      />
+      <SelectionActionButton
+        icon="mailUnread"
+        label={t('mail.markUnread')}
+        disabled={busy}
+        onClick={() =>
+          void run(() => bulkSetKeyword(accountId, ids, '$seen', false), t('bulk.marked'))
+        }
+      />
+      <SelectionActionButton
+        icon="flag"
+        label={t('mail.flag')}
+        disabled={busy}
+        onClick={() =>
+          void run(() => bulkSetKeyword(accountId, ids, '$flagged', true), t('bulk.marked'))
+        }
+      />
+      <span className="relative">
+        <SelectionActionButton
+          icon="folder"
+          label={t('bulk.move')}
+          disabled={busy}
+          onClick={() => setMoveOpen((o) => !o)}
+        />
+        {moveOpen && (
+          <span className="animate-rise absolute top-full right-0 z-20 mt-1 max-h-64 w-48 overflow-y-auto rounded-control bg-raised py-1 shadow-overlay ring-1 ring-line">
+            {targets.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className="block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
+                onClick={() => {
+                  setMoveOpen(false)
+                  void run(() => bulkMove(accountId, ids, m.id), t('bulk.moved'))
+                }}
+              >
+                {m.name}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+      <SelectionActionButton
+        icon="archive"
+        label={t('mail.archive')}
+        disabled={busy}
+        onClick={() =>
+          void run(() => bulkArchive(accountId, ids), t('mail.archived'), t('mail.archiveFailed'))
+        }
+      />
+      <SelectionActionButton
+        icon="trash"
+        label={t('mail.delete')}
+        disabled={busy}
+        onClick={() => void run(() => bulkDelete(accountId, ids), t('mail.deleted'))}
+      />
+    </SharedSelectionToolbar>
   )
 }

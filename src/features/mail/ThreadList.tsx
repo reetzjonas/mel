@@ -8,7 +8,9 @@ import type { Conversation } from './conversations'
 import { dateBucket, formatListDate, type DateBucket } from '../../lib/dates'
 import { t, type MsgKey } from '../../lib/i18n'
 import { cleanPreview } from '../../lib/preview'
+import type { Selection } from '../../lib/selection'
 import { useContactsByEmail, useMailboxes, type ContactByEmail } from './hooks'
+import { conversationItem, messageItem, type RowItem } from './rowItem'
 import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
 import {
@@ -24,49 +26,6 @@ import { Tooltip } from '../../ui/Tooltip'
 function senderLabel(from: EmailAddress[]): string {
   if (!from.length) return t('mail.unknownSender')
   return from.map((a) => a.name || a.email.split('@')[0]).join(', ')
-}
-
-/**
- * What a row stands for. A single message and a whole conversation differ only
- * in how many messages they carry, so both render through one component rather
- * than two that drift apart — `ids` is what the row's actions apply to, which
- * for a conversation is its messages *in the listed mailbox* and never the
- * copies elsewhere.
- */
-interface RowItem {
-  /** The message shown: the only one, or the newest of the conversation. */
-  email: EmailHeader
-  ids: string[]
-  /** Messages in the conversation across folders; 1 for a lone message. */
-  count: number
-  people: EmailAddress[]
-  unread: boolean
-  flagged: boolean
-  hasAttachment: boolean
-}
-
-function messageItem(email: EmailHeader): RowItem {
-  return {
-    email,
-    ids: [email.id],
-    count: 1,
-    people: email.from,
-    unread: !email.keywords['$seen'],
-    flagged: Boolean(email.keywords['$flagged']),
-    hasAttachment: email.hasAttachment,
-  }
-}
-
-function conversationItem(conversation: Conversation): RowItem {
-  return {
-    email: conversation.latest,
-    ids: conversation.ids,
-    count: conversation.messages.length,
-    people: conversation.participants,
-    unread: conversation.unread,
-    flagged: conversation.flagged,
-    hasAttachment: conversation.hasAttachment,
-  }
 }
 
 /*
@@ -209,6 +168,7 @@ function Row({
   snippet,
   selected,
   checked,
+  selectedIds,
   inJunk,
   mailboxId,
   photos,
@@ -220,6 +180,8 @@ function Row({
   snippet?: { subject: string | null; preview: string | null }
   selected: boolean
   checked: boolean
+  /** The whole current selection, for a checked row's drag payload. */
+  selectedIds: string[]
   /** Shows the "not spam" shortcut; only messages filed as junk get it. */
   inJunk: boolean
   /** The folder being listed — what a drag carries as its origin. */
@@ -231,7 +193,7 @@ function Row({
 }) {
   const { email, ids, unread, flagged } = item
   const sender = email.from[0]
-  const { selection, showSnackbar } = useUi()
+  const { showSnackbar } = useUi()
   /*
    * What archive and delete on this row really take, spelled out in three
    * cases — `ids` is the truth, not the count beside the sender.
@@ -293,9 +255,9 @@ function Row({
         onDragStart={(e) =>
           setMailDrag(
             e,
-            { mailboxId, ids: checked ? selection : ids },
-            checked && selection.length > 1
-              ? `${selection.length} ${t('bulk.selected')}`
+            { mailboxId, ids: checked ? selectedIds : ids },
+            checked && selectedIds.length > 1
+              ? `${selectedIds.length} ${t('bulk.selected')}`
               : email.subject || t('mail.noSubject'),
           )
         }
@@ -512,6 +474,7 @@ export function ThreadList({
   snippets,
   mailboxId,
   selectedId,
+  selection,
   onEndReached,
 }: {
   accountId: string
@@ -524,58 +487,25 @@ export function ThreadList({
   snippets?: Snippets
   mailboxId: string
   selectedId: string | undefined
+  /** Owned by `mail.$mailboxId.tsx`, which also renders the sibling
+   *  `SelectionToolbar` — see `lib/selection.ts`. */
+  selection: Selection
   /** Materialise the next page; omitted when the list is already complete. */
   onEndReached?: (() => void) | undefined
 }) {
   const navigate = useNavigate()
-  const { selection, selectionMailboxId, toggleSelected, setSelection } = useUi()
   const mailboxes = useMailboxes(accountId)
   const contacts = useContactsByEmail(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
-  // A Set, not the array: "select the whole folder" can hold thousands of ids,
-  // and Array.includes per row turns every scroll frame into rows × ids work.
-  const selected = useMemo(
-    () => new Set(selectionMailboxId === mailboxId ? selection : []),
-    [selection, selectionMailboxId, mailboxId],
-  )
-  // Memoised for the same reason as the Set above: this walks every loaded row,
-  // and the list re-renders on every selection change and every scroll frame.
+  const selectedIds = useMemo(() => [...selection.selected], [selection.selected])
+  // Memoised for the same reason `selected` above is a Set, not the array:
+  // this walks every loaded row, and the list re-renders on every selection
+  // change and every scroll frame.
   const rows = useMemo(
     () => (conversations ? conversations.map(conversationItem) : (emails ?? []).map(messageItem)),
     [conversations, emails],
   )
   const items = useMemo(() => withDateHeaders(rows), [rows])
-
-  /**
-   * Where a shift-click measures from: the last row ticked on its own.
-   *
-   * A ref rather than state — nothing renders from it, and this list already
-   * goes to some length not to re-render on selection changes.
-   */
-  const anchor = useRef<string | null>(null)
-
-  /**
-   * Tick a row, or with shift the whole run since the last one ticked.
-   *
-   * Measured over `rows` — the list as displayed, conversations counted once —
-   * so the run matches what the eye picks out, the same reasoning j/k below
-   * already follows. It only ever adds: a range that also cleared rows would
-   * undo deliberate ticks it happened to cross.
-   */
-  const pickRow = (row: { email: { id: string }; ids: string[] }, extend: boolean) => {
-    const to = rows.findIndex((r) => r.email.id === row.email.id)
-    const from = rows.findIndex((r) => r.email.id === anchor.current)
-    if (extend && from !== -1 && to !== -1) {
-      const [lo, hi] = from < to ? [from, to] : [to, from]
-      const base = selectionMailboxId === mailboxId ? selection : []
-      setSelection(mailboxId, [
-        ...new Set([...base, ...rows.slice(lo, hi + 1).flatMap((r) => r.ids)]),
-      ])
-      return
-    }
-    anchor.current = row.email.id
-    toggleSelected(mailboxId, row.ids)
-  }
 
   // Carries the search along: opening a message must not drop the query or
   // filter the list was showing, or the back button lands on an unfiltered one.
@@ -628,11 +558,12 @@ export function ThreadList({
             // pane is any of its own — a conversation stays highlighted while
             // you step through the messages inside it.
             selected={item.item.ids.includes(selectedId ?? '')}
-            checked={item.item.ids.some((id) => selected.has(id))}
+            checked={item.item.ids.some((id) => selection.isSelected(id))}
+            selectedIds={selectedIds}
             inJunk={Boolean(junkId && item.item.email.mailboxIds[junkId])}
             mailboxId={mailboxId}
             photos={contacts}
-            onToggleSelect={(extend) => pickRow(item.item, extend)}
+            onToggleSelect={(extend) => selection.toggle(item.item.email.id, extend)}
             onOpen={() => open(item.item.email.id)}
           />
         )

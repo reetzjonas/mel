@@ -94,17 +94,18 @@ interface UiState {
   bumpUnlock: () => void
 
   /*
-   * Bulk selection. It lives here rather than in the list rows because the
-   * thread list is virtualised — a row that scrolls out of view unmounts, and
-   * with it any state it owned.
+   * Mail's bulk selection itself lives in `useSelection` (`lib/selection.ts`),
+   * local to `mail.$mailboxId.tsx` where the row list it indexes into is
+   * known. This is only the one signal that has to cross a boundary that
+   * hook can't reach on its own: `MailboxSidebar` renders in the *parent*
+   * route (`mail.tsx`), a sibling of the route holding the selection, not a
+   * descendant of it, so dropping a dragged selection onto a folder there
+   * can't call into the hook directly. Bumping this (the same shape as
+   * `unlockVersion` above) is what tells that selection to clear itself,
+   * the way the local mailboxId/filter change already does internally.
    */
-  selection: string[]
-  /** Which mailbox the selection belongs to; leaving it clears the selection. */
-  selectionMailboxId: string | null
-  /** One id, or every message of a conversation row at once. */
-  toggleSelected: (mailboxId: string, ids: string | string[]) => void
-  setSelection: (mailboxId: string, ids: string[]) => void
-  clearSelection: () => void
+  mailSelectionClearSignal: number
+  clearMailSelection: () => void
 }
 
 let snackbarTimer: ReturnType<typeof setTimeout> | null = null
@@ -139,22 +140,6 @@ export const useUi = create<UiState>((set) => ({
   unlockVersion: 0,
   bumpUnlock: () => set((s) => ({ unlockVersion: s.unlockVersion + 1 })),
 
-  selection: [],
-  selectionMailboxId: null,
-  toggleSelected: (mailboxId, ids) =>
-    set((s) => {
-      const list = typeof ids === 'string' ? [ids] : ids
-      const base = s.selectionMailboxId === mailboxId ? s.selection : []
-      // A conversation row is one thing to click, so it selects and deselects
-      // as one: partially selected counts as not selected, and clicking it
-      // takes the whole row in rather than toggling each message apart.
-      const all = list.every((id) => base.includes(id))
-      const next = all
-        ? base.filter((id) => !list.includes(id))
-        : [...base, ...list.filter((id) => !base.includes(id))]
-      return { selection: next, selectionMailboxId: next.length ? mailboxId : null }
-    }),
-  setSelection: (mailboxId, ids) =>
-    set({ selection: ids, selectionMailboxId: ids.length ? mailboxId : null }),
-  clearSelection: () => set({ selection: [], selectionMailboxId: null }),
+  mailSelectionClearSignal: 0,
+  clearMailSelection: () => set((s) => ({ mailSelectionClearSignal: s.mailSelectionClearSignal + 1 })),
 }))

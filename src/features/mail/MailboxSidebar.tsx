@@ -204,7 +204,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
    */
   const draggingRef = useRef<Mailbox | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
-  const { openCompose, showSnackbar, clearSelection } = useUi()
+  const { openCompose, showSnackbar, clearMailSelection } = useUi()
 
   // Where the folder in flight may land — the same rule the move dialog
   // offers, so the two paths cannot disagree about what is allowed.
@@ -245,7 +245,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
     // source folder is only readable now, so this is the first chance to say
     // so, and the quietest answer is to do nothing.
     if (!payload || payload.mailboxId === m.id) return
-    clearSelection()
+    clearMailSelection()
     void bulkMove(accountId, payload.ids, m.id).then((undo) =>
       showSnackbar(
         undo

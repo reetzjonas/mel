@@ -220,3 +220,50 @@ test('the toolbar writes the markdown, and the file has it', async ({ page }) =>
   await page.getByRole('button', { name: 'Delete note' }).click()
   await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
 })
+
+test('select several notes, pin and delete them together', async ({ page }) => {
+  test.setTimeout(120_000)
+  const tag = Date.now() % 100000
+  const titleA = `BulkA-${tag}`
+  const titleB = `BulkB-${tag}`
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Notes' }).first().click()
+
+  for (const title of [titleA, titleB]) {
+    await page.getByRole('button', { name: 'New note' }).click()
+    // "New note" navigates asynchronously; with an editor already open (the
+    // previous note in this loop) its Title box exists right up until the
+    // swap, so filling the moment the button is clicked can land on the
+    // outgoing note instead of the new, still-empty one.
+    const titleBox = page.getByRole('textbox', { name: 'Title' })
+    await expect(titleBox).toHaveValue('')
+    await titleBox.fill(title)
+    // Autosave debounces (AUTOSAVE_MS); navigating away before it fires
+    // cancels the pending write, the same reason the other notes specs wait
+    // here before moving on.
+    await page.waitForTimeout(3000)
+  }
+  await expect(page.getByRole('link', { name: titleA })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: titleB })).toBeVisible({ timeout: 15_000 })
+
+  // Tick both, and the row toolbar turns into the selection one.
+  await page.getByRole('checkbox', { name: `Select ${titleA}` }).click()
+  await page.getByRole('checkbox', { name: `Select ${titleB}` }).click()
+  await expect(page.getByText('2 selected')).toBeVisible()
+
+  await page
+    .getByTestId('selection-toolbar')
+    .getByRole('button', { name: 'Pin', exact: true })
+    .click()
+  await page.getByRole('link', { name: titleA }).click()
+  await expect(page.getByRole('button', { name: 'Pin', pressed: true })).toBeVisible()
+
+  // Select both again and delete them together from the selection toolbar.
+  await page.getByRole('checkbox', { name: `Select ${titleA}` }).click()
+  await page.getByRole('checkbox', { name: `Select ${titleB}` }).click()
+  await page.getByTestId('selection-toolbar').getByRole('button', { name: 'Delete note' }).click()
+  await expect(page.getByRole('link', { name: titleA })).toHaveCount(0, { timeout: 15_000 })
+  await expect(page.getByRole('link', { name: titleB })).toHaveCount(0)
+})

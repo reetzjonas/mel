@@ -1,10 +1,11 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
 import { saveBlob } from '../../lib/saveBlob'
+import { useSelection } from '../../lib/selection'
 import {
   createFolder,
   deleteNodes,
@@ -16,6 +17,7 @@ import {
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
 import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
@@ -65,15 +67,16 @@ export function FileBrowser({
   const { showSnackbar } = useUi()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [preview, setPreview] = useState<FileNode | null>(null)
-  const [checked, setChecked] = useState<Set<string>>(new Set())
-  /**
-   * Whether the checkboxes are on show.
-   *
-   * On a desktop the pointer reveals one per row, but touch has no hover, so
-   * without a way to turn them on there is no way to select anything at all
-   * with a finger.
+  /*
+   * Each row is its own id, both for the anchor/range math and for what
+   * actually gets selected — unlike Mail, where one row can be a whole
+   * conversation.
    */
-  const [selecting, setSelecting] = useState(false)
+  const selectionRows = useMemo(
+    () => (visibleChildren ?? []).map((n) => ({ key: n.id, ids: [n.id] })),
+    [visibleChildren],
+  )
+  const { selected: checked, selecting, setSelecting, toggle, clear } = useSelection(selectionRows)
   const [busy, setBusy] = useState(false)
   const [dropping, setDropping] = useState(false)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
@@ -105,45 +108,11 @@ export function FileBrowser({
     if (picked.length) void run(() => uploadFiles(accountId, folderId, picked))
   }
 
-  /**
-   * Where a shift-click measures from: the last row ticked on its own.
-   *
-   * A ref, not state — nothing renders from it, and reading a stale value
-   * would silently select the wrong range.
-   */
-  const anchor = useRef<string | null>(null)
-
-  const toggle = (id: string, extend: boolean) => {
-    const rows = visibleChildren ?? []
-    const from = rows.findIndex((n) => n.id === anchor.current)
-    const to = rows.findIndex((n) => n.id === id)
-    if (extend && from !== -1 && to !== -1) {
-      // Shift-click adds the run between the two, as a file manager does. It
-      // only ever adds: turning the range off again would undo ticks the run
-      // happens to cross that were made deliberately.
-      const [lo, hi] = from < to ? [from, to] : [to, from]
-      setChecked((prev) => new Set([...prev, ...rows.slice(lo, hi + 1).map((n) => n.id)]))
-      return
-    }
-    anchor.current = id
-    setChecked((prev) => {
-      const next = new Set(prev)
-      if (!next.delete(id)) next.add(id)
-      return next
-    })
-  }
-
-  const clearChecked = () => {
-    setChecked(new Set())
-    setSelecting(false)
-    anchor.current = null
-  }
-
   /** A dragged row that is itself checked stands in for the whole selection. */
   const dragPayload = (node: FileNode) => (checked.has(node.id) ? [...checked] : [node.id])
 
   const move = async (ids: string[], parentId: string | null) => {
-    clearChecked()
+    clear()
     setDropTarget(null)
     await run(() => moveNodes(accountId, ids, parentId))
   }
@@ -167,13 +136,13 @@ export function FileBrowser({
     } finally {
       setBusy(false)
     }
-    clearChecked()
+    clear()
   }
 
   const removeChecked = () => {
     if (!window.confirm(t('files.delete.selection'))) return
     const ids = [...checked]
-    clearChecked()
+    clear()
     if (preview && ids.includes(preview.id)) setPreview(null)
     void run(() => deleteNodes(accountId, ids))
   }
@@ -224,111 +193,88 @@ export function FileBrowser({
           upload(e.dataTransfer.files)
         }}
       >
-        <div className="flex items-center gap-2 border-b border-line px-2.5 py-2">
-          {checked.size > 0 ? (
-            <>
-              <Tooltip label={t('bulk.clear')}>
-                <button
-                  type="button"
-                  aria-label={t('bulk.clear')}
-                  onClick={clearChecked}
-                  className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-                >
-                  <Icon name="close" size={15} />
-                </button>
-              </Tooltip>
-              <span className="text-[13px] font-medium whitespace-nowrap">
-                {checked.size} {t('bulk.selected')}
-              </span>
-              <div className="ml-auto flex items-center gap-1.5">
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void downloadChecked()}
-                  className={secondaryButtonClass}
-                >
-                  {t('files.download')}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setDialog({ kind: 'move' })}
-                  className={secondaryButtonClass}
-                >
-                  {t('files.move')}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={removeChecked}
-                  className={secondaryButtonClass}
-                >
-                  {t('files.delete')}
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <Breadcrumb
-                trail={trail}
-                onDropNodes={(parentId) => void move(draggingRef.current, parentId)}
-                dragging={draggingRef}
+        {checked.size > 0 ? (
+          <SelectionToolbar count={checked.size} onClear={clear}>
+            <SelectionActionButton
+              icon="download"
+              label={t('files.download')}
+              disabled={busy}
+              onClick={() => void downloadChecked()}
+            />
+            <SelectionActionButton
+              icon="folder"
+              label={t('files.move')}
+              disabled={busy}
+              onClick={() => setDialog({ kind: 'move' })}
+            />
+            <SelectionActionButton
+              icon="trash"
+              label={t('files.delete')}
+              disabled={busy}
+              onClick={removeChecked}
+            />
+          </SelectionToolbar>
+        ) : (
+          <div className="flex items-center gap-2 border-b border-line px-2.5 py-2">
+            <Breadcrumb
+              trail={trail}
+              onDropNodes={(parentId) => void move(draggingRef.current, parentId)}
+              dragging={draggingRef}
+            />
+            <div className="ml-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                aria-pressed={showHidden}
+                onClick={() =>
+                  setShowHidden((on) => {
+                    const next = !on
+                    localStorage.setItem(SHOW_HIDDEN_KEY, next ? '1' : '0')
+                    return next
+                  })
+                }
+                className={`${secondaryButtonClass} ${showHidden ? 'bg-surface-2 text-ink' : ''}`}
+              >
+                {showHidden ? t('files.hideHidden') : t('files.showHidden')}
+              </button>
+              <button
+                type="button"
+                aria-pressed={selecting}
+                onClick={() => setSelecting(!selecting)}
+                className={`${secondaryButtonClass} ${selecting ? 'bg-surface-2 text-ink' : ''}`}
+              >
+                {t('files.select')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setDialog({ kind: 'newFolder' })}
+                className={secondaryButtonClass}
+              >
+                {t('files.newFolder')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => picker.current?.click()}
+                className={primaryButtonClass}
+              >
+                {busy ? t('files.uploading') : t('files.upload')}
+              </button>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                className="hidden"
+                aria-label={t('files.upload')}
+                onChange={(e) => {
+                  upload(e.target.files)
+                  // Same file twice in a row still has to fire a change event.
+                  e.target.value = ''
+                }}
               />
-              <div className="ml-auto flex items-center gap-1.5">
-                <button
-                  type="button"
-                  aria-pressed={showHidden}
-                  onClick={() =>
-                    setShowHidden((on) => {
-                      const next = !on
-                      localStorage.setItem(SHOW_HIDDEN_KEY, next ? '1' : '0')
-                      return next
-                    })
-                  }
-                  className={`${secondaryButtonClass} ${showHidden ? 'bg-surface-2 text-ink' : ''}`}
-                >
-                  {showHidden ? t('files.hideHidden') : t('files.showHidden')}
-                </button>
-                <button
-                  type="button"
-                  aria-pressed={selecting}
-                  onClick={() => setSelecting((on) => !on)}
-                  className={`${secondaryButtonClass} ${selecting ? 'bg-surface-2 text-ink' : ''}`}
-                >
-                  {t('files.select')}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => setDialog({ kind: 'newFolder' })}
-                  className={secondaryButtonClass}
-                >
-                  {t('files.newFolder')}
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => picker.current?.click()}
-                  className={primaryButtonClass}
-                >
-                  {busy ? t('files.uploading') : t('files.upload')}
-                </button>
-                <input
-                  ref={picker}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  aria-label={t('files.upload')}
-                  onChange={(e) => {
-                    upload(e.target.files)
-                    // Same file twice in a row still has to fire a change event.
-                    e.target.value = ''
-                  }}
-                />
-              </div>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        )}
 
         <div className="relative min-h-0 flex-1 overflow-y-auto">
           {dropping && (

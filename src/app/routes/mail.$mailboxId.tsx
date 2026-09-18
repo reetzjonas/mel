@@ -6,6 +6,7 @@ import { ResizeHandle } from '../../features/mail/ResizeHandle'
 import { PANEL_WIDTH_VAR, usePanelWidth } from '../../features/mail/panelWidths'
 import { SelectionToolbar } from '../../features/mail/SelectionToolbar'
 import { ThreadList } from '../../features/mail/ThreadList'
+import { conversationItem, messageItem } from '../../features/mail/rowItem'
 import {
   useAccounts,
   useFullSyncProgress,
@@ -14,6 +15,7 @@ import {
 } from '../../features/mail/hooks'
 import { useUi } from '../store'
 import { t } from '../../lib/i18n'
+import { useSelection } from '../../lib/selection'
 import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
@@ -98,16 +100,9 @@ function MailboxView() {
   }
   const [refreshing, setRefreshing] = useState(false)
   const mailboxes = useMailboxes(accountId)
-  const { selection, selectionMailboxId, clearSelection, setFolderDrawerOpen } = useUi()
+  const { setFolderDrawerOpen } = useUi()
   const listPanel = usePanelWidth('list')
   const listRef = useRef<HTMLElement | null>(null)
-  const hasSelection = selectionMailboxId === mailboxId && selection.length > 0
-
-  // A selection belongs to one folder *and* one filter; leaving either drops it
-  // rather than silently carrying ids into a list where they aren't visible.
-  useEffect(() => {
-    clearSelection()
-  }, [mailboxId, filter, clearSelection])
 
   // Depends only on the id, not the account object: only switching accounts
   // (or the query) should re-run the search.
@@ -176,6 +171,37 @@ function MailboxView() {
   // are what matched, not the threads they happen to sit in.
   const searchResults = results ? results.headers.filter((h) => matchesFilter(h, filter)) : null
 
+  /*
+   * Owned here rather than inside ThreadList, since the sibling
+   * SelectionToolbar below needs it too — same `emails`/`conversations`
+   * branching ThreadList itself renders from, so the row `useSelection`
+   * indexes into never disagrees with what's actually on screen.
+   */
+  const selectionRows = useMemo(
+    () =>
+      searchResults
+        ? searchResults.map(messageItem)
+        : grouped
+          ? (mailbox.conversations ?? []).map(conversationItem)
+          : (mailbox.emails ?? []).map(messageItem),
+    [searchResults, grouped, mailbox.conversations, mailbox.emails],
+  )
+  const selection = useSelection(selectionRows.map((r) => ({ key: r.email.id, ids: r.ids })))
+  const hasSelection = selection.selected.size > 0
+  const clearMailSelectionSignal = useUi((s) => s.mailSelectionClearSignal)
+
+  // A selection belongs to one folder *and* one filter; leaving either drops
+  // it rather than silently carrying ids into a list where they aren't
+  // visible. Also cleared on the cross-route signal MailboxSidebar bumps
+  // after moving a dragged selection away from this folder (see store.ts).
+  useEffect(() => {
+    selection.clear()
+    // selection.clear is a fresh function every render (useSelection has no
+    // memoization to lean on) and must not be a dependency, or this would
+    // fire on every render instead of only when one of these three changes.
+    // oxlint-disable-next-line exhaustive-deps
+  }, [mailboxId, filter, clearMailSelectionSignal])
+
   return (
     <div className="flex h-full gap-0 sm:gap-3">
       <section
@@ -194,6 +220,7 @@ function MailboxView() {
             mailboxId={mailboxId}
             mailboxes={mailboxes ?? []}
             filter={filter}
+            selection={selection}
           />
         ) : (
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
@@ -293,6 +320,7 @@ function MailboxView() {
                 snippets={results?.snippets}
                 mailboxId={mailboxId}
                 selectedId={params.emailId}
+                selection={selection}
                 onEndReached={loadMore}
               />
             )

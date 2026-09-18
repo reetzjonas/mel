@@ -53,9 +53,14 @@ export async function updateContact(accountId: string, contact: Contact): Promis
 }
 
 export async function deleteContact(accountId: string, contactId: string): Promise<void> {
-  await db.contacts.delete([accountId, contactId])
-  if (contactId.startsWith('local-')) return
-  await enqueue(accountId, { kind: 'contact.destroy', ids: [contactId] })
+  await deleteContacts(accountId, [contactId])
+}
+
+/** One outbox action for the whole batch, the way `contact.destroy` already takes many ids. */
+export async function deleteContacts(accountId: string, contactIds: string[]): Promise<void> {
+  await db.contacts.bulkDelete(contactIds.map((id) => [accountId, id]))
+  const synced = contactIds.filter((id) => !id.startsWith('local-'))
+  if (synced.length) await enqueue(accountId, { kind: 'contact.destroy', ids: synced })
 }
 
 export interface Suggestion {
