@@ -69,10 +69,23 @@ objects (`upcomingRows`, gated on `useDeferredValue`) and the list itself is
 `memo`'d, so a drag's repeated re-renders skip it entirely rather than
 reconciling and reformatting up to `UPCOMING_LIMIT` rows on every frame.
 
-Not fully closed: these three still failed once in this session against the
-built preview under concurrent Playwright workers (other spec files running
-alongside), though never in isolation post-fix. If they flicker again,
-check _which build_ and _how much else is running concurrently_ before
-assuming a regression — and see if `dragBy` itself could poll for the drag
-actually having registered (`drag.past`) rather than assuming a fixed step
-count gets there.
+Not fully closed at the time: these three still failed once in this session
+against the built preview under concurrent Playwright workers, though never in
+isolation. The cause turned out to be in the app, not in `dragBy` (issue #94).
+
+**The real race (2026-09-18, fixed).** `onPointerMove` and `endDrag` read `drag`
+from their render closure. React treats `pointermove` as a _continuous_ event
+and does not flush its `setDrag` before the next _discrete_ one, so a
+`pointerup` arriving while the last moves are still unrendered sees the drag
+from before them — `past` still false — and the gesture is discarded as a
+click. It needs the main thread to be busy, which is why it only showed under
+concurrent workers and a production bundle, and why it is not reproducible on
+demand: 18 of 18 runs were green on the unfixed code even with the browser
+pinned to two cores and six busy loops beside it. It **is** reproducible in
+jsdom, deterministically, by firing down/move/up inside one `act()`
+(`TimeGrid.test.tsx`; red on the old code, green now). The handlers now read a
+`dragRef` written in the same breath as the state.
+
+If a drag test flickers again, the fix to distrust is not `dragBy`'s step
+count — it is any new handler in `TimeGrid` that reads `drag` instead of
+`dragRef.current`.

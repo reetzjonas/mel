@@ -89,6 +89,17 @@ export function TimeGrid({
   const scrollRef = useRef<HTMLDivElement>(null)
   const columnsRef = useRef<HTMLDivElement>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
+  /* The handlers read the drag from here, not from `drag`. React treats
+     pointermove as a continuous event and does not flush its setState before
+     the next discrete one, so under load a pointerup can arrive while the
+     closure still holds the drag from before the last moves — `past` still
+     false — and the gesture is thrown away as a click. The ref is written in
+     the same breath as the state and so is never behind. */
+  const dragRef = useRef<Drag | null>(null)
+  function updateDrag(next: Drag | null) {
+    dragRef.current = next
+    setDrag(next)
+  }
   /* A completed drag is followed by a click on the same element; without this
      the block would also open the dialog the moment it was dropped. */
   const draggedRef = useRef(false)
@@ -105,10 +116,11 @@ export function TimeGrid({
     e.preventDefault()
     e.stopPropagation()
     e.currentTarget.setPointerCapture(e.pointerId)
-    setDrag({ ...origin, mode })
+    updateDrag({ ...origin, mode })
   }
 
   function onPointerMove(e: React.PointerEvent) {
+    const drag = dragRef.current
     if (!drag) return
     const dy = e.clientY - drag.originY
     const dx = e.clientX - drag.originX
@@ -116,7 +128,7 @@ export function TimeGrid({
     if (!past) return
     const rect = columnsRef.current?.getBoundingClientRect()
     const dayWidth = rect ? (rect.width - GUTTER_PX) / days.length : 0
-    setDrag({
+    updateDrag({
       ...drag,
       past,
       deltaMinutes: (dy / HOUR_HEIGHT) * 60,
@@ -125,6 +137,7 @@ export function TimeGrid({
   }
 
   function endDrag(e: React.PointerEvent) {
+    const drag = dragRef.current
     if (!drag) return
     e.currentTarget.releasePointerCapture(e.pointerId)
     const target = placementFor(drag, drag.deltaMinutes, drag.deltaDays, days.length)
@@ -133,7 +146,7 @@ export function TimeGrid({
       const day = days[target.dayIndex]!
       onEventDrop(drag.occ, instantAt(day, target.startMinutes), instantAt(day, target.endMinutes))
     }
-    setDrag(null)
+    updateDrag(null)
   }
 
   useEffect(() => {
@@ -291,7 +304,7 @@ export function TimeGrid({
                       onPointerUp={movable ? endDrag : undefined}
                       // A cancelled drag is thrown away rather than committed:
                       // unlike a panel width, this one writes to the server.
-                      onPointerCancel={movable ? () => setDrag(null) : undefined}
+                      onPointerCancel={movable ? () => updateDrag(null) : undefined}
                       style={{
                         top,
                         height,
@@ -327,7 +340,7 @@ export function TimeGrid({
                             onPointerDown={(e) => grab(e, 'resize-start')}
                             onPointerMove={onPointerMove}
                             onPointerUp={endDrag}
-                            onPointerCancel={() => setDrag(null)}
+                            onPointerCancel={() => updateDrag(null)}
                             className="absolute inset-x-0 top-0 h-1.5 cursor-ns-resize"
                           />
                           <span
@@ -335,7 +348,7 @@ export function TimeGrid({
                             onPointerDown={(e) => grab(e, 'resize-end')}
                             onPointerMove={onPointerMove}
                             onPointerUp={endDrag}
-                            onPointerCancel={() => setDrag(null)}
+                            onPointerCancel={() => updateDrag(null)}
                             className="absolute inset-x-0 bottom-0 h-1.5 cursor-ns-resize"
                           />
                         </>
