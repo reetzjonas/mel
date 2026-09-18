@@ -3,6 +3,7 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
+import { storedContact } from '../../domain/contact'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
@@ -67,6 +68,28 @@ const ROLE_ORDER: Record<string, number> = {
   archive: 3,
   junk: 4,
   trash: 5,
+}
+
+/**
+ * A sender's own picture, by address — what an `Avatar` shows instead of
+ * initials once the sender is a known contact.
+ *
+ * One query for the whole account rather than one per row: a mailbox list or
+ * a thread renders many senders at once, and each is a lookup into this map,
+ * not a query of its own.
+ */
+export function useContactPhotos(accountId: string | undefined): Map<string, string> | undefined {
+  return useLiveQuery(async () => {
+    const out = new Map<string, string>()
+    if (!accountId) return out
+    const rows = await db.contacts.where('accountId').equals(accountId).toArray()
+    for (const row of rows) {
+      const c = storedContact(openEnvelope(row.payload))
+      if (!c.photo) continue
+      for (const e of c.emails) out.set(e.value.toLowerCase(), c.photo)
+    }
+    return out
+  }, [accountId])
 }
 
 export function useMailboxes(accountId: string | undefined): Mailbox[] | undefined {

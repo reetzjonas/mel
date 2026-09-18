@@ -8,7 +8,7 @@ import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSani
 import { useImagePolicy } from '../../lib/imagePolicy'
 import { normalizeImageSender, setImageSender } from '../../services/imageSenders'
 import { useImageSenders } from './useImageSenders'
-import { useCanFilter, useCanSend, useMailboxes, useThread } from './hooks'
+import { useCanFilter, useCanSend, useContactPhotos, useMailboxes, useThread } from './hooks'
 import { MessageDetails } from './MessageDetails'
 import { UnsubscribeBar } from './UnsubscribeBar'
 import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
@@ -249,12 +249,15 @@ function Tag({ label, tone }: { label: string; tone: 'accent' | 'honey' }) {
 function CollapsedMessage({
   message,
   arrived,
+  photos,
   onOpen,
 }: {
   message: EmailHeader
   /** Turned up while this conversation was open, rather than being part of it
    *  when you got here — worth pointing at, since nothing else moved. */
   arrived: boolean
+  /** Sender email → contact photo, looked up once for the whole thread. */
+  photos: Map<string, string> | undefined
   onOpen: () => void
 }) {
   const sender = message.from[0]
@@ -280,7 +283,12 @@ function CollapsedMessage({
           : 'border-line hover:bg-surface-2'
       }`}
     >
-      <Avatar name={sender?.name ?? sender?.email ?? '?'} email={sender?.email ?? '?'} size={24} />
+      <Avatar
+        name={sender?.name ?? sender?.email ?? '?'}
+        email={sender?.email ?? '?'}
+        src={sender?.email ? photos?.get(sender.email.toLowerCase()) : undefined}
+        size={24}
+      />
       <span
         className={`shrink-0 truncate text-[13px] ${unread ? 'font-semibold text-ink' : 'text-ink'}`}
       >
@@ -329,6 +337,7 @@ export function ReadingPane({
 }) {
   const grouped = useUi((s) => s.conversationView)
   const canSend = useCanSend()
+  const photos = useContactPhotos(accountId)
   // Only asked for while grouping is on, so the ungrouped pane costs no extra
   // query at all.
   const thread = useThread(accountId, grouped ? focused.threadId : undefined, mailboxId)
@@ -434,6 +443,7 @@ export function ReadingPane({
           key={messages[entry.index]!.id}
           message={messages[entry.index]!}
           arrived={arrived(messages[entry.index]!.id)}
+          photos={photos}
           onOpen={() => setExpandedId(messages[entry.index]!.id)}
         />
       ),
@@ -769,7 +779,14 @@ export function ReadingPane({
         {/* oxlint-disable-next-line refs */}
         {renderSlots(slots.slice(0, splitAt))}
         <div className="flex shrink-0 items-center gap-3 px-4 py-3 lg:px-6">
-          {sender && <Avatar name={sender.name ?? sender.email} email={sender.email} size={40} />}
+          {sender && (
+            <Avatar
+              name={sender.name ?? sender.email}
+              email={sender.email}
+              src={photos?.get(sender.email.toLowerCase())}
+              size={40}
+            />
+          )}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
               <span className="truncate text-sm font-semibold">
