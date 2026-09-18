@@ -1,5 +1,7 @@
 // Normalized contact model (from JSContact, RFC 9553 / RFC 9610).
 
+import type { ContactKey } from './contactKey'
+
 export interface AddressBook {
   id: string
   name: string
@@ -54,6 +56,14 @@ export interface Contact {
   /** Free-form tags the card carries, for grouping and filtering. */
   keywords: string[]
   /**
+   * Public keys for writing to this person encrypted — PGP or S/MIME.
+   *
+   * A list rather than one: people rotate keys and publish a PGP key and an
+   * S/MIME certificate side by side, and a card that can only hold the newest
+   * cannot read a message signed with the older one.
+   */
+  cryptoKeys: ContactKey[]
+  /**
    * The contact's picture as a URI, '' when the card has none.
    *
    * A URI rather than a blob id because that is all the card can hold: the
@@ -97,6 +107,7 @@ export function storedContact(stored: Contact): Contact {
     urls: stored.urls ?? [],
     onlineServices: stored.onlineServices ?? [],
     keywords: stored.keywords ?? [],
+    cryptoKeys: stored.cryptoKeys ?? [],
     photo: stored.photo ?? '',
     birthday: stored.birthday ?? '',
     note: stored.note ?? '',
@@ -146,6 +157,7 @@ export function emptyContact(addressBookId: string): Contact {
     urls: [],
     onlineServices: [],
     keywords: [],
+    cryptoKeys: [],
     photo: '',
     birthday: '',
     note: '',

@@ -2,12 +2,15 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useUi } from '../../app/store'
 import { displayName, type LabeledValue } from '../../domain/contact'
+import { keyBytes, keyFileName, keyKind, keySize, type ContactKey } from '../../domain/contactKey'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
 import { birthdayLabel } from '../../features/contacts/birthday'
 import { mapHref, profileHref, telHref, webHref } from '../../features/contacts/links'
 import { useAccounts, useCanSend } from '../../features/mail/hooks'
+import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
+import { saveBlob } from '../../lib/saveBlob'
 import { deleteContact, updateContact } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
 import { Icon } from '../../ui/Icon'
@@ -18,6 +21,77 @@ export const Route = createFileRoute('/contacts/$contactId')({
 })
 
 const actionClass = 'rounded-sm text-sm text-accent hover:underline'
+
+/** What to call a key, by what it turned out to be. */
+function keyLabel(key: ContactKey): string {
+  const kind = keyKind(key)
+  return kind === 'pgp'
+    ? t('contacts.key.pgp')
+    : kind === 'smime'
+      ? t('contacts.key.smime')
+      : t('contacts.key.unknown')
+}
+
+/**
+ * The public keys on a card.
+ *
+ * Nothing here reads the key — that arrives with the mail side of #63. What it
+ * can do is say which kind it is and hand it back out, so a key that reached
+ * mel from another client is not trapped in it.
+ */
+function KeyList({ contact }: { contact: { cryptoKeys: ContactKey[]; name: string } }) {
+  if (contact.cryptoKeys.length === 0) return null
+  return (
+    <div>
+      <div className="text-xs font-medium text-ink-muted">{t('contacts.keys')}</div>
+      <ul className="mt-1 space-y-1">
+        {contact.cryptoKeys.map((key, i) => {
+          const bytes = keyBytes(key.uri)
+          return (
+            <li key={i} className="flex items-center gap-2 text-sm">
+              <Icon name="lock" size={13} className="shrink-0 text-ink-muted" />
+              <span className="min-w-0 flex-1 truncate">
+                {keyLabel(key)}
+                <span className="ml-2 text-xs text-ink-muted">
+                  {bytes ? formatBytes(keySize(key)) : key.uri}
+                </span>
+              </span>
+              {/* A key the card only points at is a link, not a download: mel
+                  would have to fetch it from a third party to save it, and
+                  opening a message must not reach out to one. */}
+              {bytes ? (
+                <button
+                  type="button"
+                  className={`${actionClass} shrink-0`}
+                  aria-label={`${t('contacts.key.download')}: ${keyLabel(key)}`}
+                  onClick={() =>
+                    saveBlob(
+                      new Blob([bytes as BlobPart], {
+                        type: key.mediaType || 'application/octet-stream',
+                      }),
+                      keyFileName(key, contact.name),
+                    )
+                  }
+                >
+                  {t('contacts.key.download')}
+                </button>
+              ) : (
+                <a
+                  href={key.uri}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`${actionClass} shrink-0`}
+                >
+                  {t('contacts.key.open')}
+                </a>
+              )}
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
 
 /**
  * One entry of a contact field, actionable where there is something to do.
@@ -259,6 +333,7 @@ function ContactDetail() {
             </ul>
           </div>
         )}
+        <KeyList contact={{ cryptoKeys: contact.cryptoKeys, name }} />
         {contact.note && (
           <div>
             <div className="text-xs font-medium text-ink-muted">{t('contacts.note')}</div>

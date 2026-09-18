@@ -226,3 +226,65 @@ test('a birthday reaches the card and shows up in the calendar', async ({ page }
   // Clean up.
   await page.getByRole('button', { name: 'Delete contact' }).click()
 })
+
+/*
+ * A real PGP key block would be no more informative here than a fake one —
+ * nothing in this slice reads the key, it only has to survive the round trip
+ * through the server and come back recognizable.
+ */
+const PGP_KEY = `-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEZfakeBYJKwYBBAHaRw8BAQdAfakefakefakefakefakefakefakefakefake=
+=abcd
+-----END PGP PUBLIC KEY BLOCK-----
+`
+
+test('a public key on a contact survives the server and comes back out', async ({ page }) => {
+  const surname = `Keyed${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Erika')
+  await page.getByLabel('Last name').fill(surname)
+  await page
+    .locator('input[type="email"]')
+    .first()
+    .fill(`erika.${surname.toLowerCase()}@example.org`)
+
+  await page.getByRole('button', { name: 'Add: Public keys' }).click()
+  // Text that is not a key is refused rather than stored under a heading that
+  // promises one.
+  await page.getByLabel('Paste the key').fill('my key is on my website')
+  await page.getByRole('button', { name: 'Add key', exact: true }).click()
+  await expect(page.getByText(/not a public key/)).toBeVisible()
+
+  await page.getByLabel('Paste the key').fill(PGP_KEY)
+  await page.getByRole('button', { name: 'Add key', exact: true }).click()
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
+  await expect(page.getByText('PGP public key')).toBeVisible()
+
+  /*
+   * The point of the reload: JSContact cryptoKeys is what the *server* stores,
+   * so a key that only ever lived in the local row would pass every unit test
+   * and still be gone on the next device.
+   */
+  await page.reload()
+  await expect(page.getByText('PGP public key')).toBeVisible()
+
+  // Saving it hands back exactly the armor that went in.
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: /^Download: PGP public key/ }).click()
+  const file = await download
+  expect(file.suggestedFilename()).toBe(`Erika-${surname}.asc`)
+
+  await page.getByRole('button', { name: 'Edit' }).click()
+  await page.getByRole('button', { name: 'Remove key: PGP public key' }).click()
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.reload()
+  await expect(page.getByText('PGP public key')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+})

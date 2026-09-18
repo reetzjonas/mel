@@ -1,5 +1,6 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { keyFromText } from '../../domain/contactKey'
 import type { Contact } from '../../domain/contact'
 import { ContactEditor } from './ContactEditor'
 
@@ -21,6 +22,7 @@ const contact = (over: Partial<Contact> = {}): Contact => ({
   urls: [{ value: '', label: null }],
   onlineServices: [],
   keywords: [],
+  cryptoKeys: [],
   photo: '',
   birthday: '',
   note: '',
@@ -77,7 +79,12 @@ describe('what the browser is told to autofill', () => {
   })
 
   it('covers the fields added by the + button too', () => {
-    editor({ phones: [{ value: '', label: null }, { value: '', label: null }] })
+    editor({
+      phones: [
+        { value: '', label: null },
+        { value: '', label: null },
+      ],
+    })
     const phones = [...document.querySelectorAll('input[type="tel"]')]
     expect(phones).toHaveLength(2)
     for (const phone of phones) expect(phone.getAttribute('autocomplete')).toBe('off')
@@ -89,5 +96,56 @@ describe('the form still edits what it was given', () => {
     editor({ given: 'Erika', surname: 'Mustermann' })
     expect(screen.getByDisplayValue('Erika')).toBeInTheDocument()
     expect(screen.getByDisplayValue('Mustermann')).toBeInTheDocument()
+  })
+})
+
+describe('adding a public key', () => {
+  const PGP =
+    '-----BEGIN PGP PUBLIC KEY BLOCK-----\nmDMEZfake\n-----END PGP PUBLIC KEY BLOCK-----\n'
+
+  function paste(text: string) {
+    const onSave = vi.fn()
+    render(<ContactEditor initial={contact()} onSave={onSave} onCancel={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add: Public keys' }))
+    fireEvent.change(screen.getByLabelText('Paste the key'), { target: { value: text } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add key' }))
+    return onSave
+  }
+
+  const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+  it('keeps a pasted key and saves it with the card', () => {
+    const onSave = paste(`here you go\n\n${PGP}`)
+    expect(screen.getByText('PGP public key')).toBeInTheDocument()
+    save()
+    expect(onSave.mock.calls[0]?.[0].cryptoKeys).toEqual([keyFromText(PGP)])
+  })
+
+  /*
+   * A field labelled "public key" holding a stray paragraph is worse than an
+   * empty one: everything downstream would treat it as a key and fail later,
+   * somewhere the user cannot connect back to this moment.
+   */
+  it('refuses text that is not a key, and says so', () => {
+    const onSave = paste('my key is on my website somewhere')
+    expect(screen.getByText(/not a public key/)).toBeInTheDocument()
+    expect(screen.queryByText('PGP public key')).not.toBeInTheDocument()
+    save()
+    expect(onSave.mock.calls[0]?.[0].cryptoKeys).toEqual([])
+  })
+
+  it('removes a key again', () => {
+    const onSave = vi.fn()
+    render(
+      <ContactEditor
+        initial={contact({ cryptoKeys: [keyFromText(PGP)!] })}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Remove key: PGP public key' }))
+    expect(screen.queryByText('PGP public key')).not.toBeInTheDocument()
+    save()
+    expect(onSave.mock.calls[0]?.[0].cryptoKeys).toEqual([])
   })
 })

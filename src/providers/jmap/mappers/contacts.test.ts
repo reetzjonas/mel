@@ -86,6 +86,7 @@ describe('clearing a field the card already has', () => {
       'links',
       'onlineServices',
       'keywords',
+      'cryptoKeys',
       'notes',
     ])
       expect(out[field], field).toBeNull()
@@ -145,9 +146,7 @@ describe('handles on other services', () => {
    */
   it('never writes an entry without a uri', () => {
     const out = fromContact(toContact(withService)) as Record<string, unknown>
-    const services = Object.values(
-      out['onlineServices'] as Record<string, Record<string, unknown>>,
-    )
+    const services = Object.values(out['onlineServices'] as Record<string, Record<string, unknown>>)
     for (const s of services) expect(s['uri']).toBeTruthy()
     expect(services[1]).toEqual({
       '@type': 'OnlineService',
@@ -182,7 +181,10 @@ describe('the picture on a card', () => {
     const c = toContact({
       id: 'c7',
       addressBookIds: { b: true },
-      media: { m0: { '@type': 'Media', kind: 'logo', uri: 'https://x/logo.png' }, m1: { '@type': 'Media', kind: 'photo', uri } },
+      media: {
+        m0: { '@type': 'Media', kind: 'logo', uri: 'https://x/logo.png' },
+        m1: { '@type': 'Media', kind: 'photo', uri },
+      },
     })
     expect(c.photo).toBe(uri)
   })
@@ -212,14 +214,16 @@ describe('the birth anniversary', () => {
   })
 
   it('reads a full PartialDate', () => {
-    expect(toContact(anniversary({ '@type': 'PartialDate', year: 1985, month: 4, day: 20 })).birthday).toBe(
-      '1985-04-20',
-    )
+    expect(
+      toContact(anniversary({ '@type': 'PartialDate', year: 1985, month: 4, day: 20 })).birthday,
+    ).toBe('1985-04-20')
   })
 
   // The year is optional in a PartialDate and left out rather than invented.
   it('reads one with no year as one with no year', () => {
-    expect(toContact(anniversary({ '@type': 'PartialDate', month: 4, day: 20 })).birthday).toBe('--04-20')
+    expect(toContact(anniversary({ '@type': 'PartialDate', month: 4, day: 20 })).birthday).toBe(
+      '--04-20',
+    )
   })
 
   it('reads a Timestamp, which is the other shape a card may use', () => {
@@ -258,5 +262,52 @@ describe('the birth anniversary', () => {
   it('clears the map when the birthday is removed', () => {
     const c = toContact({ id: 'c13', addressBookIds: { b: true } })
     expect((fromContact(c) as Record<string, unknown>)['anniversaries']).toBeNull()
+  })
+})
+
+describe('public keys on a card', () => {
+  const armored =
+    'data:application/pgp-keys;base64,' +
+    btoa('-----BEGIN PGP PUBLIC KEY BLOCK-----\nx\n-----END PGP PUBLIC KEY BLOCK-----\n')
+  const withKeys: JmapContactCard = {
+    id: 'c14',
+    addressBookIds: { b: true },
+    cryptoKeys: {
+      k0: { '@type': 'CryptoKey', uri: armored, mediaType: 'application/pgp-keys' },
+      // A card may say nothing about the type, and may point somewhere else
+      // rather than carry the key — both are read as they are.
+      k1: { '@type': 'CryptoKey', uri: 'https://example.com/erika.crt' },
+      k2: { '@type': 'CryptoKey' },
+    },
+  }
+
+  it('reads the key and whatever the card says it is', () => {
+    const c = toContact(withKeys)
+    expect(c.cryptoKeys).toEqual([
+      { uri: armored, mediaType: 'application/pgp-keys' },
+      { uri: 'https://example.com/erika.crt', mediaType: '' },
+    ])
+  })
+
+  it('writes the type back only when there is one', () => {
+    const out = fromContact(toContact(withKeys)) as Record<string, unknown>
+    expect(Object.values(out['cryptoKeys'] as Record<string, unknown>)).toEqual([
+      { '@type': 'CryptoKey', uri: armored, mediaType: 'application/pgp-keys' },
+      { '@type': 'CryptoKey', uri: 'https://example.com/erika.crt' },
+    ])
+  })
+
+  it('carries a key it cannot read rather than dropping it', () => {
+    // Nothing here parses the key; a DER certificate from another client
+    // survives an edit in mel unchanged, which is the whole job.
+    const der = {
+      uri: 'data:application/pkix-cert;base64,MIIB',
+      mediaType: 'application/pkix-cert',
+    }
+    const c = { ...toContact(withKeys), cryptoKeys: [der] }
+    const out = fromContact(c) as Record<string, unknown>
+    expect(Object.values(out['cryptoKeys'] as Record<string, unknown>)).toEqual([
+      { '@type': 'CryptoKey', ...der },
+    ])
   })
 })

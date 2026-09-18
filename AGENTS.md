@@ -132,6 +132,10 @@ working on that specific feature, not on every session:
   RFC 6068 plus-address trap, the icon badge, why there are no file handlers):
   `docs/notes/pwa-integration.md`
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
+- **PGP / S-MIME** (issue #63): public keys on contact cards are done; the note
+  is mostly a design pass for the mail half — why verification needs the raw
+  message, why sending needs a second path, and where a private key could live:
+  `docs/notes/pgp-smime.md`
 
 ## Dev workflow
 

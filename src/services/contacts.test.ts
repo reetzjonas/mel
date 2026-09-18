@@ -6,7 +6,13 @@ import { suggestRecipients } from './contacts'
 
 const ACC = 'acc-test'
 
-function contactRow(overrides: Partial<Contact>): { accountId: string; id: string; addressBookIds: string[]; sortKey: string; payload: unknown } {
+function contactRow(overrides: Partial<Contact>): {
+  accountId: string
+  id: string
+  addressBookIds: string[]
+  sortKey: string
+  payload: unknown
+} {
   const c: Contact = {
     id: overrides.id ?? 'c1',
     addressBookIds: { ab1: true },
@@ -23,6 +29,7 @@ function contactRow(overrides: Partial<Contact>): { accountId: string; id: strin
     urls: [],
     onlineServices: [],
     keywords: [],
+    cryptoKeys: [],
     photo: '',
     birthday: '',
     note: '',
@@ -73,7 +80,8 @@ describe('suggestRecipients', () => {
         emails: [
           {
             label: 'work',
-            value: '/o=First Organization/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=jonas',
+            value:
+              '/o=First Organization/ou=Exchange Administrative Group (FYDIBOHF23SPDLT)/cn=Recipients/cn=jonas',
           },
           { label: 'home', value: 'jonas@example.com' },
         ],

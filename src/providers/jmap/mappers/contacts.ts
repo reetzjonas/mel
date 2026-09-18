@@ -5,6 +5,7 @@ import {
   type Contact,
   type LabeledValue,
 } from '../../../domain/contact'
+import type { ContactKey } from '../../../domain/contactKey'
 
 // JSContact (RFC 9553) shapes as served by RFC 9610 ContactCard objects.
 
@@ -40,6 +41,10 @@ export interface JmapContactCard {
     JsContext & { service?: string | null; user?: string | null; uri?: string | null }
   > | null
   keywords?: Record<string, boolean> | null
+  cryptoKeys?: Record<
+    string,
+    { '@type'?: string; uri?: string | null; mediaType?: string | null }
+  > | null
   media?: Record<string, { '@type'?: string; kind?: string | null; uri?: string | null }> | null
   anniversaries?: Record<
     string,
@@ -72,10 +77,7 @@ function contextLabel(v: JsContext): string | null {
   return ctx ?? null
 }
 
-function mapValues<V, O>(
-  rec: Record<string, V> | null | undefined,
-  map: (v: V) => O | null,
-): O[] {
+function mapValues<V, O>(rec: Record<string, V> | null | undefined, map: (v: V) => O | null): O[] {
   return Object.values(rec ?? {})
     .map(map)
     .filter((x): x is O => x !== null)
@@ -115,9 +117,14 @@ function toBirthday(card: JmapContactCard): string {
 
 export function toContact(card: JmapContactCard): Contact {
   const addressBookIds: Record<string, true> = {}
-  for (const [id, on] of Object.entries(card.addressBookIds ?? {})) if (on) addressBookIds[id] = true
+  for (const [id, on] of Object.entries(card.addressBookIds ?? {}))
+    if (on) addressBookIds[id] = true
   const kind =
-    card.kind === 'group' || card.kind === 'org' ? card.kind : card.kind === 'individual' ? 'individual' : 'other'
+    card.kind === 'group' || card.kind === 'org'
+      ? card.kind
+      : card.kind === 'individual'
+        ? 'individual'
+        : 'other'
   return {
     id: card.id,
     addressBookIds,
@@ -150,6 +157,9 @@ export function toContact(card: JmapContactCard): Contact {
     keywords: Object.entries(card.keywords ?? {})
       .filter(([, on]) => on)
       .map(([k]) => k),
+    cryptoKeys: mapValues(card.cryptoKeys, (k) =>
+      k.uri ? { uri: k.uri, mediaType: k.mediaType ?? '' } : null,
+    ),
     photo: Object.values(card.media ?? {}).find((m) => m.kind === 'photo' && m.uri)?.uri ?? '',
     birthday: toBirthday(card),
     note: Object.values(card.notes ?? {})[0]?.note ?? '',
@@ -188,6 +198,21 @@ function onlineServiceList(services: Contact['onlineServices']) {
         ...(o.service ? { service: o.service } : {}),
         ...(o.user ? { user: o.user } : {}),
         uri: o.uri || o.user,
+      },
+    ]),
+  )
+}
+
+function cryptoKeyList(keys: ContactKey[]) {
+  const usable = keys.filter((k) => k.uri)
+  if (!usable.length) return null
+  return Object.fromEntries(
+    usable.map((k, i) => [
+      `k${i}`,
+      {
+        '@type': 'CryptoKey',
+        uri: k.uri,
+        ...(k.mediaType ? { mediaType: k.mediaType } : {}),
       },
     ]),
   )
@@ -249,6 +274,14 @@ export function fromContact(c: Contact): Record<string, unknown> {
      */
     onlineServices: onlineServiceList(c.onlineServices),
     keywords: c.keywords.length ? Object.fromEntries(c.keywords.map((k) => [k, true])) : null,
+    /*
+     * Writing this replaces the whole map, so a `pref` or a `label` another
+     * client put on a key does not survive an edit here — the same trade the
+     * photo makes below. What does survive is a key mel cannot read: it is
+     * carried as the `uri` it arrived as, rather than dropped for being
+     * unrecognized.
+     */
+    cryptoKeys: cryptoKeyList(c.cryptoKeys),
     /*
      * `media` also holds logos and sounds, and writing the photo replaces the
      * whole map — so a card carrying one of those loses it to an edit here.

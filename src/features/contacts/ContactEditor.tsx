@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Contact, LabeledValue, OnlineService } from '../../domain/contact'
+import { keyFromText, keyKind, keySize, type ContactKey } from '../../domain/contactKey'
+import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
@@ -129,6 +131,149 @@ function ServiceField({
 }
 
 /**
+ * The public keys someone can be written to with.
+ *
+ * Pasting is the first-class way in, because that is how a key arrives: in the
+ * body of a mail, or off a web page. A file picker sits beside it for the
+ * export another client wrote. Either way the text has to *be* a key — mel
+ * refuses to store something it cannot name as one, since a field that says
+ * "public key" and holds a stray paragraph is worse than an empty field.
+ */
+function KeyField({
+  values,
+  onChange,
+}: {
+  values: ContactKey[]
+  onChange: (v: ContactKey[]) => void
+}) {
+  const input = useRef<HTMLInputElement>(null)
+  const [adding, setAdding] = useState(false)
+  const [text, setText] = useState('')
+  const [failed, setFailed] = useState(false)
+
+  const take = (raw: string) => {
+    const key = keyFromText(raw)
+    if (!key) {
+      setFailed(true)
+      return
+    }
+    onChange([...values, key])
+    setAdding(false)
+    setText('')
+    setFailed(false)
+  }
+
+  const label = (key: ContactKey) => {
+    const kind = keyKind(key)
+    return kind === 'pgp'
+      ? t('contacts.key.pgp')
+      : kind === 'smime'
+        ? t('contacts.key.smime')
+        : t('contacts.key.unknown')
+  }
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-ink-muted">{t('contacts.keys')}</span>
+        <button
+          type="button"
+          aria-label={`${t('contacts.addField')}: ${t('contacts.keys')}`}
+          className="text-xs text-accent"
+          onClick={() => {
+            setAdding(true)
+            setFailed(false)
+          }}
+        >
+          + {t('contacts.addField')}
+        </button>
+      </div>
+      {values.map((key, i) => (
+        <div key={i} className="flex items-center gap-1.5 text-sm">
+          <span className="min-w-0 flex-1 truncate rounded-control bg-surface-2 px-2.5 py-1.5">
+            {label(key)}
+            <span className="ml-2 text-xs text-ink-muted">
+              {keySize(key) ? formatBytes(keySize(key)) : key.uri}
+            </span>
+          </span>
+          <button
+            type="button"
+            aria-label={`${t('contacts.key.remove')}: ${label(key)}`}
+            className="px-2 text-ink-muted hover:text-danger"
+            onClick={() => onChange(values.filter((_, j) => j !== i))}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      {adding && (
+        <div className="space-y-1.5">
+          <textarea
+            className={`${inputClass} h-24 font-mono text-xs`}
+            autoComplete={NO_AUTOFILL}
+            aria-label={t('contacts.key.paste')}
+            placeholder={t('contacts.key.placeholder')}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value)
+              setFailed(false)
+            }}
+          />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              // secondaryButtonClass has no disabled state of its own, and a
+              // button that ignores the click while looking clickable reads as
+              // a broken one.
+              className={`${secondaryButtonClass} disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-ink-muted`}
+              disabled={!text.trim()}
+              onClick={() => take(text)}
+            >
+              {t('contacts.key.add')}
+            </button>
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              onClick={() => input.current?.click()}
+            >
+              {t('contacts.key.fromFile')}
+            </button>
+            <button
+              type="button"
+              className="text-sm text-ink-muted hover:underline"
+              onClick={() => {
+                setAdding(false)
+                setText('')
+                setFailed(false)
+              }}
+            >
+              {t('contacts.key.cancel')}
+            </button>
+          </div>
+          {failed && <p className="text-xs text-danger">{t('contacts.key.failed')}</p>}
+          <input
+            ref={input}
+            type="file"
+            accept=".asc,.pgp,.gpg,.pem,.crt,.cer,text/plain"
+            aria-label={t('contacts.key.fromFile')}
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              // A binary certificate reads as mojibake and fails the same way
+              // a stray paragraph does, which is the honest outcome: mel has
+              // no way to tell the user what it would be storing.
+              void file.text().then(take, () => setFailed(true))
+            }}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
  * Picking a picture for the card.
  *
  * The scaling happens before anything is stored, because the card carries the
@@ -152,7 +297,11 @@ function PhotoField({
       <Avatar name={name} email={name} size={56} src={photo} />
       <div className="space-y-1">
         <div className="flex gap-2">
-          <button type="button" className={secondaryButtonClass} onClick={() => input.current?.click()}>
+          <button
+            type="button"
+            className={secondaryButtonClass}
+            onClick={() => input.current?.click()}
+          >
             {photo ? t('contacts.photo.replace') : t('contacts.photo.add')}
           </button>
           {photo && (
@@ -277,6 +426,8 @@ export function ContactEditor({
         onChange={(onlineServices) => set({ onlineServices })}
       />
 
+      <KeyField values={c.cryptoKeys} onChange={(cryptoKeys) => set({ cryptoKeys })} />
+
       <label className="block space-y-1">
         <span className="text-xs font-medium text-ink-muted">{t('contacts.address')}</span>
         <input
@@ -350,4 +501,3 @@ export function ContactEditor({
     </form>
   )
 }
-
