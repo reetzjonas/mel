@@ -12,6 +12,32 @@ export const primaryButtonClass =
 export const secondaryButtonClass =
   'rounded-control border border-line px-4 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink'
 
+/**
+ * A circular, icon-only accent button — the "new X" action (compose, new
+ * contact, new note, ...). Three call sites hand-rolled this same string
+ * before it lived here.
+ */
+export const primaryIconButtonClass =
+  'rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95'
+
+/**
+ * A circular, icon-only neutral button — theme toggle, sign out, settings,
+ * a calendar's prev/next. Quieter than `primaryIconButtonClass`, for a
+ * control that isn't the primary action on its screen.
+ */
+export const secondaryIconButtonClass =
+  'rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink'
+
+/** The wrapper around a row of mutually exclusive options (Calendar's Month/Week/Day). */
+export const segmentedControlClass = 'flex items-center gap-0.5 rounded-control bg-surface-2 p-0.5'
+
+/** One option inside `segmentedControlClass`; pass the active one on every render. */
+export function segmentedOptionClass(active: boolean): string {
+  return `rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+    active ? 'bg-raised text-ink shadow-raised' : 'text-ink-muted hover:text-ink'
+  }`
+}
+
 /** Modal/popover surface: floats above the app with a soft ring instead of a hard border. */
 export const overlayPanelClass = 'rounded-panel bg-raised shadow-overlay ring-1 ring-line'
 

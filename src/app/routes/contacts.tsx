@@ -9,7 +9,9 @@ import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
+import { primaryIconButtonClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/contacts')({
   component: ContactsLayout,
@@ -61,14 +63,16 @@ function ContactsLayout() {
               type="button"
               aria-label={t('contacts.new')}
               onClick={() => void navigate({ to: '/contacts/new' })}
-              className="rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95"
+              className={primaryIconButtonClass}
             >
               <Icon name="compose" size={15} />
             </button>
           </Tooltip>
         </div>
         <div className="min-h-0 flex-1">
-          {filtered === undefined ? null : filtered.length === 0 ? (
+          {filtered === undefined ? (
+            <ListSkeleton avatar="circle" lines={1} />
+          ) : filtered.length === 0 ? (
             <EmptyState
               icon="contact"
               title={filter ? t('contacts.noResults') : t('contacts.empty')}

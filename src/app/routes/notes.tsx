@@ -7,7 +7,9 @@ import { t } from '../../lib/i18n'
 import { emptyNote, saveNote } from '../../services/notes'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
+import { primaryIconButtonClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/notes')({
   component: NotesLayout,
@@ -46,14 +48,16 @@ function NotesLayout() {
               type="button"
               aria-label={t('notes.new')}
               onClick={() => void create()}
-              className="rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95"
+              className={primaryIconButtonClass}
             >
               <Icon name="compose" size={15} />
             </button>
           </Tooltip>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {notes === undefined ? null : notes.length === 0 ? (
+          {notes === undefined ? (
+            <ListSkeleton lines={0} />
+          ) : notes.length === 0 ? (
             <EmptyState icon="draft" title={t('notes.empty')} hint={t('notes.emptyHint')} />
           ) : (
             notes.map((note) => (

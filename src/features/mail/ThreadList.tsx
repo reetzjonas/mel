@@ -303,7 +303,7 @@ function Row({
         onContextMenu={suppressContextMenu}
         {...handlers}
         style={dx ? { transform: `translateX(${dx}px)` } : undefined}
-        className={`group relative flex w-full cursor-pointer gap-3 rounded-control px-3 py-3.5 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash ${draggableTouchClass}`}
+        className={`group relative flex w-full cursor-pointer gap-3 rounded-control px-3 py-2 text-left transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash ${draggableTouchClass}`}
       >
         {/* The avatar doubles as the selection checkbox, but only reacts to the
           pointer being on the avatar itself — hovering anywhere in the row used

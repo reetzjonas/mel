@@ -1,6 +1,6 @@
 import { t } from '../../lib/i18n'
 import type { FullSyncProgress } from '../../sync/progress'
-import { ThreadListSkeleton } from '../../ui/Skeleton'
+import { ListSkeleton } from '../../ui/Skeleton'
 import { progressLabel } from './progressLabel'
 
 /**
@@ -21,7 +21,7 @@ export function InitialSync({ progress }: { progress: FullSyncProgress }) {
         <p className="text-xs text-ink-subtle">{t('sync.initial.hint')}</p>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden" aria-hidden>
-        <ThreadListSkeleton />
+        <ListSkeleton avatar="circle" lines={2} meta />
       </div>
     </div>
   )

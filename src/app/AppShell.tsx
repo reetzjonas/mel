@@ -11,23 +11,42 @@ import { useSettingsRoute } from '../features/settings/navigation'
 import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
 import { db } from '../storage/db'
-import { Icon } from '../ui/Icon'
+import { Icon, type IconName } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { startScheduler } from '../sync/scheduler'
 import { Snackbar } from '../ui/Snackbar'
+import { secondaryIconButtonClass } from '../ui/styles'
 import { visibleApps } from './apps'
 import { useTheme } from './theme'
 import { UnlockGate } from './UnlockGate'
 import { useUi } from './store'
 
-function AppSwitcherLink({ to, label }: { to: string; label: string }) {
+function AppSwitcherLink({
+  to,
+  icon,
+  label,
+  stacked = false,
+}: {
+  to: string
+  icon: IconName
+  label: string
+  /** The mobile bottom bar: icon above a small label, the usual tab-bar
+   *  shape — five icon+label pairs side by side would crowd a phone width
+   *  the way the desktop header never has to worry about. */
+  stacked?: boolean
+}) {
   return (
     <Link
       to={to}
-      className="rounded-control px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink [&.active]:shadow-raised"
+      className={
+        stacked
+          ? 'flex flex-col items-center gap-0.5 rounded-control px-3 py-1 text-[11px] font-medium text-ink-muted transition-colors duration-150 hover:text-ink [&.active]:text-accent'
+          : 'flex items-center gap-1.5 rounded-control px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink [&.active]:shadow-raised'
+      }
     >
+      <Icon name={icon} size={stacked ? 18 : 15} />
       {label}
     </Link>
   )
@@ -43,7 +62,7 @@ function ThemeToggle() {
         type="button"
         onClick={() => setPreference(next)}
         aria-label={`${t('theme.title')}: ${preference}`}
-        className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className={secondaryIconButtonClass}
       >
         <Icon name={icon} />
       </button>
@@ -62,7 +81,7 @@ function SignOutButton({ accountId }: { accountId: string }) {
           if (!confirm(t('settings.signOut.confirm'))) return
           void signOut(accountId).then(() => navigate({ to: '/mail' }))
         }}
-        className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className={secondaryIconButtonClass}
       >
         <Icon name="signOut" />
       </button>
@@ -117,7 +136,7 @@ export function AppShell() {
         </span>
         <nav className="flex gap-1">
           {apps.map((a) => (
-            <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
+            <AppSwitcherLink key={a.to} to={a.to} icon={a.icon} label={t(a.key)} />
           ))}
         </nav>
         <div className="ml-auto flex items-center gap-1">
@@ -131,9 +150,7 @@ export function AppShell() {
               type="button"
               aria-label={t('settings.title')}
               onClick={() => settings.open('general')}
-              className={`rounded-control p-2 transition-colors hover:bg-surface-2 hover:text-ink ${
-                settings.tab ? 'text-accent' : 'text-ink-muted'
-              }`}
+              className={`${secondaryIconButtonClass} ${settings.tab ? '!text-accent' : ''}`}
             >
               <Icon name="settings" />
             </button>
@@ -146,18 +163,21 @@ export function AppShell() {
       {/* Mobile: bottom navigation as app switcher */}
       <nav className="glass flex shrink-0 justify-around py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] sm:hidden">
         {apps.map((a) => (
-          <AppSwitcherLink key={a.to} to={a.to} label={t(a.key)} />
+          <AppSwitcherLink key={a.to} to={a.to} icon={a.icon} label={t(a.key)} stacked />
         ))}
-        {/* Bottom bar is touch-only, where a hover tooltip never appears. */}
+        {/* Bottom bar is touch-only, where a hover tooltip never appears.
+            Same stacked shape as the app links, so Settings reads as one of
+            the row rather than a differently-styled extra. */}
         <button
           type="button"
           aria-label={t('settings.title')}
           onClick={() => settings.open('general')}
-          className={`rounded-full px-3.5 py-1 ${
-            settings.tab ? 'bg-accent text-accent-ink' : 'text-ink-muted'
+          className={`flex flex-col items-center gap-0.5 rounded-control px-3 py-1 text-[11px] font-medium transition-colors duration-150 ${
+            settings.tab ? 'text-accent' : 'text-ink-muted hover:text-ink'
           }`}
         >
           <Icon name="settings" size={18} />
+          {t('settings.title')}
         </button>
       </nav>
 

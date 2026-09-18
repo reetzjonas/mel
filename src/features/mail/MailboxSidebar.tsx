@@ -16,7 +16,7 @@ import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
-import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import {
   clearDragState,
   dragKind,
@@ -298,7 +298,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           <button
             type="button"
             onClick={() => openCompose({})}
-            className="mb-4 hidden items-center justify-center gap-2 rounded-control bg-accent px-4 py-2.5 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] lg:flex"
+            className={`mb-4 hidden items-center justify-center gap-2 !py-2.5 lg:flex ${primaryButtonClass}`}
           >
             <Icon name="compose" size={15} />
             {t('compose.new')}

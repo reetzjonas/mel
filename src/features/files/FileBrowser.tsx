@@ -16,6 +16,7 @@ import {
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
 import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import {
@@ -335,7 +336,9 @@ export function FileBrowser({
               {t('files.dropHere')}
             </div>
           )}
-          {visibleChildren === undefined ? null : visibleChildren.length === 0 ? (
+          {visibleChildren === undefined ? (
+            <ListSkeleton avatar="square" lines={1} />
+          ) : visibleChildren.length === 0 ? (
             <EmptyState icon="folder" title={t('files.empty')} hint={t('files.emptyHint')} />
           ) : (
             <ul className="p-1.5">

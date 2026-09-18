@@ -19,7 +19,7 @@ import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
-import { ThreadListSkeleton } from '../../ui/Skeleton'
+import { ListSkeleton } from '../../ui/Skeleton'
 
 export const Route = createFileRoute('/mail/$mailboxId')({
   component: MailboxView,
@@ -264,7 +264,7 @@ function MailboxView() {
         )}
         <div className="min-h-0 flex-1">
           {list === undefined || (q && results === null) ? (
-            <ThreadListSkeleton />
+            <ListSkeleton avatar="circle" lines={2} meta />
           ) : list.length === 0 && q ? (
             <EmptyState icon="search" title={t('mail.searchNoResults')} />
           ) : list.length === 0 && filter ? (

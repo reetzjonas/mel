@@ -36,7 +36,13 @@ import {
 import { useContacts } from '../../features/contacts/hooks'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
-import { primaryButtonClass } from '../../ui/styles'
+import {
+  primaryButtonClass,
+  secondaryButtonClass,
+  secondaryIconButtonClass,
+  segmentedControlClass,
+  segmentedOptionClass,
+} from '../../ui/styles'
 
 export const Route = createFileRoute('/calendar')({
   component: CalendarApp,
@@ -477,7 +483,7 @@ function CalendarApp() {
           <button
             type="button"
             onClick={() => setAnchor(new Date())}
-            className="rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2"
+            className={`!px-3 !py-1.5 ${secondaryButtonClass}`}
           >
             {t('cal.today')}
           </button>
@@ -485,7 +491,7 @@ function CalendarApp() {
             type="button"
             aria-label="previous"
             onClick={() => step(-1)}
-            className="rounded-md p-1.5 text-ink-muted hover:bg-surface-2"
+            className={`!p-1.5 ${secondaryIconButtonClass}`}
           >
             <Icon name="back" size={15} />
           </button>
@@ -493,19 +499,19 @@ function CalendarApp() {
             type="button"
             aria-label="next"
             onClick={() => step(1)}
-            className="rounded-md p-1.5 text-ink-muted hover:bg-surface-2"
+            className={`!p-1.5 ${secondaryIconButtonClass}`}
           >
             <Icon name="forward" size={15} />
           </button>
           <h1 className="text-base font-semibold capitalize">{heading}</h1>
 
-          <div className="ml-2 hidden items-center gap-0.5 rounded-control bg-surface-2 p-0.5 sm:flex">
+          <div className={`ml-2 hidden sm:flex ${segmentedControlClass}`}>
             {(['month', 'week', 'day'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${view === v ? 'bg-raised text-ink shadow-raised' : 'text-ink-muted hover:text-ink'}`}
+                className={segmentedOptionClass(view === v)}
               >
                 {t(`cal.view.${v}`)}
               </button>
