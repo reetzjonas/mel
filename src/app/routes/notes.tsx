@@ -9,6 +9,7 @@ import { useSelection } from '../../lib/selection'
 import { deleteNote, emptyNote, saveNote } from '../../services/notes'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
@@ -29,10 +30,17 @@ function NotesLayout() {
   const params = useParams({ strict: false }) as { noteId?: string }
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
+  const [filter, setFilter] = useState('')
+
+  const filtered = useMemo(() => {
+    if (!notes) return undefined
+    const needle = filter.trim().toLowerCase()
+    return needle ? notes.filter((n) => n.title.toLowerCase().includes(needle)) : notes
+  }, [notes, filter])
 
   const selectionRows = useMemo(
-    () => (notes ?? []).map((n) => ({ key: n.id, ids: [n.id] })),
-    [notes],
+    () => (filtered ?? []).map((n) => ({ key: n.id, ids: [n.id] })),
+    [filtered],
   )
   const { selected: checked, selecting, setSelecting, toggle, clear } = useSelection(selectionRows)
 
@@ -99,7 +107,12 @@ function NotesLayout() {
           </SelectionToolbar>
         ) : (
           <div className="flex items-center gap-2 border-b border-line px-3 py-2">
-            <h1 className="flex-1 text-[13px] font-semibold">{t('app.notes')}</h1>
+            <SearchInput
+              value={filter}
+              onChange={setFilter}
+              placeholder={t('notes.search')}
+              clearLabel={t('search.clear')}
+            />
             <button
               type="button"
               aria-pressed={selecting}
@@ -121,12 +134,14 @@ function NotesLayout() {
           </div>
         )}
         <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
-          {notes === undefined ? (
+          {filtered === undefined ? (
             <ListSkeleton lines={0} />
-          ) : notes.length === 0 ? (
+          ) : filtered.length === 0 && filter ? (
+            <EmptyState icon="search" title={t('notes.noResults')} />
+          ) : filtered.length === 0 ? (
             <EmptyState icon="draft" title={t('notes.empty')} hint={t('notes.emptyHint')} />
           ) : (
-            notes.map((note) => (
+            filtered.map((note) => (
               <NoteCard
                 key={note.id}
                 note={note}

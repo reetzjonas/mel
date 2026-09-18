@@ -29,7 +29,12 @@ test('create a single and a weekly recurring event in the month view', async ({ 
   await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(20))
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: 'next' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible({
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(title) })
+      .first(),
+  ).toBeVisible({
     timeout: 10_000,
   })
 
@@ -41,29 +46,42 @@ test('create a single and a weekly recurring event in the month view', async ({ 
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect
-    .poll(async () => page.getByRole('button', { name: new RegExp(weekly) }).count(), {
-      timeout: 10_000,
-    })
+    .poll(
+      async () =>
+        page
+          .locator('[data-testid="calendar-grid"]')
+          .getByRole('button', { name: new RegExp(weekly) })
+          .count(),
+      {
+        timeout: 10_000,
+      },
+    )
     .toBeGreaterThan(1)
 
   // Clean up so repeated runs don't fill the day cells past the chip cap. The
   // weekly one is a series, so deleting it asks how far that reaches.
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(weekly) })
     .first()
     .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await page.getByRole('button', { name: 'All events' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(weekly) }),
+  ).toHaveCount(0, {
     timeout: 10_000,
   })
 
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(title) })
     .first()
     .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) }),
+  ).toHaveCount(0, {
     timeout: 10_000,
   })
 })
@@ -90,7 +108,10 @@ test('week view: click a time slot creates an event, editing opens the same even
   await page.getByPlaceholder('Title').fill(title)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-  const chip = page.getByRole('button', { name: new RegExp(title) }).first()
+  const chip = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
   await expect(chip).toBeVisible({ timeout: 10_000 })
   await chip.click()
   await expect(page.getByPlaceholder('Title')).toHaveValue(title)
@@ -98,7 +119,9 @@ test('week view: click a time slot creates an event, editing opens the same even
   // Clean up.
   await page.getByRole('button', { name: 'Delete event' }).click()
   await expect(page.getByText('Event deleted')).toBeVisible()
-  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) }),
+  ).toHaveCount(0, {
     timeout: 10_000,
   })
 })
@@ -116,23 +139,38 @@ test('day view shows the same event as week/month, and calendar visibility toggl
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(title)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible({
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(title) })
+      .first(),
+  ).toBeVisible({
     timeout: 10_000,
   })
 
   // Hide the (only/default) calendar via the sidebar checkbox -> event disappears.
   const firstCalendar = page.locator('aside label').first()
   await firstCalendar.click()
-  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0)
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) }),
+  ).toHaveCount(0)
   await firstCalendar.click() // restore for other tests
-  await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible()
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(title) })
+      .first(),
+  ).toBeVisible()
 
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(title) })
     .first()
     .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) }),
+  ).toHaveCount(0, {
     timeout: 10_000,
   })
 })
@@ -151,22 +189,35 @@ test('edit and delete an event', async ({ page }) => {
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: 'next' }).click()
 
-  const chip = page.getByRole('button', { name: new RegExp(title) }).first()
+  const chip = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
   await expect(chip).toBeVisible({ timeout: 10_000 })
   await chip.click()
   await page.getByPlaceholder('Title').fill(`${title}-2`)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
-  await expect(page.getByRole('button', { name: new RegExp(`${title}-2`) }).first()).toBeVisible({
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(`${title}-2`) })
+      .first(),
+  ).toBeVisible({
     timeout: 10_000,
   })
 
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(`${title}-2`) })
     .first()
     .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await expect(page.getByText('Event deleted')).toBeVisible()
-  await expect(page.getByRole('button', { name: new RegExp(`${title}-2`) })).toHaveCount(0)
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(`${title}-2`) }),
+  ).toHaveCount(0)
 })
 
 test('invite the other account, accept there, and see the reply on the organizer side', async ({
@@ -195,7 +246,12 @@ test('invite the other account, accept there, and see the reply on the organizer
   await page.getByRole('button', { name: 'Save and invite' }).click()
 
   await page.getByRole('button', { name: 'next' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) }).first()).toBeVisible({
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(title) })
+      .first(),
+  ).toBeVisible({
     timeout: 10_000,
   })
 
@@ -222,7 +278,10 @@ test('invite the other account, accept there, and see the reply on the organizer
   await bobPage.getByRole('link', { name: 'Calendar' }).first().click()
   await bobPage.getByRole('button', { name: 'next' }).click()
 
-  const bobChip = bobPage.getByRole('button', { name: new RegExp(title) }).first()
+  const bobChip = bobPage
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
   await expect(bobChip).toBeVisible({ timeout: 30_000 })
   await bobChip.click()
   // Bob is an attendee, so he gets the RSVP view rather than the editor.
@@ -232,6 +291,7 @@ test('invite the other account, accept there, and see the reply on the organizer
 
   // The iTIP reply travels by mail, so give it a moment to land.
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(title) })
     .first()
     .click()
@@ -240,6 +300,7 @@ test('invite the other account, accept there, and see the reply on the organizer
       async () => {
         await page.getByRole('button', { name: 'Cancel' }).click()
         await page
+          .locator('[data-testid="calendar-grid"]')
           .getByRole('button', { name: new RegExp(title) })
           .first()
           .click()
@@ -251,7 +312,9 @@ test('invite the other account, accept there, and see the reply on the organizer
 
   // Clean up on both sides (deleting sends bob a cancellation).
   await page.getByRole('button', { name: 'Delete event' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(title) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) }),
+  ).toHaveCount(0, {
     timeout: 10_000,
   })
   await bobCtx.close()
@@ -347,7 +410,10 @@ test('drag an event to another time and day, then resize it', async ({ page }) =
   await page.getByPlaceholder('Title').fill(title)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-  const block = page.getByRole('button', { name: new RegExp(title) }).first()
+  const block = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
   await expect(block).toBeVisible({ timeout: 15_000 })
   await block.click()
   const startedOn = await page.getByLabel('Date', { exact: true }).inputValue()
@@ -367,7 +433,10 @@ test('drag an event to another time and day, then resize it', async ({ page }) =
   // Survives a reload: it went to the server, not just to the screen.
   await page.reload()
   await page.getByRole('button', { name: 'Week', exact: true }).click()
-  const reloaded = page.getByRole('button', { name: new RegExp(title) }).first()
+  const reloaded = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
   await expect(reloaded).toBeVisible({ timeout: 20_000 })
   await reloaded.click()
   expect(await page.getByLabel('Date', { exact: true }).inputValue()).toBe(nextDay(startedOn))
@@ -417,7 +486,10 @@ test('a birthday stays put', async ({ page }) => {
   await page.getByRole('button', { name: 'Week', exact: true }).click()
 
   // Nothing on any server holds it, so there is nowhere for a move to go.
-  const birthday = page.getByRole('button', { name: new RegExp(surname) }).first()
+  const birthday = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(surname) })
+    .first()
   await expect(birthday).toBeVisible({ timeout: 15_000 })
   const bdayBefore = (await birthday.boundingBox())!
   await dragBy(page, birthday, 0, 96)
@@ -443,7 +515,10 @@ test('move one occurrence of a series and leave the rest where they were', async
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-  const block = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  const block = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
   await expect(block).toBeVisible({ timeout: 15_000 })
   await block.click()
   const startedAt = await page.getByLabel('Start', { exact: true }).inputValue()
@@ -458,7 +533,10 @@ test('move one occurrence of a series and leave the rest where they were', async
   // Reloaded, so this is what the server kept rather than what the screen did.
   await page.reload()
   await page.getByRole('button', { name: 'Week', exact: true }).click()
-  const moved = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  const moved = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
   await expect(moved).toBeVisible({ timeout: 20_000 })
   await moved.click()
   expect(await page.getByLabel('Start', { exact: true }).inputValue()).toBe(oneHourOn(startedAt))
@@ -466,7 +544,10 @@ test('move one occurrence of a series and leave the rest where they were', async
 
   // Next week's occurrence is the point of the exercise: it did not move.
   await page.getByRole('button', { name: 'next' }).click()
-  const untouched = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  const untouched = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
   await expect(untouched).toBeVisible({ timeout: 10_000 })
   await untouched.click()
   expect(await page.getByLabel('Start', { exact: true }).inputValue()).toBe(startedAt)
@@ -476,22 +557,32 @@ test('move one occurrence of a series and leave the rest where they were', async
   await untouched.click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await page.getByRole('button', { name: 'This event' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(weekly) }),
+  ).toHaveCount(0, {
     timeout: 15_000,
   })
   await page.getByRole('button', { name: 'next' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(weekly) }).first()).toBeVisible({
+  await expect(
+    page
+      .locator('[data-testid="calendar-grid"]')
+      .getByRole('button', { name: new RegExp(weekly) })
+      .first(),
+  ).toBeVisible({
     timeout: 10_000,
   })
 
   // And the series, which takes the moved occurrence with it.
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(weekly) })
     .first()
     .click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await page.getByRole('button', { name: 'All events' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(weekly) }),
+  ).toHaveCount(0, {
     timeout: 15_000,
   })
 })
@@ -509,7 +600,10 @@ test('drag a whole series onto another weekday', async ({ page }) => {
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-  const block = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  const block = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
   await expect(block).toBeVisible({ timeout: 15_000 })
   await block.click()
   const startedOn = await page.getByLabel('Date', { exact: true }).inputValue()
@@ -526,7 +620,10 @@ test('drag a whole series onto another weekday', async ({ page }) => {
   await page.reload()
   await page.getByRole('button', { name: 'Week', exact: true }).click()
   await page.getByRole('button', { name: 'next' }).click()
-  const nextWeek = page.getByRole('button', { name: new RegExp(weekly) }).first()
+  const nextWeek = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(weekly) })
+    .first()
   await expect(nextWeek).toBeVisible({ timeout: 20_000 })
   await nextWeek.click()
   expect(await page.getByLabel('Date', { exact: true }).inputValue()).toBe(
@@ -534,7 +631,9 @@ test('drag a whole series onto another weekday', async ({ page }) => {
   )
   await page.getByRole('button', { name: 'Delete event' }).click()
   await page.getByRole('button', { name: 'All events' }).click()
-  await expect(page.getByRole('button', { name: new RegExp(weekly) })).toHaveCount(0, {
+  await expect(
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(weekly) }),
+  ).toHaveCount(0, {
     timeout: 15_000,
   })
 })
@@ -555,7 +654,10 @@ test('drag an event to another day in the month grid, then undo', async ({ page 
   await page.getByLabel('Date', { exact: true }).fill(iso)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
-  const chip = page.getByRole('button', { name: new RegExp(title) }).first()
+  const chip = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
   await expect(chip).toBeVisible({ timeout: 15_000 })
 
   // The grid starts on the Monday on/before the 1st, so the cell index is
@@ -577,11 +679,53 @@ test('drag an event to another day in the month grid, then undo', async ({ page 
   await page.getByRole('button', { name: 'Undo' }).click()
   await page.waitForTimeout(1500)
   await page
+    .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(title) })
     .first()
     .click()
   const undone = await page.getByLabel('Date', { exact: true }).inputValue()
   expect(undone).toBe(iso)
 
+  await page.getByRole('button', { name: 'Delete event' }).click()
+})
+
+test('the sidebar search narrows the upcoming list, and clicking a hit jumps the grid to it', async ({
+  page,
+}) => {
+  const title = `CalSearch-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(20))
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  // The upcoming list looks ahead regardless of the grid's own month, so the
+  // new event shows there without navigating the grid at all. Scoped to the
+  // sidebar: the created date can fall inside the grid's own visible month
+  // too, and its chip there matches the same name.
+  const hit = page
+    .locator('[data-testid="calendar-sidebar"]')
+    .getByRole('button', { name: new RegExp(title) })
+  await expect(hit).toBeVisible({ timeout: 10_000 })
+
+  await page.getByPlaceholder('Search upcoming events').fill('nothing-matches-this')
+  await expect(hit).toHaveCount(0)
+  await expect(page.getByText('No matches')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Clear search' }).click()
+  await expect(page.getByPlaceholder('Search upcoming events')).toHaveValue('')
+  await expect(hit).toBeVisible()
+
+  await hit.click()
+  const chip = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+  await expect(chip).toBeVisible({ timeout: 10_000 })
+
+  await chip.click()
   await page.getByRole('button', { name: 'Delete event' }).click()
 })

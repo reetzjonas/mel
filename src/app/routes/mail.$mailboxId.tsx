@@ -20,6 +20,7 @@ import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
+import { SearchInput } from '../../ui/SearchInput'
 import { Tooltip } from '../../ui/Tooltip'
 import { ListSkeleton } from '../../ui/Skeleton'
 
@@ -240,36 +241,14 @@ function MailboxView() {
               <span className="truncate">{mailboxName}</span>
               <Icon name="chevronDown" size={13} className="shrink-0" />
             </button>
-            <div className="relative min-w-0 flex-1">
-              <Icon
-                name="search"
-                size={14}
-                className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-subtle"
-              />
-              <input
-                id="mail-search"
-                className="w-full rounded-control bg-surface-2 py-2 pr-7 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent"
-                placeholder={t('mail.searchPlaceholder')}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitSearch(input.trim())
-                  if (e.key === 'Escape') submitSearch('')
-                }}
-              />
-              {q && (
-                <Tooltip label={t('mail.searchClear')}>
-                  <button
-                    type="button"
-                    aria-label={t('mail.searchClear')}
-                    onClick={() => submitSearch('')}
-                    className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
-                  >
-                    ✕
-                  </button>
-                </Tooltip>
-              )}
-            </div>
+            <SearchInput
+              id="mail-search"
+              value={input}
+              onChange={setInput}
+              placeholder={t('mail.searchPlaceholder')}
+              onSubmit={submitSearch}
+              clearLabel={t('search.clear')}
+            />
             <FilterToggle
               icon="mailUnread"
               label={t('mail.filter.unread')}

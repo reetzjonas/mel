@@ -12,6 +12,7 @@ import { deleteContacts } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { SearchInput } from '../../ui/SearchInput'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { Tooltip } from '../../ui/Tooltip'
@@ -82,19 +83,12 @@ function ContactsLayout() {
           </SelectionToolbar>
         ) : (
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
-            <div className="relative flex-1">
-              <Icon
-                name="search"
-                size={14}
-                className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-ink-subtle"
-              />
-              <input
-                className="w-full rounded-control bg-surface-2 py-2 pr-3 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent"
-                placeholder={t('contacts.search')}
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              />
-            </div>
+            <SearchInput
+              value={filter}
+              onChange={setFilter}
+              placeholder={t('contacts.search')}
+              clearLabel={t('search.clear')}
+            />
             <button
               type="button"
               aria-pressed={selecting}
@@ -205,7 +199,9 @@ function ContactRows({
                     checked
                       ? 'flex bg-accent text-accent-ink'
                       : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
-                          selecting ? 'flex opacity-100' : 'hidden opacity-0 hover:opacity-100 lg:flex'
+                          selecting
+                            ? 'flex opacity-100'
+                            : 'hidden opacity-0 hover:opacity-100 lg:flex'
                         }`
                   }`}
                 >

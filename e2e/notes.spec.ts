@@ -267,3 +267,42 @@ test('select several notes, pin and delete them together', async ({ page }) => {
   await expect(page.getByRole('link', { name: titleA })).toHaveCount(0, { timeout: 15_000 })
   await expect(page.getByRole('link', { name: titleB })).toHaveCount(0)
 })
+
+test('the search box narrows the list to matching titles, and the clear button resets it', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const tag = Date.now() % 100000
+  const titleA = `SearchApple-${tag}`
+  const titleB = `SearchBanana-${tag}`
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Notes' }).first().click()
+
+  for (const title of [titleA, titleB]) {
+    await page.getByRole('button', { name: 'New note' }).click()
+    const titleBox = page.getByRole('textbox', { name: 'Title' })
+    await expect(titleBox).toHaveValue('')
+    await titleBox.fill(title)
+    await page.waitForTimeout(3000)
+  }
+  await expect(page.getByRole('link', { name: titleA })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('link', { name: titleB })).toBeVisible({ timeout: 15_000 })
+
+  await page.getByPlaceholder('Search notes').fill('Apple')
+  await expect(page.getByRole('link', { name: titleA })).toBeVisible()
+  await expect(page.getByRole('link', { name: titleB })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Clear search' }).click()
+  await expect(page.getByPlaceholder('Search notes')).toHaveValue('')
+  await expect(page.getByRole('link', { name: titleA })).toBeVisible()
+  await expect(page.getByRole('link', { name: titleB })).toBeVisible()
+
+  // Cleanup.
+  await page.getByRole('checkbox', { name: `Select ${titleA}` }).click()
+  await page.getByRole('checkbox', { name: `Select ${titleB}` }).click()
+  await page.getByTestId('selection-toolbar').getByRole('button', { name: 'Delete note' }).click()
+  await expect(page.getByRole('link', { name: titleA })).toHaveCount(0, { timeout: 15_000 })
+  await expect(page.getByRole('link', { name: titleB })).toHaveCount(0)
+})

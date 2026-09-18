@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useMemo, useRef, useState } from 'react'
+import { memo, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useUi } from '../store'
 import type {
   Calendar,
@@ -36,6 +36,7 @@ import {
 import { useContacts } from '../../features/contacts/hooks'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
+import { SearchInput } from '../../ui/SearchInput'
 import {
   primaryButtonClass,
   secondaryButtonClass,
@@ -53,6 +54,11 @@ const VIEWER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 /** Marks an event in flight; a day cell answers "may I take this?" from it. */
 const EVENT_DRAG_TYPE = 'application/x-mel-event'
 type ViewMode = 'month' | 'week' | 'day'
+
+/** How far ahead the sidebar's "Upcoming" list looks. */
+const UPCOMING_WINDOW_DAYS = 180
+/** Rows shown at once — a sidebar list, not a full search results page. */
+const UPCOMING_LIMIT = 8
 
 // Fixed, deterministic palette for calendars the server didn't color.
 const FALLBACK_COLORS = ['#2d5bd1', '#0e9488', '#c2560f', '#7c3aed', '#b91c62', '#4d7c0f']
@@ -150,6 +156,58 @@ function CalendarToggle({
   )
 }
 
+interface UpcomingRow {
+  key: string
+  title: string
+  start: Date
+  color: string | null
+  dateLabel: string
+  /** Empty for an all-day occurrence — nothing follows the date then. */
+  timeLabel: string
+}
+
+/**
+ * The sidebar's "Upcoming" section, `memo`'d so a grid drag's per-pointermove
+ * re-renders of `CalendarApp` skip it entirely rather than re-reconciling up
+ * to `UPCOMING_LIMIT` rows on every frame of the gesture — see the comment on
+ * `upcomingRows` for why that mattered in practice, not just in theory.
+ */
+const UpcomingList = memo(function UpcomingList({
+  rows,
+  emptyLabel,
+  onPick,
+}: {
+  rows: UpcomingRow[]
+  emptyLabel: string
+  onPick: (start: Date) => void
+}) {
+  if (rows.length === 0) return <p className="text-xs text-ink-subtle">{emptyLabel}</p>
+  return (
+    <div className="-mx-1.5 flex flex-col gap-0.5">
+      {rows.map((row) => (
+        <button
+          key={row.key}
+          type="button"
+          onClick={() => onPick(row.start)}
+          className="flex items-center gap-2 rounded-control px-1.5 py-1.5 text-left transition-colors hover:bg-surface-2"
+        >
+          <span
+            className="h-6 w-1 shrink-0 rounded-full"
+            style={{ backgroundColor: row.color ?? 'var(--mel-accent)' }}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-xs font-medium text-ink">{row.title}</span>
+            <span className="block text-[11px] text-ink-subtle">
+              {row.dateLabel}
+              {row.timeLabel && ` · ${row.timeLabel}`}
+            </span>
+          </span>
+        </button>
+      ))}
+    </div>
+  )
+})
+
 function CalendarApp() {
   const accounts = useAccounts()
   const account = accounts?.[0]
@@ -160,6 +218,7 @@ function CalendarApp() {
   const navigate = useNavigate()
   const [anchor, setAnchor] = useState(() => new Date())
   const [view, setView] = useState<ViewMode>('month')
+  const [calSearch, setCalSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [scope, setScope] = useState<ScopeQuestion | null>(null)
   const { hidden, toggle: toggleHiddenCalendar } = useHiddenCalendars(account?.id)
@@ -225,10 +284,66 @@ function CalendarApp() {
     return map
   }, [visibleEvents, shownBirthdays, grid])
 
+  /*
+   * The sidebar's "Upcoming" list — independent of `grid`/`anchor`, so
+   * navigating the visible month doesn't change what search finds. Birthdays'
+   * ids are stable regardless of which month seeded `birthdayEvents`'
+   * anchor year, so `shownBirthdays` (already respecting the hide toggle)
+   * is a correct source here too, not just for the grid's own window.
+   *
+   * Deferred: expanding every series out to 180 days is real work, and this
+   * list is a sidebar nicety, not the interaction someone is waiting on. Every
+   * write — including the one a grid drag makes mid-gesture, to ask "this one
+   * or all of them?" — otherwise recomputes it synchronously in the same
+   * render as that urgent dialog, which measurably delayed the dialog under
+   * load (see the e2e bisection in the #93 phase 2 commit).
+   */
+  const deferredEvents = useDeferredValue(visibleEvents)
+  const deferredBirthdays = useDeferredValue(shownBirthdays)
+  const upcoming = useMemo(() => {
+    const from = new Date()
+    const to = new Date(from.getTime() + UPCOMING_WINDOW_DAYS * 86_400_000)
+    return expandAll([...deferredEvents, ...deferredBirthdays], from, to, VIEWER_ZONE)
+  }, [deferredEvents, deferredBirthdays])
+
+  const eventById = useMemo(
+    () => new Map([...(events ?? []), ...birthdays].map((e) => [e.id, e])),
+    [events, birthdays],
+  )
+
+  /*
+   * Resolved once, off the deferred `upcoming` list — title, color and the
+   * formatted labels — rather than in the row's JSX. A grid drag re-renders
+   * this component on every pointermove to preview the placement, and
+   * re-running `Intl.DateTimeFormat.format()` for up to `UPCOMING_LIMIT` rows
+   * on every one of those is exactly the synchronous cost `useDeferredValue`
+   * above doesn't cover by itself — `UpcomingList` below still has to be
+   * skipped by `memo`, and it can only do that if this array is a stable
+   * reference (unchanged) across those renders, not fresh objects every time.
+   */
+  const upcomingRows = useMemo(
+    () =>
+      upcoming.flatMap((occ) => {
+        const base = eventById.get(occ.eventId)
+        if (!base) return []
+        const ev = occ.recurrenceId ? occurrenceEvent(base, occ.recurrenceId) : base
+        return [
+          {
+            key: `${occ.eventId}-${occ.recurrenceId ?? ''}-${occ.start.toISOString()}`,
+            title: ev.title,
+            start: occ.start,
+            color: colorFor(calendars ?? [], Object.keys(ev.calendarIds)[0]),
+            dateLabel: agendaFmt.format(occ.start),
+            timeLabel: occ.allDay ? '' : timeFmt.format(occ.start),
+          },
+        ]
+      }),
+    [upcoming, eventById, calendars],
+  )
+
   if (!account?.capabilities.calendars)
     return <CapabilityNotice reason="caps.unsupported.calendar" />
 
-  const eventById = new Map([...(events ?? []), ...birthdays].map((e) => [e.id, e]))
   const eventColor = (e: CalendarEvent) => colorFor(calendars ?? [], Object.keys(e.calendarIds)[0])
   const defaultCalendarId = calendars?.find((c) => c.isDefault)?.id ?? calendars?.[0]?.id ?? null
 
@@ -275,6 +390,12 @@ function CalendarApp() {
     if (!base) return undefined
     return occ.recurrenceId ? occurrenceEvent(base, occ.recurrenceId) : base
   }
+
+  const upcomingNeedle = calSearch.trim().toLowerCase()
+  const upcomingMatches = upcomingNeedle
+    ? upcomingRows.filter((r) => r.title.toLowerCase().includes(upcomingNeedle))
+    : upcomingRows
+  const shownUpcoming = upcomingMatches.slice(0, UPCOMING_LIMIT)
 
   function openEdit(occ: Occurrence) {
     // A birthday has no event behind it to edit; the card it came from is the
@@ -452,7 +573,10 @@ function CalendarApp() {
 
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
-      <aside className="hidden w-52 shrink-0 flex-col gap-0.5 py-3 lg:flex">
+      <aside
+        data-testid="calendar-sidebar"
+        className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto py-3 lg:flex"
+      >
         <span className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
           {t('cal.calendars')}
         </span>
@@ -476,9 +600,29 @@ function CalendarApp() {
             onToggle={() => toggleCalendar(BIRTHDAY_CALENDAR_ID)}
           />
         )}
+
+        <div className="mt-3 flex flex-col gap-2 border-t border-line px-2.5 pt-3">
+          <SearchInput
+            value={calSearch}
+            onChange={setCalSearch}
+            placeholder={t('cal.searchPlaceholder')}
+            clearLabel={t('search.clear')}
+          />
+          <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+            {t('cal.upcoming')}
+          </span>
+          <UpcomingList
+            rows={shownUpcoming}
+            emptyLabel={calSearch ? t('cal.searchNoResults') : t('cal.upcomingEmpty')}
+            onPick={setAnchor}
+          />
+        </div>
       </aside>
 
-      <div className="panel flex min-w-0 flex-1 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none">
+      <div
+        data-testid="calendar-grid"
+        className="panel flex min-w-0 flex-1 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none"
+      >
         <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
           <button
             type="button"

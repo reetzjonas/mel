@@ -17,6 +17,7 @@ import {
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
@@ -54,13 +55,28 @@ export function FileBrowser({
    * browser, not an account preference, so it is not part of settings sync.
    */
   const [showHidden, setShowHidden] = useState(() => localStorage.getItem(SHOW_HIDDEN_KEY) === '1')
+  const [filter, setFilter] = useState('')
+  /*
+   * Scoped to "this folder", so it must not silently carry over and hide
+   * everything the moment the folder underneath it changes — the same
+   * render-time reset the mailbox search box uses for its own query.
+   */
+  const [shownFolderId, setShownFolderId] = useState(folderId)
+  if (shownFolderId !== folderId) {
+    setShownFolderId(folderId)
+    setFilter('')
+  }
   /*
    * The one array everything below reads instead of `children` — not just
    * the row `.map()`. Shift-click range selection also indexes into it
    * (`toggle`), and filtering only at render time would let a range or a
    * bulk action reach a file that was never drawn on screen.
    */
-  const visibleChildren = showHidden ? children : children?.filter((n) => !isHidden(n))
+  const shownChildren = showHidden ? children : children?.filter((n) => !isHidden(n))
+  const needle = filter.trim().toLowerCase()
+  const visibleChildren = needle
+    ? shownChildren?.filter((n) => n.name.toLowerCase().includes(needle))
+    : shownChildren
   const trail = useFilePath(accountId, folderId)
   const allNodes = useAllNodes(accountId)
   const navigate = useNavigate()
@@ -221,6 +237,13 @@ export function FileBrowser({
               onDropNodes={(parentId) => void move(draggingRef.current, parentId)}
               dragging={draggingRef}
             />
+            <SearchInput
+              value={filter}
+              onChange={setFilter}
+              placeholder={t('files.search')}
+              clearLabel={t('search.clear')}
+              className="max-w-[140px] shrink-0"
+            />
             <div className="ml-auto flex items-center gap-1.5">
               <button
                 type="button"
@@ -284,6 +307,8 @@ export function FileBrowser({
           )}
           {visibleChildren === undefined ? (
             <ListSkeleton avatar="square" lines={1} />
+          ) : visibleChildren.length === 0 && filter ? (
+            <EmptyState icon="search" title={t('files.noResults')} />
           ) : visibleChildren.length === 0 ? (
             <EmptyState icon="folder" title={t('files.empty')} hint={t('files.emptyHint')} />
           ) : (

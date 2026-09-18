@@ -23,7 +23,7 @@ test('select several items, move them into a folder, then delete them together',
   await page.getByRole('link', { name: 'Files' }).first().click()
 
   await page.getByRole('button', { name: 'New folder' }).click()
-  await page.getByRole('textbox').fill(box)
+  await page.locator('form').getByRole('textbox').fill(box)
   await page.getByRole('button', { name: 'New folder' }).last().click()
   await expect(page.getByRole('button', { name: box, exact: true })).toBeVisible({
     timeout: 10_000,
@@ -81,7 +81,7 @@ test('download a folder and a file beside it as one zip', async ({ page }) => {
   await page.getByRole('link', { name: 'Files' }).first().click()
 
   await page.getByRole('button', { name: 'New folder' }).click()
-  await page.getByRole('textbox').fill(box)
+  await page.locator('form').getByRole('textbox').fill(box)
   await page.getByRole('button', { name: 'New folder' }).last().click()
   await page.getByRole('button', { name: box, exact: true }).click()
   // Wait for the folder's own listing: an upload started before the route has
@@ -238,7 +238,7 @@ test('drag a file onto a folder to move it, and onto the breadcrumb to bring it 
   await page.getByRole('link', { name: 'Files' }).first().click()
 
   await page.getByRole('button', { name: 'New folder' }).click()
-  await page.getByRole('textbox').fill(box)
+  await page.locator('form').getByRole('textbox').fill(box)
   await page.getByRole('button', { name: 'New folder' }).last().click()
   await expect(page.getByRole('button', { name: box, exact: true })).toBeVisible({
     timeout: 10_000,
@@ -304,7 +304,7 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
   await page.getByRole('link', { name: 'Files' }).first().click()
 
   await page.getByRole('button', { name: 'New folder' }).click()
-  await page.getByRole('textbox').fill(folder)
+  await page.locator('form').getByRole('textbox').fill(folder)
   await page.getByRole('button', { name: 'New folder' }).last().click()
   await expect(page.getByRole('button', { name: folder, exact: true })).toBeVisible({
     timeout: 10_000,
@@ -359,7 +359,7 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
     .getByRole('button', { name: /^Rename / })
     .first()
     .click()
-  await page.getByRole('textbox').fill('renamed.txt')
+  await page.locator('form').getByRole('textbox').fill('renamed.txt')
   await page.getByRole('button', { name: 'Rename', exact: true }).click()
   await expect(page.getByRole('button', { name: 'renamed.txt', exact: true })).toBeVisible({
     timeout: 10_000,
@@ -375,6 +375,41 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
     .getByRole('button', { name: /^Delete / })
     .click()
   await expect(page.getByRole('button', { name: folder, exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})
+
+test('the search box narrows the folder to matching names, and the clear button resets it', async ({
+  page,
+}) => {
+  const tag = Date.now() % 100000
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: `apple-${tag}.txt`, mimeType: 'text/plain', buffer: Buffer.from('1') },
+    { name: `banana-${tag}.txt`, mimeType: 'text/plain', buffer: Buffer.from('2') },
+  ])
+  await expect(page.getByRole('button', { name: `banana-${tag}.txt`, exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+
+  await page.getByPlaceholder('Search this folder').fill('apple')
+  await expect(page.getByRole('button', { name: `apple-${tag}.txt`, exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: `banana-${tag}.txt`, exact: true })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Clear search' }).click()
+  await expect(page.getByPlaceholder('Search this folder')).toHaveValue('')
+  await expect(page.getByRole('button', { name: `apple-${tag}.txt`, exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: `banana-${tag}.txt`, exact: true })).toBeVisible()
+
+  // Cleanup.
+  await page.getByRole('checkbox', { name: `Select apple-${tag}.txt` }).click()
+  await page.getByRole('checkbox', { name: `Select banana-${tag}.txt` }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByRole('button', { name: `apple-${tag}.txt`, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
 })
