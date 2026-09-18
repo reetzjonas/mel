@@ -134,7 +134,8 @@ working on that specific feature, not on every session:
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
 - **PGP / S-MIME** (issue #63): public keys on contact cards are done; the note
   is mostly a design pass for the mail half — why verification needs the raw
-  message, why sending needs a second path, and where a private key could live:
+  message, why sending needs a second path, and why the private key is protected
+  by its own OpenPGP passphrase rather than by mel's at-rest encryption:
   `docs/notes/pgp-smime.md`
 
 ## Dev workflow

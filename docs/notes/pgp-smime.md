@@ -87,19 +87,56 @@ which is a design question in its own right, not an extra `case` in a switch.
 It deserves its own issue; part 1 above already stores the certificates for
 whenever that happens.
 
-## Part 2: the open decision
+## Part 2: where the private key lives (decided)
 
-Where the user's **own private key** lives is the one thing to settle before
-any of the above is written, because everything else hangs off it:
+**The key protects itself, and mel never stores one that does not.**
 
-- **In the encrypted IndexedDB**, next to everything else. Simple, and exactly
-  as safe as mel's at-rest encryption — which is off by default, and then this
-  is a private key in plain IndexedDB.
-- **Armored and passphrase-protected by OpenPGP itself**, decrypted per use.
-  Independent of whether mel's own encryption is on, at the cost of a
-  passphrase prompt on every send and every read of an encrypted message
-  (mitigable by holding the unlocked key in memory for a session).
-- **Import only, or generate in-app too.** Generating is friendlier and is the
-  only path for someone who has no key yet; it also means mel is responsible
-  for the one copy of something that cannot be re-created, so it must be
-  exportable before it is usable.
+An OpenPGP secret key is already a passphrase-encrypted artifact (S2K; Argon2id
+in v6 keys), so mel stores it exactly as it was exported and calls `decryptKey`
+when it needs it. The unlocked key is held in memory for the session and
+nowhere else — the same shape as the DEK in `storage/crypto/keyring.ts`, which
+keeps a module-level map cleared by `lock()`. Never `sessionStorage`.
+
+The rule that makes this work: **an unprotected secret key is refused.** OpenPGP
+allows one, and plenty of exported keys are, and storing one would quietly turn
+this whole scheme into "private key in plaintext IndexedDB" for exactly the
+people least likely to notice. Import asks for a passphrase and re-encrypts
+before anything reaches the database.
+
+This is deliberately *independent* of mel's own at-rest encryption rather than
+built on it. Both were on the table:
+
+- Leaning on the existing envelope and DEK would have cost nothing to build —
+  the middleware, `UnlockGate` and the keyring are all there, and one passphrase
+  would cover everything. But at-rest encryption is **off by default**, so that
+  version either ships a secret key in readable IndexedDB or forces an unrelated
+  feature (and a full row migration) on someone who only wanted to read a signed
+  message.
+- Protecting the key with its own passphrase holds whether or not mel's
+  encryption is on, and the artifact stays the one GnuPG and Thunderbird write,
+  so import and export are lossless and the user can reason about the file.
+
+The two are not exclusive and are not being traded off: a key stored this way
+still goes through the payload envelope, so with at-rest encryption on it is
+sealed twice and with it off it is still sealed once. The cost is a passphrase
+prompt per session, and two distinct passphrases for a user who has mel's
+encryption on as well — worth saying plainly in the UI, since they will expect
+one to open the other.
+
+Not an option, for the record: a non-extractable WebCrypto key. OpenPGP.js does
+its own crypto and needs the key material in JS memory, so the platform's "the
+key never leaves the browser" guarantee cannot back an OpenPGP operation.
+Smartcards are out for the same reason — no browser API for them.
+
+**Import only, for now.** Generating a key would make mel the holder of the only
+copy of something that cannot be re-created, which is not finished work until
+the export step exists and is insistent enough that a cleared browser profile is
+not a loss. Import covers everyone who already has a key; generation can follow
+once the rest of the round trip is real.
+
+Two consequences worth stating in the UI rather than discovering:
+
+- **The private key does not sync.** There is no backend to sync it to, so it
+  lives on one device by construction.
+- **Publishing the public half** is a separate problem. Attaching it to outgoing
+  mail is the answer that needs no infrastructure; WKD and keyservers need some.
