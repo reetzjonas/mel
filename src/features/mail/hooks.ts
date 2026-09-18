@@ -70,23 +70,31 @@ const ROLE_ORDER: Record<string, number> = {
   trash: 5,
 }
 
+export interface ContactByEmail {
+  id: string
+  /** '' when the card has no picture — an `Avatar` falls back to initials. */
+  photo: string
+}
+
 /**
- * A sender's own picture, by address — what an `Avatar` shows instead of
- * initials once the sender is a known contact.
+ * A sender's own contact, by address — what an `Avatar` shows instead of
+ * initials once the sender is a known contact, and what a "view contact" link
+ * next to a message points at.
  *
  * One query for the whole account rather than one per row: a mailbox list or
  * a thread renders many senders at once, and each is a lookup into this map,
  * not a query of its own.
  */
-export function useContactPhotos(accountId: string | undefined): Map<string, string> | undefined {
+export function useContactsByEmail(
+  accountId: string | undefined,
+): Map<string, ContactByEmail> | undefined {
   return useLiveQuery(async () => {
-    const out = new Map<string, string>()
+    const out = new Map<string, ContactByEmail>()
     if (!accountId) return out
     const rows = await db.contacts.where('accountId').equals(accountId).toArray()
     for (const row of rows) {
       const c = storedContact(openEnvelope(row.payload))
-      if (!c.photo) continue
-      for (const e of c.emails) out.set(e.value.toLowerCase(), c.photo)
+      for (const e of c.emails) out.set(e.value.toLowerCase(), { id: c.id, photo: c.photo })
     }
     return out
   }, [accountId])

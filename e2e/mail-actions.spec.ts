@@ -264,6 +264,35 @@ test('filter the folder to flagged only, in the URL and across a reload', async 
   await expect(page.getByText('HTML-Test')).toBeVisible()
 })
 
+test('opening a message keeps the active filter in the URL', async ({ page }) => {
+  await login(page, ...ALICE)
+  const rowFor = (subject: string) =>
+    page.locator('[data-testid="virtuoso-item-list"] [role="button"]', { hasText: subject }).first()
+
+  const target = rowFor('HTML-Test')
+  await expect(target).toBeVisible({ timeout: 15_000 })
+  await target.hover()
+  const flag = target.getByRole('button', { name: 'Flag', exact: true })
+  if (await flag.isVisible()) await flag.click()
+  await target.hover()
+  await expect(target.getByRole('button', { name: 'Remove flag' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Flagged only' }).click()
+  await expect(page).toHaveURL(/[?&]filter=flagged/)
+
+  // Clicking through to the message must not drop the filter from the URL —
+  // it would otherwise vanish the moment the route changes, and the back
+  // button would land on the unfiltered list.
+  await rowFor('HTML-Test').click()
+  await expect(page).toHaveURL(/[?&]filter=flagged/)
+  await expect(page).toHaveURL(/\/mail\/[^/]+\/[^/?]+\?/)
+
+  // Cleanup: unflag and clear the filter for the next run.
+  await page.getByRole('article').getByRole('button', { name: 'Remove flag' }).click()
+  await page.getByRole('button', { name: 'Flagged only' }).click()
+  await expect(page).not.toHaveURL(/filter=/)
+})
+
 test('quick actions on list rows: flag and mark unread without opening', async ({ page }) => {
   await login(page, ...ALICE)
   const row = page
@@ -437,6 +466,48 @@ test('hovering a row leaves the sender avatar alone', async ({ page }) => {
   await settle()
   await expect(checkbox).toHaveCSS('opacity', '1')
   await expect(avatar).toBeVisible()
+})
+
+test('opening a message offers a link to the sender’s contact, only once one exists', async ({
+  page,
+}) => {
+  const surname = `Sender${Date.now() % 100000}`
+
+  await login(page, ...ALICE)
+
+  // "HTML-Test" is a seeded message from bob@localhost. Checked before and
+  // after the card exists in the same session, so this never depends on a
+  // contact deleted by an earlier run having actually reached the server yet.
+  const openMessage = () =>
+    page
+      .locator('[data-testid="virtuoso-item-list"] [role="button"]', { hasText: 'HTML-Test' })
+      .first()
+      .click()
+
+  await openMessage()
+  await expect(page.getByRole('article')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'View contact' })).toHaveCount(0)
+
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.getByRole('button', { name: 'New contact' }).click()
+  await page.getByLabel('First name').fill('Bob')
+  await page.getByLabel('Last name').fill(surname)
+  await page.locator('input[type="email"]').first().fill('bob@localhost')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await expect(page.getByRole('heading', { name: `Bob ${surname}` })).toBeVisible()
+
+  await page.getByRole('link', { name: 'Mail' }).first().click()
+  await openMessage()
+  await page.getByRole('link', { name: 'View contact' }).click()
+  await expect(page).toHaveURL(/\/contacts\//)
+  await expect(page.getByRole('heading', { name: `Bob ${surname}` })).toBeVisible()
+
+  // Clean up, and check the link goes away again with it — the live query
+  // behind it has to notice a contact leaving as readily as one arriving.
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await page.getByRole('link', { name: 'Mail' }).first().click()
+  await openMessage()
+  await expect(page.getByRole('link', { name: 'View contact' })).toHaveCount(0)
 })
 
 /** Files an inbox message into Junk over JMAP, returning its id. */

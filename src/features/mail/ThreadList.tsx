@@ -8,7 +8,7 @@ import type { Conversation } from './conversations'
 import { dateBucket, formatListDate, type DateBucket } from '../../lib/dates'
 import { t, type MsgKey } from '../../lib/i18n'
 import { cleanPreview } from '../../lib/preview'
-import { useContactPhotos, useMailboxes } from './hooks'
+import { useContactsByEmail, useMailboxes, type ContactByEmail } from './hooks'
 import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
 import {
@@ -224,8 +224,8 @@ function Row({
   inJunk: boolean
   /** The folder being listed — what a drag carries as its origin. */
   mailboxId: string
-  /** Sender email → contact photo, looked up once for the whole list. */
-  photos: Map<string, string> | undefined
+  /** Sender email → contact, looked up once for the whole list. */
+  photos: Map<string, ContactByEmail> | undefined
   onToggleSelect: (extend: boolean) => void
   onOpen: () => void
 }) {
@@ -317,7 +317,7 @@ function Row({
               <Avatar
                 name={sender?.name ?? sender?.email ?? '?'}
                 email={sender?.email ?? '?'}
-                src={sender?.email ? photos?.get(sender.email.toLowerCase()) : undefined}
+                src={sender?.email ? photos?.get(sender.email.toLowerCase())?.photo : undefined}
                 size={36}
               />
             </span>
@@ -530,7 +530,7 @@ export function ThreadList({
   const navigate = useNavigate()
   const { selection, selectionMailboxId, toggleSelected, setSelection } = useUi()
   const mailboxes = useMailboxes(accountId)
-  const photos = useContactPhotos(accountId)
+  const contacts = useContactsByEmail(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
   // A Set, not the array: "select the whole folder" can hold thousands of ids,
   // and Array.includes per row turns every scroll frame into rows × ids work.
@@ -577,8 +577,14 @@ export function ThreadList({
     toggleSelected(mailboxId, row.ids)
   }
 
+  // Carries the search along: opening a message must not drop the query or
+  // filter the list was showing, or the back button lands on an unfiltered one.
   const open = (id: string) =>
-    void navigate({ to: '/mail/$mailboxId/$emailId', params: { mailboxId, emailId: id } })
+    void navigate({
+      to: '/mail/$mailboxId/$emailId',
+      params: { mailboxId, emailId: id },
+      search: (prev) => prev,
+    })
 
   // j/k keyboard navigation (desktop)
   useEffect(() => {
@@ -625,7 +631,7 @@ export function ThreadList({
             checked={item.item.ids.some((id) => selected.has(id))}
             inJunk={Boolean(junkId && item.item.email.mailboxIds[junkId])}
             mailboxId={mailboxId}
-            photos={photos}
+            photos={contacts}
             onToggleSelect={(extend) => pickRow(item.item, extend)}
             onOpen={() => open(item.item.email.id)}
           />

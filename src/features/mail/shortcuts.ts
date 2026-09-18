@@ -50,7 +50,8 @@ export function useMailShortcuts(ctx: Ctx) {
       if (ui.compose || ui.messageDetailsOpen || ui.helpOpen) return
 
       const backToList = () => {
-        if (mailboxId) void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
+        if (mailboxId)
+          void navigate({ to: '/mail/$mailboxId', params: { mailboxId }, search: (prev) => prev })
       }
 
       switch (e.key) {

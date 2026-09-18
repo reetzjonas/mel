@@ -8,7 +8,14 @@ import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSani
 import { useImagePolicy } from '../../lib/imagePolicy'
 import { normalizeImageSender, setImageSender } from '../../services/imageSenders'
 import { useImageSenders } from './useImageSenders'
-import { useCanFilter, useCanSend, useContactPhotos, useMailboxes, useThread } from './hooks'
+import {
+  useCanFilter,
+  useCanSend,
+  useContactsByEmail,
+  useMailboxes,
+  useThread,
+  type ContactByEmail,
+} from './hooks'
 import { MessageDetails } from './MessageDetails'
 import { UnsubscribeBar } from './UnsubscribeBar'
 import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
@@ -256,8 +263,8 @@ function CollapsedMessage({
   /** Turned up while this conversation was open, rather than being part of it
    *  when you got here — worth pointing at, since nothing else moved. */
   arrived: boolean
-  /** Sender email → contact photo, looked up once for the whole thread. */
-  photos: Map<string, string> | undefined
+  /** Sender email → contact, looked up once for the whole thread. */
+  photos: Map<string, ContactByEmail> | undefined
   onOpen: () => void
 }) {
   const sender = message.from[0]
@@ -286,7 +293,7 @@ function CollapsedMessage({
       <Avatar
         name={sender?.name ?? sender?.email ?? '?'}
         email={sender?.email ?? '?'}
-        src={sender?.email ? photos?.get(sender.email.toLowerCase()) : undefined}
+        src={sender?.email ? photos?.get(sender.email.toLowerCase())?.photo : undefined}
         size={24}
       />
       <span
@@ -337,7 +344,7 @@ export function ReadingPane({
 }) {
   const grouped = useUi((s) => s.conversationView)
   const canSend = useCanSend()
-  const photos = useContactPhotos(accountId)
+  const contacts = useContactsByEmail(accountId)
   // Only asked for while grouping is on, so the ungrouped pane costs no extra
   // query at all.
   const thread = useThread(accountId, grouped ? focused.threadId : undefined, mailboxId)
@@ -443,7 +450,7 @@ export function ReadingPane({
           key={messages[entry.index]!.id}
           message={messages[entry.index]!}
           arrived={arrived(messages[entry.index]!.id)}
-          photos={photos}
+          photos={contacts}
           onOpen={() => setExpandedId(messages[entry.index]!.id)}
         />
       ),
@@ -519,7 +526,8 @@ export function ReadingPane({
     if (!expanded.keywords['$seen']) void markRead(accountId, expanded.id)
   }, [accountId, expanded.id, expanded.keywords])
 
-  const backToList = () => void navigate({ to: '/mail/$mailboxId', params: { mailboxId } })
+  const backToList = () =>
+    void navigate({ to: '/mail/$mailboxId', params: { mailboxId }, search: (prev) => prev })
 
   // Archive and delete default to the **one message** that is open, like
   // every other action in this toolbar; taking the whole conversation is a
@@ -576,6 +584,7 @@ export function ReadingPane({
         : textFrameDoc(body.text ?? '', frameTheme)
       : null
   const sender = expanded.from[0]
+  const senderContact = sender?.email ? contacts?.get(sender.email.toLowerCase()) : undefined
   // Senders, oldest first, each named once: the same shape the list row uses.
   const participants = [
     ...new Map(
@@ -783,14 +792,28 @@ export function ReadingPane({
             <Avatar
               name={sender.name ?? sender.email}
               email={sender.email}
-              src={photos?.get(sender.email.toLowerCase())}
+              src={senderContact?.photo}
               size={40}
             />
           )}
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-3">
-              <span className="truncate text-sm font-semibold">
-                {sender?.name || sender?.email || t('mail.unknownSender')}
+              <span className="flex min-w-0 items-center gap-1.5">
+                <span className="truncate text-sm font-semibold">
+                  {sender?.name || sender?.email || t('mail.unknownSender')}
+                </span>
+                {senderContact && (
+                  <Tooltip label={t('mail.viewContact')}>
+                    <Link
+                      to="/contacts/$contactId"
+                      params={{ contactId: senderContact.id }}
+                      aria-label={t('mail.viewContact')}
+                      className="shrink-0 text-ink-subtle transition-colors hover:text-accent"
+                    >
+                      <Icon name="contact" size={13} />
+                    </Link>
+                  </Tooltip>
+                )}
               </span>
               {/* Opened from the Drafts folder: it is yours and unsent, and
                   nothing else about the pane says so. */}
