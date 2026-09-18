@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
-import { ThemeContext, STORAGE_KEY, type ThemePreference } from './theme'
+import { ThemeContext, STORAGE_KEY, THEME_PREFERENCE_EVENT, type ThemePreference } from './theme'
 import { applyThemeTuning, useThemeTuning } from './themeTuning'
 
 function resolve(pref: ThemePreference): 'light' | 'dark' {
@@ -11,6 +11,18 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preference, setPreference] = useState<ThemePreference>(
     () => (localStorage.getItem(STORAGE_KEY) as ThemePreference | null) ?? 'system',
   )
+
+  // A value applied by a remote sync writes storage directly (there is no
+  // module-level store for this the way theme tuning has); this is what
+  // brings it to a ThemeProvider already mounted, rather than only the next
+  // one that mounts.
+  useEffect(() => {
+    const onRemote = () => {
+      setPreference((localStorage.getItem(STORAGE_KEY) as ThemePreference | null) ?? 'system')
+    }
+    window.addEventListener(THEME_PREFERENCE_EVENT, onRemote)
+    return () => window.removeEventListener(THEME_PREFERENCE_EVENT, onRemote)
+  }, [])
 
   const { tuning } = useThemeTuning()
 

@@ -46,12 +46,24 @@ export function deepestFirst(all: FileNode[], ids: Set<string>): string[][] {
 }
 
 /**
+ * Mel's own internal files — `.mel/settings.json`, so far — live under a
+ * dotfile-named folder so the browser can leave them out of an ordinary
+ * listing by convention, the same one a desktop file manager uses. Never
+ * truly hidden: `FileBrowser.tsx`'s "Show hidden files" toggle reveals them.
+ */
+export function isHidden(node: FileNode): boolean {
+  return node.name.startsWith('.')
+}
+
+/**
  * Where the given nodes may be moved to.
  *
  * A folder cannot move into itself or into anything beneath it — the server
  * would be left holding a cycle with no path to the root. The folder the
  * nodes are already in is dropped too, since moving them there is a no-op the
- * server would answer with an error about a duplicate name.
+ * server would answer with an error about a duplicate name. A hidden folder
+ * is never offered either, regardless of the browser's own toggle — nobody
+ * is meant to file something into `.mel/` by hand.
  */
 export function moveTargets(
   all: FileNode[],
@@ -60,6 +72,7 @@ export function moveTargets(
 ): FileNode[] {
   const blocked = withDescendants(all, moving)
   return all.filter(
-    (n) => n.nodeType === 'directory' && !blocked.has(n.id) && n.id !== currentParentId,
+    (n) =>
+      n.nodeType === 'directory' && !blocked.has(n.id) && n.id !== currentParentId && !isHidden(n),
   )
 }

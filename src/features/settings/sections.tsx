@@ -28,6 +28,7 @@ import {
 import { requestNotificationPermission } from '../../services/notifications'
 import { hasStoredWidths, resetPanelWidths } from '../mail/panelWidths'
 import { connectionFor } from '../../sync/connections'
+import { scheduleSettingsSync } from '../../services/settings'
 import type { Account } from '../../domain/account'
 import type { VacationSettings } from '../../providers/types'
 import { Select } from '../../ui/Select'
@@ -55,7 +56,7 @@ export function Section({
   )
 }
 
-export function LanguageSetting() {
+export function LanguageSetting({ accountId }: { accountId?: string }) {
   const stored = localStorage.getItem('mel:lang') ?? 'system'
   return (
     <Select
@@ -65,6 +66,7 @@ export function LanguageSetting() {
       onChange={(e) => {
         if (e.target.value === 'system') localStorage.removeItem('mel:lang')
         else localStorage.setItem('mel:lang', e.target.value)
+        if (accountId) void scheduleSettingsSync(accountId, ['lang'])
         location.reload()
       }}
     >
@@ -75,14 +77,33 @@ export function LanguageSetting() {
   )
 }
 
-export function ThemeSetting() {
+/**
+ * Whether — and why not — the settings above follow this account to another
+ * browser. Capability-gated like every other sync feature in mel: there is
+ * no separate toggle to turn it on, only this line saying what happened.
+ */
+export function SyncSetting({ hasFiles }: { hasFiles: boolean }) {
+  return (
+    <div className="space-y-1">
+      <p className="text-sm text-ink-muted">
+        {hasFiles ? t('settings.sync.active') : t('settings.sync.unavailable')}
+      </p>
+      {hasFiles && <p className="text-xs text-ink-subtle">{t('settings.sync.privacy')}</p>}
+    </div>
+  )
+}
+
+export function ThemeSetting({ accountId }: { accountId?: string }) {
   const { preference, setPreference } = useTheme()
   return (
     <Select
       className="sm:max-w-sm"
       aria-label={t('settings.theme')}
       value={preference}
-      onChange={(e) => setPreference(e.target.value as ThemePreference)}
+      onChange={(e) => {
+        setPreference(e.target.value as ThemePreference)
+        if (accountId) void scheduleSettingsSync(accountId, ['theme'])
+      }}
     >
       <option value="system">{t('settings.theme.system')}</option>
       <option value="light">{t('settings.theme.light')}</option>
@@ -389,7 +410,7 @@ export function EncryptionSetting({ accountId }: { accountId: string }) {
   )
 }
 
-export function ConversationSetting() {
+export function ConversationSetting({ accountId }: { accountId?: string }) {
   const { conversationView, setConversationView } = useUi()
   return (
     <div className="space-y-1">
@@ -397,7 +418,10 @@ export function ConversationSetting() {
         className="sm:max-w-sm"
         aria-label={t('settings.conversations')}
         value={conversationView ? 'on' : 'off'}
-        onChange={(e) => setConversationView(e.target.value === 'on')}
+        onChange={(e) => {
+          setConversationView(e.target.value === 'on')
+          if (accountId) void scheduleSettingsSync(accountId, ['conversationView'])
+        }}
       >
         <option value="on">{t('settings.conversations.on')}</option>
         <option value="off">{t('settings.conversations.off')}</option>

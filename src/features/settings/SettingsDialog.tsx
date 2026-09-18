@@ -22,6 +22,7 @@ import {
   PanelWidthSetting,
   NotificationSetting,
   Section,
+  SyncSetting,
   ThemeSetting,
   VacationSetting,
   WebPushSetting,
@@ -206,18 +207,23 @@ export function SettingsDialog({
             className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-canvas p-4 sm:rounded-br-panel sm:p-5"
           >
             {active === 'general' && (
-              <Section title={t('settings.language')}>
-                <LanguageSetting />
-              </Section>
+              <>
+                <Section title={t('settings.language')}>
+                  <LanguageSetting accountId={account?.id} />
+                </Section>
+                <Section title={t('settings.sync')}>
+                  <SyncSetting hasFiles={account?.capabilities.files ?? false} />
+                </Section>
+              </>
             )}
 
             {active === 'appearance' && (
               <>
                 <Section title={t('settings.theme')}>
-                  <ThemeSetting />
+                  <ThemeSetting accountId={account?.id} />
                 </Section>
                 <Section title={t('settings.colors')}>
-                  <ThemeEditor />
+                  <ThemeEditor accountId={account?.id} />
                 </Section>
                 <Section title={t('settings.layout')}>
                   <PanelWidthSetting />
@@ -228,7 +234,7 @@ export function SettingsDialog({
             {active === 'mail' && (
               <>
                 <Section title={t('settings.conversations')}>
-                  <ConversationSetting />
+                  <ConversationSetting accountId={account?.id} />
                 </Section>
                 <Section title={t('settings.privacy')}>
                   <ImageSetting accountId={account?.id} />

@@ -2,11 +2,13 @@ import type { CalendarEvent, ParticipationStatus } from '../domain/calendar'
 import type { Contact } from '../domain/contact'
 import type { OutgoingEmail } from '../domain/identity'
 import { JmapError } from '../providers/jmap/client/transport'
+import type { SyncedField } from '../services/settings'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { connectionFor } from './connections'
 import { syncAccount } from './engine'
 import { saveNoteFile } from './noteWriter'
+import { saveSettingsFile } from './settingsWriter'
 
 export type OutboxAction =
   | { kind: 'email.update'; updates: Record<string, Record<string, unknown>> }
@@ -32,6 +34,19 @@ export type OutboxAction =
    */
   | { kind: 'note.save'; noteId: string }
   | { kind: 'note.destroy'; folderId: string }
+  /**
+   * Push the given fields to `.mel/settings.json`.
+   *
+   * Carries which fields, not their values — see `services/settings.ts`:
+   * the outbox re-reads fresh local state (via `collectLocalSettings`) when
+   * it finally runs, the same reason `note.save` carries an id rather than
+   * a snapshot. Scoped to specific fields, not "everything", so this push
+   * only overwrites what this device actually changed — a field a *different*
+   * device changed concurrently is read-merge-written through untouched
+   * rather than stomped by whatever this device's local copy of it happens
+   * to be.
+   */
+  | { kind: 'settings.save'; fields: SyncedField[] }
 
 /**
  * Actions that can be replayed without duplicating anything: they set a value
@@ -51,6 +66,8 @@ const REPLAYABLE = new Set([
   // file by the folder it is in — so a second run lands in the same place.
   'note.save',
   'note.destroy',
+  // Read-merge-write against whatever is already there; see settingsWriter.ts.
+  'settings.save',
 ])
 
 const BASE_BACKOFF_MS = 5_000
@@ -326,6 +343,10 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
     }
     case 'note.save': {
       await saveNoteFile(accountId, need(conn.files, 'files'), action.noteId)
+      return
+    }
+    case 'settings.save': {
+      await saveSettingsFile(accountId, need(conn.files, 'files'), action.fields)
       return
     }
     case 'note.destroy': {

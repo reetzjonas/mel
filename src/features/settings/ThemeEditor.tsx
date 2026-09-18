@@ -9,6 +9,7 @@ import {
 } from '../../app/themeTuning'
 import { t } from '../../lib/i18n'
 import type { ContrastGrade } from '../../lib/oklch'
+import { scheduleSettingsSync } from '../../services/settings'
 import { secondaryButtonClass } from '../../ui/styles'
 
 /**
@@ -72,7 +73,7 @@ function Slider({
   )
 }
 
-export function ThemeEditor() {
+export function ThemeEditor({ accountId }: { accountId?: string }) {
   const { tuning, set, reset } = useThemeTuning()
   /*
    * The palette as the stylesheet has it, read once per visit to this screen.
@@ -108,7 +109,10 @@ export function ThemeEditor() {
   const current: ThemeTuning = tuning ?? tuningFromPalette(base)
   const shown = tuning ? deriveOverrides(base, current) : base
   const checks = contrastChecks(shown)
-  const update = (patch: Partial<ThemeTuning>) => set({ ...current, ...patch })
+  const update = (patch: Partial<ThemeTuning>) => {
+    set({ ...current, ...patch })
+    if (accountId) void scheduleSettingsSync(accountId, ['themeTuning'])
+  }
 
   return (
     <div className="space-y-4">
@@ -170,7 +174,15 @@ export function ThemeEditor() {
       </dl>
 
       <div className="space-y-1">
-        <button type="button" disabled={!tuning} className={secondaryButtonClass} onClick={reset}>
+        <button
+          type="button"
+          disabled={!tuning}
+          className={secondaryButtonClass}
+          onClick={() => {
+            reset()
+            if (accountId) void scheduleSettingsSync(accountId, ['themeTuning'])
+          }}
+        >
           {t('theme.reset')}
         </button>
         <p className="text-xs text-ink-subtle">{t('theme.hint')}</p>

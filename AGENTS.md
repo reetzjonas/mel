@@ -137,6 +137,12 @@ working on that specific feature, not on every session:
   message, why sending needs a second path, and why the private key is protected
   by its own OpenPGP passphrase rather than by mel's at-rest encryption:
   `docs/notes/pgp-smime.md`
+- **Settings sync** (issue #20): theme, language and a few other preferences
+  mirrored to `.mel/settings.json` via JMAP FileNode — what syncs and what
+  deliberately stays local, the read-merge-write schema-evolution rule, why
+  applying a remote value never re-triggers a push, and the dotfile-hidden
+  `.mel/` convention this introduced in the Files browser:
+  `docs/notes/settings-sync.md`
 
 ## Dev workflow
 

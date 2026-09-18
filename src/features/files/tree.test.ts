@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FileNode } from '../../domain/file'
-import { deepestFirst, moveTargets, withDescendants } from './tree'
+import { deepestFirst, isHidden, moveTargets, withDescendants } from './tree'
 
 const dir = (id: string, parentId: string | null = null): FileNode => ({
   id,
@@ -61,11 +61,29 @@ describe('deepestFirst', () => {
   })
 })
 
+describe('isHidden', () => {
+  it('is true for a dotfile-named node', () => {
+    expect(isHidden(dir('.mel'))).toBe(true)
+    expect(isHidden(file('.mel/settings.json', '.mel'))).toBe(true)
+  })
+
+  it('is false for an ordinary name', () => {
+    expect(isHidden(dir('Notes'))).toBe(false)
+  })
+})
+
 describe('moveTargets', () => {
   it('offers the other folders', () => {
     const all = [dir('a'), dir('b'), dir('c')]
 
     expect(moveTargets(all, ['a'], null).map((n) => n.id)).toEqual(['b', 'c'])
+  })
+
+  it('never offers a hidden folder, regardless of the browser’s own toggle', () => {
+    // Nobody is meant to file something into .mel/ by hand.
+    const all = [dir('a'), dir('.mel')]
+
+    expect(moveTargets(all, [], null).map((n) => n.id)).toEqual(['a'])
   })
 
   it('refuses a folder moving into itself or anything under it', () => {

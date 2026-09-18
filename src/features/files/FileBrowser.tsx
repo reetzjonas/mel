@@ -30,9 +30,11 @@ import { archiveName } from './archive'
 import { symlinkPath } from './symlink'
 import { FilePreview } from './FilePreview'
 import { useAllNodes, useFilePath, useFolderChildren } from './hooks'
-import { moveTargets } from './tree'
+import { isHidden, moveTargets } from './tree'
 
 type Dialog = { kind: 'newFolder' } | { kind: 'rename'; node: FileNode } | { kind: 'move' }
+
+const SHOW_HIDDEN_KEY = 'mel:files:showHidden'
 
 export function FileBrowser({
   accountId,
@@ -42,6 +44,20 @@ export function FileBrowser({
   folderId: string | null
 }) {
   const children = useFolderChildren(accountId, folderId)
+  /**
+   * Off by default so mel's own internal files (`.mel/`) stay out of the
+   * way. Persisted per device (localStorage), like the conversation-view
+   * toggle and the remote-image policy — a look-and-feel choice about this
+   * browser, not an account preference, so it is not part of settings sync.
+   */
+  const [showHidden, setShowHidden] = useState(() => localStorage.getItem(SHOW_HIDDEN_KEY) === '1')
+  /*
+   * The one array everything below reads instead of `children` — not just
+   * the row `.map()`. Shift-click range selection also indexes into it
+   * (`toggle`), and filtering only at render time would let a range or a
+   * bulk action reach a file that was never drawn on screen.
+   */
+  const visibleChildren = showHidden ? children : children?.filter((n) => !isHidden(n))
   const trail = useFilePath(accountId, folderId)
   const allNodes = useAllNodes(accountId)
   const navigate = useNavigate()
@@ -97,7 +113,7 @@ export function FileBrowser({
   const anchor = useRef<string | null>(null)
 
   const toggle = (id: string, extend: boolean) => {
-    const rows = children ?? []
+    const rows = visibleChildren ?? []
     const from = rows.findIndex((n) => n.id === anchor.current)
     const to = rows.findIndex((n) => n.id === id)
     if (extend && from !== -1 && to !== -1) {
@@ -140,7 +156,7 @@ export function FileBrowser({
    */
   const downloadChecked = async () => {
     const ids = [...checked]
-    const picked = (children ?? []).filter((n) => checked.has(n.id))
+    const picked = (visibleChildren ?? []).filter((n) => checked.has(n.id))
     setBusy(true)
     try {
       const { blob, error } = await packArchive(accountId, ids)
@@ -260,6 +276,20 @@ export function FileBrowser({
               <div className="ml-auto flex items-center gap-1.5">
                 <button
                   type="button"
+                  aria-pressed={showHidden}
+                  onClick={() =>
+                    setShowHidden((on) => {
+                      const next = !on
+                      localStorage.setItem(SHOW_HIDDEN_KEY, next ? '1' : '0')
+                      return next
+                    })
+                  }
+                  className={`${secondaryButtonClass} ${showHidden ? 'bg-surface-2 text-ink' : ''}`}
+                >
+                  {showHidden ? t('files.hideHidden') : t('files.showHidden')}
+                </button>
+                <button
+                  type="button"
                   aria-pressed={selecting}
                   onClick={() => setSelecting((on) => !on)}
                   className={`${secondaryButtonClass} ${selecting ? 'bg-surface-2 text-ink' : ''}`}
@@ -305,11 +335,11 @@ export function FileBrowser({
               {t('files.dropHere')}
             </div>
           )}
-          {children === undefined ? null : children.length === 0 ? (
+          {visibleChildren === undefined ? null : visibleChildren.length === 0 ? (
             <EmptyState icon="folder" title={t('files.empty')} hint={t('files.emptyHint')} />
           ) : (
             <ul className="p-1.5">
-              {children.map((node) => (
+              {visibleChildren.map((node) => (
                 <FileRow
                   key={node.id}
                   node={node}

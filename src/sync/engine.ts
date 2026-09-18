@@ -22,6 +22,7 @@ import { toEmailRow } from '../storage/emailRow'
 import { connectionFor } from './connections'
 import { reconcileNotes } from './notes'
 import { setFullSyncProgress } from './progress'
+import { reconcileSettings } from './settings'
 
 function mailboxRow(accountId: string, m: Mailbox): MailboxRow {
   return {
@@ -70,13 +71,21 @@ function modelVersion(collection: string): number {
  * Undefined also when the cached rows predate a field this app now keeps —
  * there is no cursor that can bring a field nobody asked for at the time.
  */
-async function getState(accountId: string, collection: string): Promise<string | undefined> {
+/**
+ * Exported for `sync/settings.ts`, which reuses this cursor rather than a
+ * bespoke marker: settings' "last applied" state is `db.syncState` under
+ * collection `'Settings'`, exactly like every other synced collection — so
+ * `resyncAccount()`'s "fetch everything again" (which clears `db.syncState`
+ * wholesale) forces a fresh settings pull the same way it does mail,
+ * contacts and calendars, without needing its own case for it.
+ */
+export async function getState(accountId: string, collection: string): Promise<string | undefined> {
   const row = await db.syncState.get([accountId, collection])
   if (!row) return undefined
   return (row.modelVersion ?? 1) === modelVersion(collection) ? row.state : undefined
 }
 
-function putState(accountId: string, collection: string, state: string) {
+export function putState(accountId: string, collection: string, state: string) {
   return db.syncState.put({
     accountId,
     collection,
@@ -293,6 +302,8 @@ export async function syncFileTree(accountId: string): Promise<void> {
   await syncFiles(accountId, conn.files)
   // Notes are files, so the tree is the only place a change to one shows up.
   await reconcileNotes(accountId, conn.files)
+  // Settings are a file too (.mel/settings.json) — same reasoning.
+  await reconcileSettings(accountId, conn.files)
 }
 
 function syncFiles(accountId: string, files: FilesProvider) {
@@ -337,6 +348,7 @@ export function syncAccount(accountId: string): Promise<void> {
       if (conn.files) {
         await syncFiles(accountId, conn.files)
         await reconcileNotes(accountId, conn.files)
+        await reconcileSettings(accountId, conn.files)
       }
     })
   })().finally(() => running.delete(accountId))

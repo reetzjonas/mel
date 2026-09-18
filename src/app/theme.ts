@@ -25,3 +25,17 @@ export function useTheme(): ThemeContextValue {
   if (!ctx) throw new Error('useTheme outside ThemeProvider')
   return ctx
 }
+
+/**
+ * Fired after a remote value is written to `STORAGE_KEY` directly (bypassing
+ * `setPreference`, which only exists inside a mounted `ThemeProvider`) — see
+ * `services/settings.ts`. `ThemeProvider` listens for it, since its own
+ * `preference` is a `useState`, not something outside code can reach.
+ */
+export const THEME_PREFERENCE_EVENT = 'mel:theme-preference'
+
+/** Apply a value pulled from sync, without going through `setPreference`. */
+export function applyThemePreferenceSilently(pref: ThemePreference): void {
+  localStorage.setItem(STORAGE_KEY, pref)
+  window.dispatchEvent(new Event(THEME_PREFERENCE_EVENT))
+}

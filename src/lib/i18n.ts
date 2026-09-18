@@ -313,6 +313,7 @@ const en = {
   'queue.event.rsvp': 'Reply to an invitation',
   'queue.note.save': 'Save a note',
   'queue.note.destroy': 'Delete a note',
+  'queue.settings.save': 'Sync settings',
   'sync.lastSync': 'Last synced',
   'sync.error.unreachable': 'Server unreachable',
   'sync.error.auth': 'Sign-in rejected',
@@ -330,6 +331,14 @@ const en = {
   'settings.tab.account': 'Account',
   'settings.language': 'Language',
   'settings.language.system': 'System',
+  'settings.sync': 'Sync',
+  'settings.sync.active':
+    'Theme, language and a few other preferences follow you to another browser.',
+  'settings.sync.unavailable':
+    'This server offers no file storage, so these preferences stay on this device only.',
+  'settings.sync.privacy':
+    'Synced preferences are stored as plain text in your account, like mail — nothing here is a secret, but it is not covered by mel’s own encryption.',
+  'settings.sync.languageChanged': 'Language changed on another device',
   'settings.theme': 'Theme',
   'settings.theme.light': 'Light',
   'settings.theme.dark': 'Dark',
@@ -483,6 +492,8 @@ const en = {
   'files.symlink.explain':
     'This is a link to another place in your files. mel shows where it points, but does not follow it.',
   'files.select': 'Select',
+  'files.showHidden': 'Show hidden files',
+  'files.hideHidden': 'Hide hidden files',
   'files.move': 'Move to…',
   'files.move.top': 'Top level',
   'files.move.nowhere': 'There is no other folder to move these into.',
@@ -987,6 +998,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'queue.event.rsvp': 'Auf eine Einladung antworten',
   'queue.note.save': 'Eine Notiz speichern',
   'queue.note.destroy': 'Eine Notiz löschen',
+  'queue.settings.save': 'Einstellungen synchronisieren',
   'sync.lastSync': 'Zuletzt synchronisiert',
   'sync.error.unreachable': 'Server nicht erreichbar',
   'sync.error.auth': 'Anmeldung abgelehnt',
@@ -1004,6 +1016,14 @@ const de: Partial<Record<MsgKey, string>> = {
   'settings.tab.account': 'Konto',
   'settings.language': 'Sprache',
   'settings.language.system': 'System',
+  'settings.sync': 'Synchronisierung',
+  'settings.sync.active':
+    'Design, Sprache und ein paar weitere Einstellungen folgen dir in einen anderen Browser.',
+  'settings.sync.unavailable':
+    'Dieser Server bietet keine Dateiablage, deshalb bleiben diese Einstellungen nur auf diesem Gerät.',
+  'settings.sync.privacy':
+    'Synchronisierte Einstellungen werden wie E-Mails im Klartext im Konto abgelegt — nichts davon ist geheim, aber mels eigene Verschlüsselung erfasst es nicht.',
+  'settings.sync.languageChanged': 'Sprache auf einem anderen Gerät geändert',
   'settings.theme': 'Design',
   'settings.theme.light': 'Hell',
   'settings.theme.dark': 'Dunkel',
@@ -1166,6 +1186,8 @@ const de: Partial<Record<MsgKey, string>> = {
   'files.preview.expand': 'Große Ansicht',
   'files.preview.collapse': 'Große Ansicht schließen',
   'files.select': 'Auswählen',
+  'files.showHidden': 'Versteckte Dateien anzeigen',
+  'files.hideHidden': 'Versteckte Dateien ausblenden',
   'files.move': 'Verschieben nach…',
   'files.move.top': 'Oberste Ebene',
   'files.move.nowhere': 'Es gibt keinen anderen Ordner, in den das passt.',

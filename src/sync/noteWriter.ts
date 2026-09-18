@@ -27,8 +27,13 @@ function fail(failure: SetFailure): Error {
   })
 }
 
-/** Find a child by name, or make it. */
-async function folder(
+/**
+ * Find a child directory by name, or make it.
+ *
+ * Exported for `settingsWriter.ts`, which needs the same find-or-create for
+ * `.mel/` — the small internal-files folder settings sync writes into.
+ */
+export async function findOrCreateFolder(
   files: FilesProvider,
   parentId: string | null,
   name: string,
@@ -58,7 +63,7 @@ export async function saveNoteFile(
   if (!row) return
   const note: Note = openEnvelope(row.payload)
 
-  const rootId = await folder(files, null, NOTES_FOLDER)
+  const rootId = await findOrCreateFolder(files, null, NOTES_FOLDER)
   /*
    * The folder is named here rather than when the note was created, because
    * this is the first moment it has a title to be named after. It is named
@@ -67,7 +72,7 @@ export async function saveNoteFile(
    * ever sees.
    */
   const folderName = note.folderName || noteFolderName(note.title)
-  const folderId = note.folderId ?? (await folder(files, rootId, folderName))
+  const folderId = note.folderId ?? (await findOrCreateFolder(files, rootId, folderName))
   const children = await files.listChildren(folderId)
 
   await uploadImages(accountId, files, note, folderId, children)

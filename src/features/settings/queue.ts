@@ -64,5 +64,7 @@ export function describeAction(action: OutboxAction): ActionSummary {
       return { label: 'queue.note.save', count: 1 }
     case 'note.destroy':
       return { label: 'queue.note.destroy', count: 1 }
+    case 'settings.save':
+      return { label: 'queue.settings.save', count: 1 }
   }
 }

@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useUi } from '../store'
 import type {
   Calendar,
@@ -15,7 +15,9 @@ import { instantAt } from '../../features/calendar/dragGeometry'
 import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
+import { useHiddenCalendars } from '../../lib/hiddenCalendars'
 import { t, currentLocale } from '../../lib/i18n'
+import { scheduleSettingsSync } from '../../services/settings'
 import {
   occurrenceEvent,
   patchFor,
@@ -109,45 +111,6 @@ interface ScopeQuestion {
   edited: CalendarEvent
 }
 
-function hiddenCalendarsKey(accountId: string) {
-  return `mel:cal:hidden:${accountId}`
-}
-
-function useHiddenCalendars(accountId: string | undefined) {
-  const [hidden, setHidden] = useState<Set<string>>(() => new Set())
-
-  useEffect(() => {
-    if (!accountId) return
-    try {
-      const raw = localStorage.getItem(hiddenCalendarsKey(accountId))
-      /*
-       * localStorage is an external system and the account it is keyed by can
-       * change, so this is a synchronisation rather than derivable state. A
-       * lazy initialiser would read it once and then answer for the wrong
-       * account after a switch.
-       */
-      // oxlint-disable-next-line set-state-in-effect
-      setHidden(new Set(raw ? (JSON.parse(raw) as string[]) : []))
-    } catch {
-      // oxlint-disable-next-line set-state-in-effect
-      setHidden(new Set())
-    }
-  }, [accountId])
-
-  const toggle = (calendarId: string) => {
-    if (!accountId) return
-    setHidden((cur) => {
-      const next = new Set(cur)
-      if (next.has(calendarId)) next.delete(calendarId)
-      else next.add(calendarId)
-      localStorage.setItem(hiddenCalendarsKey(accountId), JSON.stringify([...next]))
-      return next
-    })
-  }
-
-  return { hidden, toggle }
-}
-
 function colorFor(calendars: Calendar[], calendarId: string | undefined): string | null {
   if (!calendarId) return null
   if (calendarId === BIRTHDAY_CALENDAR_ID) return BIRTHDAY_COLOR
@@ -193,7 +156,15 @@ function CalendarApp() {
   const [view, setView] = useState<ViewMode>('month')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [scope, setScope] = useState<ScopeQuestion | null>(null)
-  const { hidden, toggle: toggleCalendar } = useHiddenCalendars(account?.id)
+  const { hidden, toggle: toggleHiddenCalendar } = useHiddenCalendars(account?.id)
+  // Mirrors the toggle to the server, where the account offers file storage —
+  // see services/settings.ts. Kept at the UI call site rather than inside the
+  // toggle itself, so the toggle stays a plain localStorage helper other
+  // callers (a remote-applied value) can use without also pushing.
+  const toggleCalendar = (calendarId: string) => {
+    toggleHiddenCalendar(calendarId)
+    if (account?.id) void scheduleSettingsSync(account.id, ['hiddenCalendars'])
+  }
   /* The occurrence in flight across the month grid, and the cell under it. The
      payload cannot be read during a dragover, so the source keeps it here. */
   const dragged = useRef<Occurrence | null>(null)
