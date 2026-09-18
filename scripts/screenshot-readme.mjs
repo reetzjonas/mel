@@ -5,9 +5,9 @@
  * images a browser shows in its install dialog. Same demo data, same login,
  * so they are one run rather than two scripts seeding the same account.
  *
- * One pair per view — mail, the invitation card, calendar, contacts, files —
- * because a README that claims four apps and shows one is a README that shows
- * one.
+ * One pair per view — mail, the invitation card, calendar, contacts, files,
+ * notes — because a README that claims five apps and shows one is a README
+ * that shows one.
  *
  * Requires a running dev server and a seeded Stalwart:
  *   npm run stalwart:up && npm run stalwart:seed && npm run dev
@@ -461,6 +461,48 @@ const DEMO_FILES = [
 /** Opened in the preview pane for the screenshot. */
 const PREVIEW_FILE = 'Release notes.md'
 
+/*
+ * Notes ride on FileNode too — a folder per note holding `note.md`, front
+ * matter and all (see src/lib/noteFile.ts) — but this script talks raw JMAP
+ * rather than the app's own modules, so the file format is duplicated here
+ * rather than imported.
+ */
+const NOTES_ROOT_NAME = 'Notes'
+const NOTE_FILE_NAME = 'note.md'
+const DEMO_NOTES = [
+  {
+    title: 'Grocery run',
+    pinned: true,
+    body: '# Grocery run\n\n- [ ] Milk\n- [ ] Bread\n- [x] Coffee\n',
+  },
+  {
+    title: 'Trip to Lisbon',
+    body: 'Flights booked for **March 14–18**. Still need:\n\n- [ ] Book the hotel\n- [ ] Print boarding passes\n',
+  },
+  {
+    title: 'Standup notes',
+    body: '- Migration planning kicked off this week.\n- Design review moved to Thursday.\n',
+  },
+]
+/** Opened in the editor pane for the screenshot. */
+const OPEN_NOTE = 'Grocery run'
+
+/** Same shape as serializeNote() in src/lib/noteFile.ts. */
+function noteFileText({ title, pinned, body }) {
+  const fields = [`title: ${title}`]
+  if (pinned) fields.push('pinned: true')
+  return `---\n${fields.join('\n')}\n---\n\n${body}`
+}
+
+/** A readable, unique-enough folder name, mirroring noteFolderName() in src/lib/noteFile.ts. */
+function noteFolderName(title) {
+  const slug = title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return `${slug || 'note'}-${Math.random().toString(36).slice(2, 6)}`
+}
+
 async function uploadBlob(uploadUrl, accountId, text, type) {
   const res = await fetch(uploadUrl.replace('{accountId}', encodeURIComponent(accountId)), {
     method: 'POST',
@@ -494,6 +536,115 @@ async function createFiles(apiUrl, uploadUrl, accountId) {
     [CORE, FILENODE],
   )
   return Object.values(res.methodResponses[0][1].created ?? {}).map((v) => v.id)
+}
+
+/**
+ * Notes' demo data: a `Notes` folder (reused if the account already has one —
+ * this script must not create a second, conflicting root) with one
+ * subfolder-plus-`note.md` per note, notesRoot()/noteFolders() in
+ * src/sync/notes.ts's shape. Returns what this run itself created, so cleanup
+ * only ever touches that — never a pre-existing `Notes` folder or its
+ * contents.
+ */
+async function createNotes(apiUrl, uploadUrl, accountId) {
+  const { methodResponses } = await jmapCall(
+    apiUrl,
+    [
+      ['FileNode/query', { accountId, filter: { isTopLevel: true } }, 'q'],
+      [
+        'FileNode/get',
+        { accountId, '#ids': { resultOf: 'q', name: 'FileNode/query', path: '/ids' } },
+        'g',
+      ],
+    ],
+    [CORE, FILENODE],
+  )
+  const topLevel = methodResponses[1][1].list
+  const existingRoot = topLevel.find(
+    (n) => n.name === NOTES_ROOT_NAME && n.nodeType === 'directory',
+  )
+
+  let rootId = existingRoot?.id
+  let createdRoot = null
+  if (!rootId) {
+    const res = await jmapCall(
+      apiUrl,
+      [
+        [
+          'FileNode/set',
+          { accountId, create: { r: { name: NOTES_ROOT_NAME, parentId: null, nodeType: 'directory' } } },
+          's',
+        ],
+      ],
+      [CORE, FILENODE],
+    )
+    rootId = res.methodResponses[0][1].created.r.id
+    createdRoot = rootId
+  }
+
+  const folders = []
+  const files = []
+  for (const note of DEMO_NOTES) {
+    const folderRes = await jmapCall(
+      apiUrl,
+      [
+        [
+          'FileNode/set',
+          { accountId, create: { f: { name: noteFolderName(note.title), parentId: rootId, nodeType: 'directory' } } },
+          's',
+        ],
+      ],
+      [CORE, FILENODE],
+    )
+    const folderId = folderRes.methodResponses[0][1].created.f.id
+    folders.push(folderId)
+
+    const blobId = await uploadBlob(uploadUrl, accountId, noteFileText(note), 'text/markdown')
+    const fileRes = await jmapCall(
+      apiUrl,
+      [
+        [
+          'FileNode/set',
+          {
+            accountId,
+            create: {
+              m: { name: NOTE_FILE_NAME, parentId: folderId, nodeType: 'file', blobId, type: 'text/markdown' },
+            },
+          },
+          's',
+        ],
+      ],
+      [CORE, FILENODE],
+    )
+    files.push(fileRes.methodResponses[0][1].created.m.id)
+  }
+
+  return { root: createdRoot, folders, files }
+}
+
+/**
+ * Destroys the note folders/files this run created — deepest first, one
+ * `FileNode/set` call per level, the same rule `deleteNodes` follows in
+ * src/features/files/tree.ts: a parent and child destroyed in the same call
+ * fail both (see docs/notes/filenode.md). The `Notes` root itself is only
+ * destroyed if this run created it — a pre-existing one holds someone's real
+ * notes and must survive the cleanup.
+ */
+async function destroyNotes(apiUrl, accountId, notes) {
+  if (!notes) return
+  for (const [label, ids] of [
+    ['note file', notes.files],
+    ['note folder', notes.folders],
+    ['Notes root', notes.root ? [notes.root] : []],
+  ]) {
+    if (!ids.length) continue
+    try {
+      await jmapCall(apiUrl, [['FileNode/set', { accountId, destroy: ids }, 'd']], [CORE, FILENODE])
+      console.log(`Removed ${ids.length} demo ${label}(s).`)
+    } catch (e) {
+      console.error(`Could not remove demo ${label}s:`, e.message)
+    }
+  }
 }
 
 /**
@@ -616,6 +767,14 @@ async function shootAll(browser, scheme) {
   await page.waitForTimeout(1200)
   shots.files = await page.screenshot()
 
+  // Notes, with the live Markdown editor open on the pinned checklist: the
+  // list alone is titles and pins, and the editor rendering markup inline is
+  // the point of the feature.
+  await page.getByRole('link', { name: 'Notes' }).first().click()
+  await page.getByRole('link', { name: OPEN_NOTE }).first().click({ timeout: 15_000 })
+  await page.waitForTimeout(1000)
+  shots.notes = await page.screenshot()
+
   await ctx.close()
   return shots
 }
@@ -663,10 +822,11 @@ async function main() {
 
   const browser = await chromium.launch()
   try {
-    console.log('Creating demo events, contacts and files...')
+    console.log('Creating demo events, contacts, files and notes...')
     made.events = await createEvents(apiUrl, accountId)
     made.contacts = await createContacts(apiUrl, accountId)
     made.files = await createFiles(apiUrl, uploadUrl, accountId)
+    made.notes = await createNotes(apiUrl, uploadUrl, accountId)
 
     await mkdir(OUT_DIR, { recursive: true })
     await mkdir(INSTALL_DIR, { recursive: true })
@@ -692,6 +852,7 @@ async function main() {
     await destroyIds(apiUrl, accountId, ids)
     console.log(`Removed ${ids.length} demo message(s).`)
     await destroyAll(apiUrl, accountId, made)
+    await destroyNotes(apiUrl, accountId, made.notes)
   }
 }
 

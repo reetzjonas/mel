@@ -14,59 +14,88 @@
     alt="MIT licensed"></a>
 </p>
 
-A JMAP webmail client — mail, calendar and contacts — that runs entirely in the
-browser. There is no backend of its own: the app talks to your JMAP server
-directly and keeps everything in IndexedDB on the device, optionally encrypted
-behind a passphrase. Installable as a PWA and usable offline.
+A JMAP webmail client — mail, calendar, contacts, files and notes — that runs
+entirely in the browser. There is no backend of its own: the app talks to your
+JMAP server directly and keeps everything in IndexedDB on the device,
+optionally encrypted behind a passphrase. Installable as a PWA and usable
+offline.
 
 React 19 + TypeScript + Vite, Tailwind, TanStack Router, Dexie.
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-mail-dark.png">
-    <img src="docs/media/screenshot-mail-light.png" alt="mel's mail view, showing a conversation open next to the inbox list" width="800">
-  </picture>
+  <a href="docs/media/screenshot-mail-light.png">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-mail-dark.png">
+      <img src="docs/media/screenshot-mail-light.png" alt="mel's mail view, showing a conversation open next to the inbox list" width="800">
+    </picture>
+  </a>
 </p>
 
 ## What it does
 
 - **Mail** — delta sync, offline outbox with undo, compose with attachments and
-  threading, Fastmail-style search, keyboard shortcuts, bulk actions, folder
-  management
-- **Calendar** — month/week/day views, recurring events across DST, multiple
-  calendars, invitations and RSVP over iTIP
-- **Contacts** — RFC 9610 contact cards, autocomplete while composing
-- **Files** — browse, upload and preview files on the server (JMAP FileNode)
-- **Privacy** — at-rest encryption (Argon2id → AES-GCM), Web Push without a
-  backend (RFC 9749), no third-party requests unless you ask for one
+  threading, Fastmail-style search, swipe actions, a per-sender allow list for
+  remote images, keyboard shortcuts, bulk actions, folder management
+- **Calendar** — month/week/day views, drag to move or resize an event,
+  recurring events across DST (a single occurrence editable on its own),
+  multiple calendars, birthdays as a calendar of their own, invitations and
+  RSVP over iTIP
+- **Contacts** — RFC 9610 contact cards with photos, birthdays and PGP public
+  keys, autocomplete while composing
+- **Files** — browse, upload and preview files on the server (JMAP FileNode),
+  bulk move/delete, a folder or selection as one zip download
+- **Notes** — a live Markdown editor, checklists and pictures included; a note
+  is a plain `.md` file, readable in any other client
+- **Across the board** — shift-click multi-select (Mail, Contacts, Files,
+  Notes) and a shared search box (all five, Calendar's a sidebar "Upcoming"
+  list); encryption at rest (Argon2id → AES-GCM), Web Push without a backend
+  (RFC 9749), no third-party requests unless you ask for one
 
 <table>
   <tr>
     <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-calendar-dark.png">
-        <img src="docs/media/screenshot-calendar-light.png" alt="The week view, with events laid out across a time grid" width="100%">
-      </picture>
+      <a href="docs/media/screenshot-calendar-light.png">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-calendar-dark.png">
+          <img src="docs/media/screenshot-calendar-light.png" alt="The week view, with events laid out across a time grid" width="100%">
+        </picture>
+      </a>
     </td>
     <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-contacts-dark.png">
-        <img src="docs/media/screenshot-contacts-light.png" alt="A contact card open beside the contact list" width="100%">
-      </picture>
+      <a href="docs/media/screenshot-contacts-light.png">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-contacts-dark.png">
+          <img src="docs/media/screenshot-contacts-light.png" alt="A contact card open beside the contact list" width="100%">
+        </picture>
+      </a>
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-invitation-dark.png">
-        <img src="docs/media/screenshot-invitation-light.png" alt="An invitation in the reading pane, offering to add the event to a calendar" width="100%">
-      </picture>
+      <a href="docs/media/screenshot-invitation-light.png">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-invitation-dark.png">
+          <img src="docs/media/screenshot-invitation-light.png" alt="An invitation in the reading pane, offering to add the event to a calendar" width="100%">
+        </picture>
+      </a>
     </td>
     <td width="50%">
-      <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-files-dark.png">
-        <img src="docs/media/screenshot-files-light.png" alt="The files browser with a text file previewing in place" width="100%">
-      </picture>
+      <a href="docs/media/screenshot-files-light.png">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-files-dark.png">
+          <img src="docs/media/screenshot-files-light.png" alt="The files browser with a text file previewing in place" width="100%">
+        </picture>
+      </a>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <a href="docs/media/screenshot-notes-light.png">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="docs/media/screenshot-notes-dark.png">
+          <img src="docs/media/screenshot-notes-light.png" alt="A note open in the live Markdown editor, with a checklist rendered inline" width="100%">
+        </picture>
+      </a>
     </td>
   </tr>
 </table>
@@ -193,7 +222,7 @@ development convenience only; a deployed instance needs the real thing.
 - `src/storage/` — Dexie schema; every row carries its contents in a
   `plain`/`enc` envelope, so index columns stay readable while payloads can be
   encrypted
-- `src/features/` — mail, calendar, contacts and settings UI
+- `src/features/` — mail, calendar, contacts, files, notes and settings UI
 
 ## License
 
