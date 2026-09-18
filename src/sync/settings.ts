@@ -5,7 +5,12 @@
 
 import type { FileNode } from '../domain/file'
 import type { FilesProvider } from '../providers/types'
-import { ALL_SYNCED_FIELDS, applySettingsSilently, enqueueSettingsSave } from '../services/settings'
+import {
+  ALL_SYNCED_FIELDS,
+  applySettingsSilently,
+  enqueueSettingsSave,
+  pendingSyncFields,
+} from '../services/settings'
 import { getState, putState } from './engine'
 import { fileTree } from './notes'
 import { MEL_FOLDER, SETTINGS_FILE } from './settingsWriter'
@@ -67,6 +72,15 @@ export async function reconcileSettings(accountId: string, files: FilesProvider)
   // actually read.
   if (!blob) return
 
-  applySettingsSilently(accountId, tryParse(await blob.text()))
+  const parsed = tryParse(await blob.text())
+  /*
+   * A field this device is about to push (or is pushing right now) carries
+   * this device's own latest edit — the queued action reads it fresh only
+   * when it actually runs, so applying an older value pulled in the
+   * meantime would silently clobber that edit before it ever reaches the
+   * server. See pendingSyncFields' comment.
+   */
+  for (const field of await pendingSyncFields(accountId)) delete parsed[field]
+  applySettingsSilently(accountId, parsed)
   await putState(accountId, COLLECTION, settingsFile.modified)
 }

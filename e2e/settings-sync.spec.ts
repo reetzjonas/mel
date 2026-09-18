@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Browser, type Page } from '@playwright/test'
 
 /*
  * Runs in its own `settings-sync` Playwright project, strictly after both
@@ -28,8 +28,29 @@ async function setTheme(page: Page, value: 'system' | 'light' | 'dark') {
   await page.getByRole('button', { name: 'Close settings' }).click()
 }
 
+/**
+ * Proves a theme change actually reached the server, not just this page —
+ * the same cross-context check the second test below already uses to prove
+ * the *forward* direction, reused here for cleanup. Without this, a test
+ * that resets the theme and closes its context immediately races its own
+ * debounced push (`PUSH_DELAY_MS`, `services/settings.ts`): the context
+ * tears down, and any pending timer/fetch it owned goes with it, before the
+ * reset ever reaches `.mel/settings.json`. The account is then left on
+ * `dark` for every test that runs after — found as `theme-editor.spec.ts`
+ * failing with a different symptom on every run, all traced back to it
+ * unexpectedly inheriting a dark account theme it never touched.
+ */
+async function expectThemePropagated(browser: Browser, expected: 'light' | 'dark') {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  await login(page)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', expected, { timeout: 20_000 })
+  await ctx.close()
+}
+
 test('a changed theme reaches .mel/settings.json, hidden from Files by default', async ({
   page,
+  browser,
 }) => {
   test.setTimeout(60_000)
   await login(page)
@@ -56,8 +77,12 @@ test('a changed theme reaches .mel/settings.json, hidden from Files by default',
   await expect(page.getByRole('button', { name: '.mel', exact: true })).toHaveCount(0)
 
   // Clean up, so the next run (and the next test here) starts from the
-  // account's default appearance rather than whatever this one left behind.
+  // account's default appearance rather than whatever this one left behind
+  // — confirmed with a fresh context rather than assumed, since closing this
+  // page immediately after clicking would otherwise race the reset's own
+  // debounced push (see expectThemePropagated's comment).
   await setTheme(page, 'system')
+  await expectThemePropagated(browser, 'light')
 })
 
 test('a preference set in one browser follows the same account into another', async ({
@@ -82,7 +107,11 @@ test('a preference set in one browser follows the same account into another', as
   // unlike a language change (see services/settings.ts).
   await expect(page2.locator('html')).toHaveAttribute('data-theme', 'dark', { timeout: 20_000 })
 
+  // Reset confirmed on page2 before closing anything — the same reasoning
+  // as the first test's cleanup, just checked on the context already open
+  // here rather than a fresh one.
   await setTheme(page1, 'system')
+  await expect(page2.locator('html')).toHaveAttribute('data-theme', 'light', { timeout: 20_000 })
   await ctx1.close()
   await ctx2.close()
 })

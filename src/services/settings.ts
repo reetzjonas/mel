@@ -168,6 +168,36 @@ async function pendingSave(
 }
 
 /**
+ * Fields this device is about to push, or is pushing right now.
+ *
+ * `sync/settings.ts`'s `reconcileSettings` uses this to skip re-applying a
+ * pulled value for any of these fields: `collectLocalSettings` reads the
+ * *current* value only when the queued action actually executes, so
+ * whatever is in flight already carries this device's own latest edit —
+ * applying a value read from the server in the meantime would silently
+ * overwrite that edit with what it looked like before this device changed
+ * it, and the edit would never reach the server at all. Found by tracing a
+ * reload in `e2e/theme-editor.spec.ts` that produced a different symptom on
+ * every run: a slow initial reconcile, still in flight after login,
+ * resolving *after* a slider change and clobbering it before the change's
+ * own debounced push ever fired.
+ *
+ * `'inflight'` rows count too, not just `'pending'` ones — a push already
+ * under way is still this device's authoritative intent for that field
+ * until it either lands or is retried.
+ */
+export async function pendingSyncFields(accountId: string): Promise<SyncedField[]> {
+  const rows = await db.outbox.where('accountId').equals(accountId).toArray()
+  const fields = new Set<SyncedField>()
+  for (const row of rows) {
+    if (row.kind !== 'settings.save' || row.status === 'failed') continue
+    const action = openEnvelope(row.payload) as OutboxAction
+    if (action.kind === 'settings.save') for (const f of action.fields) fields.add(f)
+  }
+  return [...fields]
+}
+
+/**
  * Queue a push of the given fields, no capability check — for
  * `sync/settings.ts`'s bootstrap path, which only ever runs once
  * `conn.files` is already known to exist (that is what it is reconciling),

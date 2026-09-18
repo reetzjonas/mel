@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { useUi } from '../app/store'
 import type { FileNode } from '../domain/file'
 import { db } from '../storage/db'
 import { sealPlain } from '../storage/envelope'
@@ -147,6 +148,58 @@ describe('the file cannot be read right now', () => {
     await reconcileSettings(ACC, unreadable)
 
     expect(await getState(ACC, 'Settings')).toBeUndefined()
+  })
+})
+
+describe('a field with a push of its own already queued', () => {
+  async function queueThemeSave(status: 'pending' | 'inflight') {
+    await db.outbox.add({
+      accountId: ACC,
+      kind: 'settings.save',
+      status,
+      attempts: 0,
+      notBefore: 0,
+      payload: sealPlain({ kind: 'settings.save', fields: ['theme'] }),
+    })
+  }
+
+  it('is not overwritten by the pull, so the pull cannot undo it before it sends', async () => {
+    await putSettingsTree()
+    content = '{"version":1,"theme":"dark","conversationView":false}'
+    await queueThemeSave('pending')
+    localStorage.setItem('mel:theme', 'light') // this device's own not-yet-sent edit
+
+    await reconcileSettings(ACC, files)
+
+    expect(localStorage.getItem('mel:theme')).toBe('light')
+    // A field with nothing queued still applies normally.
+    expect(useUi.getState().conversationView).toBe(false)
+  })
+
+  it('protects a push that is already inflight, not only a pending one', async () => {
+    await putSettingsTree()
+    content = '{"version":1,"theme":"dark"}'
+    await queueThemeSave('inflight')
+    localStorage.setItem('mel:theme', 'light')
+
+    await reconcileSettings(ACC, files)
+
+    expect(localStorage.getItem('mel:theme')).toBe('light')
+  })
+
+  it('does not protect a field a failed push gave up on', async () => {
+    await putSettingsTree()
+    content = '{"version":1,"theme":"dark"}'
+    await queueThemeSave('pending')
+    await db.outbox
+      .where('accountId')
+      .equals(ACC)
+      .modify({ status: 'failed' })
+    localStorage.setItem('mel:theme', 'light')
+
+    await reconcileSettings(ACC, files)
+
+    expect(localStorage.getItem('mel:theme')).toBe('dark')
   })
 })
 
