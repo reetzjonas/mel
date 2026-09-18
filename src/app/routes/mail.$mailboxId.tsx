@@ -2,8 +2,6 @@ import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchesFilter, type MailFilter } from '../../domain/email'
 import { InitialSync } from '../../features/mail/InitialSync'
-import { ResizeHandle } from '../../features/mail/ResizeHandle'
-import { PANEL_WIDTH_VAR, usePanelWidth } from '../../features/mail/panelWidths'
 import { SelectionToolbar } from '../../features/mail/SelectionToolbar'
 import { ThreadList } from '../../features/mail/ThreadList'
 import { conversationItem, messageItem } from '../../features/mail/rowItem'
@@ -15,14 +13,18 @@ import {
 } from '../../features/mail/hooks'
 import { useUi } from '../store'
 import { t } from '../../lib/i18n'
+import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { useSelection } from '../../lib/selection'
 import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { Tooltip } from '../../ui/Tooltip'
 import { ListSkeleton } from '../../ui/Skeleton'
+
+const LIST_LIMITS: PanelLimits = { min: 280, max: 720, initial: 384 }
 
 export const Route = createFileRoute('/mail/$mailboxId')({
   component: MailboxView,
@@ -102,7 +104,7 @@ function MailboxView() {
   const [refreshing, setRefreshing] = useState(false)
   const mailboxes = useMailboxes(accountId)
   const { setFolderDrawerOpen } = useUi()
-  const listPanel = usePanelWidth('list')
+  const listPanel = usePanelWidth('mail-list', LIST_LIMITS)
   const listRef = useRef<HTMLElement | null>(null)
 
   // Depends only on the id, not the account object: only switching accounts
@@ -307,7 +309,7 @@ function MailboxView() {
         </div>
       </section>
       <ResizeHandle
-        panel="list"
+        limits={LIST_LIMITS}
         label={t('mail.resizeList')}
         width={listPanel.width}
         targetRef={listRef}

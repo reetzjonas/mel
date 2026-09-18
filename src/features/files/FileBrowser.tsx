@@ -4,6 +4,7 @@ import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
+import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { saveBlob } from '../../lib/saveBlob'
 import { useSelection } from '../../lib/selection'
 import {
@@ -17,6 +18,7 @@ import {
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { ListSkeleton } from '../../ui/Skeleton'
@@ -39,6 +41,7 @@ import { isHidden, moveTargets } from './tree'
 type Dialog = { kind: 'newFolder' } | { kind: 'rename'; node: FileNode } | { kind: 'move' }
 
 const SHOW_HIDDEN_KEY = 'mel:files:showHidden'
+const PREVIEW_LIMITS: PanelLimits = { min: 280, max: 640, initial: 384 }
 
 export function FileBrowser({
   accountId,
@@ -83,6 +86,8 @@ export function FileBrowser({
   const { showSnackbar } = useUi()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [preview, setPreview] = useState<FileNode | null>(null)
+  const previewPanel = usePanelWidth('files-preview', PREVIEW_LIMITS)
+  const previewRef = useRef<HTMLElement | null>(null)
   /*
    * Each row is its own id, both for the anchor/range math and for what
    * actually gets selected — unlike Mail, where one row can be a whole
@@ -366,14 +371,29 @@ export function FileBrowser({
       </section>
 
       {preview && (
-        <aside className="panel flex h-full w-full shrink-0 overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:w-96">
-          <FilePreview
-            key={preview.id}
-            accountId={accountId}
-            node={previewLive ?? preview}
-            onClose={() => setPreview(null)}
+        <>
+          <ResizeHandle
+            limits={PREVIEW_LIMITS}
+            label={t('files.resizePreview')}
+            width={previewPanel.width}
+            targetRef={previewRef}
+            onCommit={previewPanel.commit}
+            onReset={previewPanel.reset}
+            grows="left"
           />
-        </aside>
+          <aside
+            ref={previewRef}
+            style={{ [PANEL_WIDTH_VAR]: `${previewPanel.width}px` } as React.CSSProperties}
+            className="panel flex h-full w-full shrink-0 overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:w-[var(--mel-panel-w)]"
+          >
+            <FilePreview
+              key={preview.id}
+              accountId={accountId}
+              node={previewLive ?? preview}
+              onClose={() => setPreview(null)}
+            />
+          </aside>
+        </>
       )}
 
       {dialog?.kind === 'newFolder' && (

@@ -1,19 +1,23 @@
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { useAccounts } from '../../features/mail/hooks'
 import { NoteCard } from '../../features/notes/NoteCard'
 import { useNotes } from '../../features/notes/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
+import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { useSelection } from '../../lib/selection'
 import { deleteNote, emptyNote, saveNote } from '../../services/notes'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
 import { primaryIconButtonClass, secondaryButtonClass } from '../../ui/styles'
+
+const LIST_LIMITS: PanelLimits = { min: 240, max: 480, initial: 320 }
 
 export const Route = createFileRoute('/notes')({
   component: NotesLayout,
@@ -31,6 +35,8 @@ function NotesLayout() {
   const navigate = useNavigate()
   const [busy, setBusy] = useState(false)
   const [filter, setFilter] = useState('')
+  const listPanel = usePanelWidth('notes-list', LIST_LIMITS)
+  const listRef = useRef<HTMLElement | null>(null)
 
   const filtered = useMemo(() => {
     if (!notes) return undefined
@@ -82,7 +88,9 @@ function NotesLayout() {
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <section
-        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-80 lg:shrink-0 ${inDetail ? 'hidden lg:flex' : ''}`}
+        ref={listRef}
+        style={{ [PANEL_WIDTH_VAR]: `${listPanel.width}px` } as React.CSSProperties}
+        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-[var(--mel-panel-w)] lg:shrink-0 ${inDetail ? 'hidden lg:flex' : ''}`}
       >
         {checked.size > 0 ? (
           <SelectionToolbar count={checked.size} onClear={clear} busy={busy}>
@@ -154,6 +162,14 @@ function NotesLayout() {
           )}
         </div>
       </section>
+      <ResizeHandle
+        limits={LIST_LIMITS}
+        label={t('notes.resizeList')}
+        width={listPanel.width}
+        targetRef={listRef}
+        onCommit={listPanel.commit}
+        onReset={listPanel.reset}
+      />
       <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
         <div className="panel h-full overflow-hidden max-sm:rounded-none max-sm:shadow-none">
           <Outlet />

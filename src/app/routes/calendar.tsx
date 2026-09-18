@@ -34,8 +34,10 @@ import {
   isBirthdayEventId,
 } from '../../features/calendar/birthdays'
 import { useContacts } from '../../features/contacts/hooks'
+import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import {
   primaryButtonClass,
@@ -44,6 +46,10 @@ import {
   segmentedControlClass,
   segmentedOptionClass,
 } from '../../ui/styles'
+
+// Narrower than Mail's sidebar: a colour dot and a calendar name need less
+// room than a folder list's icons and unread counts do.
+const SIDEBAR_LIMITS: PanelLimits = { min: 160, max: 360, initial: 208 }
 
 export const Route = createFileRoute('/calendar')({
   component: CalendarApp,
@@ -221,6 +227,8 @@ function CalendarApp() {
   const [calSearch, setCalSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [scope, setScope] = useState<ScopeQuestion | null>(null)
+  const sidebarPanel = usePanelWidth('calendar-sidebar', SIDEBAR_LIMITS)
+  const sidebarRef = useRef<HTMLElement | null>(null)
   const { hidden, toggle: toggleHiddenCalendar } = useHiddenCalendars(account?.id)
   // Mirrors the toggle to the server, where the account offers file storage —
   // see services/settings.ts. Kept at the UI call site rather than inside the
@@ -574,8 +582,10 @@ function CalendarApp() {
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <aside
+        ref={sidebarRef}
         data-testid="calendar-sidebar"
-        className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto py-3 lg:flex"
+        style={{ [PANEL_WIDTH_VAR]: `${sidebarPanel.width}px` } as React.CSSProperties}
+        className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto py-3 lg:flex lg:w-[var(--mel-panel-w)]"
       >
         <span className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
           {t('cal.calendars')}
@@ -618,6 +628,15 @@ function CalendarApp() {
           />
         </div>
       </aside>
+
+      <ResizeHandle
+        limits={SIDEBAR_LIMITS}
+        label={t('cal.resizeSidebar')}
+        width={sidebarPanel.width}
+        targetRef={sidebarRef}
+        onCommit={sidebarPanel.commit}
+        onReset={sidebarPanel.reset}
+      />
 
       <div
         data-testid="calendar-grid"

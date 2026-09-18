@@ -1,5 +1,5 @@
 import { Link, Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { useUi } from '../../app/store'
 import { displayName, type Contact } from '../../domain/contact'
@@ -7,16 +7,20 @@ import { useAccounts } from '../../features/mail/hooks'
 import { useContacts } from '../../features/contacts/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
+import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { useSelection, type Selection } from '../../lib/selection'
 import { deleteContacts } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { Tooltip } from '../../ui/Tooltip'
 import { primaryIconButtonClass, secondaryButtonClass } from '../../ui/styles'
+
+const LIST_LIMITS: PanelLimits = { min: 240, max: 480, initial: 320 }
 
 export const Route = createFileRoute('/contacts')({
   component: ContactsLayout,
@@ -31,6 +35,8 @@ function ContactsLayout() {
   const { showSnackbar } = useUi()
   const [filter, setFilter] = useState('')
   const [busy, setBusy] = useState(false)
+  const listPanel = usePanelWidth('contacts-list', LIST_LIMITS)
+  const listRef = useRef<HTMLElement | null>(null)
 
   const filtered = useMemo(() => {
     if (!contacts) return undefined
@@ -70,7 +76,9 @@ function ContactsLayout() {
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <section
-        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-80 lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
+        ref={listRef}
+        style={{ [PANEL_WIDTH_VAR]: `${listPanel.width}px` } as React.CSSProperties}
+        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-[var(--mel-panel-w)] lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
       >
         {checked.size > 0 ? (
           <SelectionToolbar count={checked.size} onClear={clear} busy={busy}>
@@ -127,6 +135,14 @@ function ContactsLayout() {
           )}
         </div>
       </section>
+      <ResizeHandle
+        limits={LIST_LIMITS}
+        label={t('contacts.resizeList')}
+        width={listPanel.width}
+        targetRef={listRef}
+        onCommit={listPanel.commit}
+        onReset={listPanel.reset}
+      />
       <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
         <div className="panel h-full overflow-y-auto max-sm:rounded-none max-sm:shadow-none">
           <Outlet />

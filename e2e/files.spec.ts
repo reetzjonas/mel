@@ -413,3 +413,53 @@ test('the search box narrows the folder to matching names, and the clear button 
     timeout: 15_000,
   })
 })
+
+test('the preview panel can be resized, and the width survives a reload', async ({ page }) => {
+  const tag = Date.now() % 100000
+  const name = `resize-${tag}.txt`
+  page.on('dialog', (d) => void d.accept())
+
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+
+  await page.locator('input[type="file"]').setInputFiles({
+    name,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('hello'),
+  })
+  await expect(page.getByRole('button', { name, exact: true })).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name, exact: true }).click()
+  await expect(page.getByText('hello')).toBeVisible({ timeout: 10_000 })
+
+  const preview = page.locator('aside:has-text("hello")')
+  const handle = page.getByRole('separator', { name: 'Preview width' })
+  await expect(handle).toBeVisible()
+
+  const before = (await preview.boundingBox())!
+  const grip = (await handle.boundingBox())!
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  await page.mouse.down()
+  // Dragging left widens the preview: it sits on the right, unlike every
+  // other app's boundary, which widens its panel by dragging right.
+  await page.mouse.move(grip.x - 100, grip.y + grip.height / 2, { steps: 10 })
+  await page.mouse.up()
+
+  const after = (await preview.boundingBox())!
+  expect(after.width).toBeGreaterThan(before.width + 60)
+
+  await page.reload()
+  await page.getByRole('button', { name, exact: true }).click()
+  await expect(page.getByText('hello')).toBeVisible({ timeout: 10_000 })
+  const reloaded = (await preview.boundingBox())!
+  expect(Math.abs(reloaded.width - after.width)).toBeLessThan(4)
+
+  // Shared with every other app's panel, so leave it as it was found.
+  await handle.dblclick()
+
+  // Cleanup.
+  await page.getByRole('checkbox', { name: `Select ${name}` }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0, {
+    timeout: 15_000,
+  })
+})

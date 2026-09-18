@@ -729,3 +729,30 @@ test('the sidebar search narrows the upcoming list, and clicking a hit jumps the
   await chip.click()
   await page.getByRole('button', { name: 'Delete event' }).click()
 })
+
+test('the sidebar can be resized, and the width survives a reload', async ({ page }) => {
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+
+  const sidebar = page.locator('[data-testid="calendar-sidebar"]')
+  const handle = page.getByRole('separator', { name: 'Calendar list width' })
+  await expect(handle).toBeVisible()
+
+  const before = (await sidebar.boundingBox())!
+  const grip = (await handle.boundingBox())!
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(grip.x + 80, grip.y + grip.height / 2, { steps: 10 })
+  await page.mouse.up()
+
+  const after = (await sidebar.boundingBox())!
+  expect(after.width).toBeGreaterThan(before.width + 40)
+
+  await page.reload()
+  await expect(page.getByRole('link', { name: 'Calendar' }).first()).toBeVisible()
+  const reloaded = (await sidebar.boundingBox())!
+  expect(Math.abs(reloaded.width - after.width)).toBeLessThan(4)
+
+  // Shared with every other app's panel, so leave it as it was found.
+  await handle.dblclick()
+})

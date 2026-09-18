@@ -1,20 +1,28 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useRef } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { PANEL_WIDTH_VAR, type PanelLimits } from '../lib/panelWidths'
 import { ResizeHandle } from './ResizeHandle'
-import { PANEL_LIMITS, PANEL_WIDTH_VAR } from './panelWidths'
 
 /*
- * The width arithmetic is covered in panelWidths.test.ts. What is only
+ * The width arithmetic is covered in lib/panelWidths.test.ts. What is only
  * visible here is how the handle spends it: which changes reach the DOM
  * directly, which reach React, and what the thing announces itself as.
  */
+
+const LIMITS: PanelLimits = { min: 280, max: 720, initial: 384 }
 
 const onCommit = vi.fn()
 const onReset = vi.fn()
 
 /** Renders the handle beside a panel, the way the routes do. */
-function Harness({ width = 384 }: { width?: number }) {
+function Harness({
+  width = 384,
+  grows,
+}: {
+  width?: number
+  grows?: 'right' | 'left'
+}) {
   const target = useRef<HTMLElement | null>(null)
   return (
     <div style={{ width: 1600 }}>
@@ -24,12 +32,13 @@ function Harness({ width = 384 }: { width?: number }) {
         style={{ [PANEL_WIDTH_VAR]: `${width}px` } as React.CSSProperties}
       />
       <ResizeHandle
-        panel="list"
+        limits={LIMITS}
         label="Message list width"
         width={width}
         targetRef={target}
         onCommit={onCommit}
         onReset={onReset}
+        grows={grows}
       />
     </div>
   )
@@ -121,7 +130,7 @@ describe('dragging the boundary', () => {
     fireEvent.pointerDown(handle(), { button: 0, clientX: 500, pointerId: 1 })
     fireEvent.pointerMove(handle(), { clientX: -5000, pointerId: 1 })
 
-    expect(panelWidth()).toBe(`${PANEL_LIMITS.list.min}px`)
+    expect(panelWidth()).toBe(`${LIMITS.min}px`)
   })
 })
 
@@ -135,8 +144,8 @@ describe('resizing without a pointer', () => {
     expect(handle()).toHaveAttribute('aria-orientation', 'vertical')
     expect(handle()).toHaveAccessibleName('Message list width')
     expect(handle()).toHaveAttribute('aria-valuenow', '384')
-    expect(handle()).toHaveAttribute('aria-valuemin', String(PANEL_LIMITS.list.min))
-    expect(handle()).toHaveAttribute('aria-valuemax', String(PANEL_LIMITS.list.max))
+    expect(handle()).toHaveAttribute('aria-valuemin', String(LIMITS.min))
+    expect(handle()).toHaveAttribute('aria-valuemax', String(LIMITS.max))
     expect(handle()).toHaveAttribute('tabindex', '0')
   })
 
@@ -167,5 +176,32 @@ describe('resizing without a pointer', () => {
     fireEvent.doubleClick(handle())
 
     expect(onReset).toHaveBeenCalledOnce()
+  })
+})
+
+describe('a panel anchored on the right, like Files’ preview pane', () => {
+  beforeEach(() => {
+    cleanup()
+    render(<Harness grows="left" />)
+  })
+
+  it('widens when dragged left instead of right', () => {
+    /*
+     * The boundary sits on the panel's *left* edge here, not its right —
+     * dragging it right shrinks the panel by eating into it from the left,
+     * the opposite of every other boundary in the app, which has a panel
+     * to its right and widens that panel when dragged right.
+     */
+    fireEvent.pointerDown(handle(), { button: 0, clientX: 500, pointerId: 1 })
+    fireEvent.pointerMove(handle(), { clientX: 400, pointerId: 1 })
+
+    expect(panelWidth()).toBe('484px')
+  })
+
+  it('still grows on ArrowRight, the same as every other panel', () => {
+    // The keyboard has no drag geometry to invert: Arrow Right means "bigger"
+    // regardless of which side of the screen the panel is on.
+    fireEvent.keyDown(handle(), { key: 'ArrowRight' })
+    expect(onCommit).toHaveBeenCalledWith(400)
   })
 })

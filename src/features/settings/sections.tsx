@@ -26,7 +26,7 @@ import {
   webPushSupported,
 } from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
-import { hasStoredWidths, resetPanelWidths } from '../mail/panelWidths'
+import { hasStoredWidths, resetPanelWidths } from '../../lib/panelWidths'
 import { connectionFor } from '../../sync/connections'
 import { scheduleSettingsSync } from '../../services/settings'
 import type { Account } from '../../domain/account'

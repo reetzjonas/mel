@@ -322,3 +322,30 @@ test('select several contacts and delete them together', async ({ page }) => {
   await expect(page.getByRole('link', { name: `Erika ${nameA}` })).toHaveCount(0)
   await expect(page.getByRole('link', { name: `Erika ${nameB}` })).toHaveCount(0)
 })
+
+test('the list panel can be resized, and the width survives a reload', async ({ page }) => {
+  await login(page)
+  await page.getByRole('link', { name: 'Contacts' }).first().click()
+
+  const list = page.locator('section:has(input[placeholder="Search contacts"])')
+  const handle = page.getByRole('separator', { name: 'Contact list width' })
+  await expect(handle).toBeVisible()
+
+  const before = (await list.boundingBox())!
+  const grip = (await handle.boundingBox())!
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(grip.x + 100, grip.y + grip.height / 2, { steps: 10 })
+  await page.mouse.up()
+
+  const after = (await list.boundingBox())!
+  expect(after.width).toBeGreaterThan(before.width + 60)
+
+  await page.reload()
+  await expect(page.getByRole('link', { name: 'Contacts' }).first()).toBeVisible()
+  const reloaded = (await list.boundingBox())!
+  expect(Math.abs(reloaded.width - after.width)).toBeLessThan(4)
+
+  // Shared with every other app's panel, so leave it as it was found.
+  await handle.dblclick()
+})

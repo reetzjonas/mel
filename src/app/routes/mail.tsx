@@ -11,13 +11,15 @@ import { AddAccountForm } from '../../features/auth/AddAccountForm'
 import { MailboxDrawer } from '../../features/mail/MailboxDrawer'
 import { MailboxSidebar } from '../../features/mail/MailboxSidebar'
 import { useAccounts, useMailboxes } from '../../features/mail/hooks'
-import { ResizeHandle } from '../../features/mail/ResizeHandle'
-import { PANEL_WIDTH_VAR, usePanelWidth } from '../../features/mail/panelWidths'
 import { useMailShortcuts } from '../../features/mail/shortcuts'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
+import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { Icon } from '../../ui/Icon'
+import { ResizeHandle } from '../../ui/ResizeHandle'
 import { useUi } from '../store'
+
+const SIDEBAR_LIMITS: PanelLimits = { min: 160, max: 420, initial: 224 }
 
 export const Route = createFileRoute('/mail')({
   component: MailLayout,
@@ -34,7 +36,7 @@ function MailLayout() {
   const { compose, openCompose, setFolderDrawerOpen } = useUi()
   const canSend = account?.capabilities.submission ?? false
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const sidebar = usePanelWidth('sidebar')
+  const sidebar = usePanelWidth('mail-sidebar', SIDEBAR_LIMITS)
   const sidebarRef = useRef<HTMLElement | null>(null)
 
   /*
@@ -104,7 +106,7 @@ function MailLayout() {
         <MailboxSidebar account={account} mailboxes={mailboxes ?? []} />
       </aside>
       <ResizeHandle
-        panel="sidebar"
+        limits={SIDEBAR_LIMITS}
         label={t('mail.resizeSidebar')}
         width={sidebar.width}
         targetRef={sidebarRef}

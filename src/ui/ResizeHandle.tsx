@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from 'react'
-import { PANEL_LIMITS, PANEL_WIDTH_VAR, clampWidth, widthForKey, type Panel } from './panelWidths'
+import { PANEL_WIDTH_VAR, clampWidth, widthForKey, type PanelLimits } from '../lib/panelWidths'
 
 interface Props {
-  panel: Panel
+  limits: PanelLimits
   /** Names the panel being resized, for the screen reader. */
   label: string
   width: number
@@ -10,6 +10,16 @@ interface Props {
   targetRef: RefObject<HTMLElement | null>
   onCommit: (width: number) => void
   onReset: () => void
+  /**
+   * Which edge of the panel this handle sits on — where dragging the
+   * pointer right makes the panel wider (a panel to the handle's right,
+   * every boundary in mel but one) versus narrower (a panel to the handle's
+   * *left*, the way Files' preview pane sits on the right of the screen with
+   * its resizable edge on the left). Keyboard resizing is unaffected: Arrow
+   * Right always grows the panel, independent of which side it is on — a
+   * screen reader user has no drag geometry to reason about either way.
+   */
+  grows?: 'right' | 'left'
 }
 
 /**
@@ -25,9 +35,23 @@ interface Props {
  * makes it a window splitter, which screen readers announce with its current
  * width, and the arrow keys move it. That is not a fallback for the drag but
  * the only way to reach an exact width.
+ *
+ * Generic over which panel it resizes (`limits` in, a width out through
+ * `onCommit`) — no knowledge of Mail or any other app lives here, which is
+ * what let #93 phase 3 reuse it for Contacts, Notes, Files and Calendar
+ * without touching this file at all.
  */
-export function ResizeHandle({ panel, label, width, targetRef, onCommit, onReset }: Props) {
+export function ResizeHandle({
+  limits,
+  label,
+  width,
+  targetRef,
+  onCommit,
+  onReset,
+  grows = 'right',
+}: Props) {
   const [dragging, setDragging] = useState(false)
+  const sign = grows === 'right' ? 1 : -1
   const drag = useRef<{
     startX: number
     startWidth: number
@@ -71,7 +95,7 @@ export function ResizeHandle({ panel, label, width, targetRef, onCommit, onReset
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const d = drag.current
     if (!d) return
-    d.current = clampWidth(panel, d.startWidth + (e.clientX - d.startX), d.available)
+    d.current = clampWidth(limits, d.startWidth + sign * (e.clientX - d.startX), d.available)
     preview(d.current)
   }
 
@@ -93,7 +117,7 @@ export function ResizeHandle({ panel, label, width, targetRef, onCommit, onReset
   }
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-    const next = widthForKey(panel, width, e.key, e.shiftKey, availableWidth(targetRef.current))
+    const next = widthForKey(limits, width, e.key, e.shiftKey, availableWidth(targetRef.current))
     if (next === null) return
     // Only once a key is ours: the handle is in the tab order, and swallowing
     // Tab or Enter would trap the focus on it.
@@ -117,7 +141,7 @@ export function ResizeHandle({ panel, label, width, targetRef, onCommit, onReset
     }
   }, [dragging])
 
-  const { min, max } = PANEL_LIMITS[panel]
+  const { min, max } = limits
 
   return (
     <div
