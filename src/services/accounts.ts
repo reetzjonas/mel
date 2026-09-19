@@ -85,6 +85,8 @@ export async function removeAccount(accountId: string): Promise<void> {
     db.calendars,
     db.events,
     db.eventNotifications,
+    db.files,
+    db.notes,
   ]
   await db.transaction('rw', [db.accounts, db.keyring, ...owned], async () => {
     await db.accounts.delete(accountId)

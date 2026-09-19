@@ -102,22 +102,31 @@ async function seed() {
     })
     await db.calendars.put({ accountId, id: 'cal', payload: stub() })
     await db.events.put({ accountId, id: 'ev', calendarIds: ['cal'], payload: stub() })
+    await db.eventNotifications.put({ accountId, id: 'n', payload: stub() })
+    await db.files.put({
+      accountId,
+      id: 'f',
+      parentKey: '',
+      nodeType: 'file',
+      payload: stub(),
+    })
+    await db.notes.put({ accountId, id: 'note', pinned: 0, modified: '', payload: stub() })
+    await db.imageSenders.put({ accountId, payload: stub() })
   }
 }
 
-const perAccount = () => [
-  db.syncState,
-  db.mailboxes,
-  db.emails,
-  db.threads,
-  db.bodyCache,
-  db.blobCache,
-  db.outbox,
-  db.addressBooks,
-  db.contacts,
-  db.calendars,
-  db.events,
-]
+/**
+ * Every table that holds an account's data — all of them but the account list
+ * and its keyring, which removeAccount empties by their own key.
+ *
+ * Read off the database rather than listed by hand: the hand-written list here
+ * and the one in removeAccount went stale together, first for contacts and
+ * calendars, then for files and notes, and a test that names the same tables
+ * as the code can only ever agree with it. A new table has to be seeded in
+ * `seed()` or the second test below fails.
+ */
+const perAccount = () =>
+  db.tables.filter((tbl) => tbl.name !== 'accounts' && tbl.name !== 'keyring')
 
 const clearAll = () =>
   Promise.all([db.accounts, db.keyring, ...perAccount()].map((tbl) => tbl.clear()))
@@ -217,8 +226,8 @@ describe('removeAccount', () => {
 
     expect(await db.accounts.get(MINE)).toBeUndefined()
     for (const table of perAccount()) {
-      // Contacts, calendars and events were missing from this list once, so a
-      // "logout" left the previous user's data readable on the device.
+      // Contacts, calendars, events, files and notes were each missing from the
+      // code once, so a "logout" left the previous user's data on the device.
       const left = await table.where('accountId').equals(MINE).count()
       expect(`${table.name}: ${left}`).toBe(`${table.name}: 0`)
     }
