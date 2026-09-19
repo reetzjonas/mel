@@ -3,12 +3,14 @@ import { Temporal } from 'temporal-polyfill'
 import type {
   Calendar,
   CalendarEvent,
+  EventLinks,
   EventPrivacy,
   FreeBusyStatus,
   Participant,
   ParticipationStatus,
 } from '../../domain/calendar'
 import { REMINDER_PRESETS, reminderOf, withReminder } from '../../lib/alerts'
+import { attachmentsOf } from '../../lib/attachments'
 import { formatCategories, parseCategories } from '../../lib/categories'
 import { t, type MsgKey } from '../../lib/i18n'
 import { mapHref, webHref } from '../../lib/links'
@@ -18,6 +20,7 @@ import { DialogHeader } from '../../ui/DialogHeader'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { useMobileViewport, useModal } from '../../ui/useModal'
+import { EventAttachments } from './EventAttachments'
 import { ParticipantsField, ParticipantStatusBadge } from './ParticipantsField'
 import { RecurrenceField } from './RecurrenceField'
 
@@ -102,6 +105,7 @@ export function EventDialog({
   initial,
   calendars,
   accountId,
+  canUseFiles = false,
   self,
   occurrence = false,
   onSave,
@@ -113,6 +117,8 @@ export function EventDialog({
   /** Omit or pass a single-item list to hide the calendar picker. */
   calendars?: Calendar[]
   accountId: string
+  /** Whether the account has Files, to attach from. */
+  canUseFiles?: boolean
   /** The address we invite people as, and the one we RSVP with. */
   self: { name: string; email: string }
   /** True when this is one occurrence of a series rather than the series. */
@@ -137,6 +143,8 @@ export function EventDialog({
   const [freeBusy, setFreeBusy] = useState<FreeBusyStatus>(initial.freeBusyStatus ?? 'busy')
   const [privacy, setPrivacy] = useState<EventPrivacy>(initial.privacy ?? 'public')
   const [categories, setCategories] = useState(formatCategories(initial.categories))
+  const [links, setLinks] = useState<EventLinks | undefined>(initial.links)
+  const [picking, setPicking] = useState(false)
   const [description, setDescription] = useState(initial.description)
   const initialRepeat = formOf(initial.recurrenceRule, initialParts.date)
   const [repeat, setRepeat] = useState(initialRepeat)
@@ -150,6 +158,7 @@ export function EventDialog({
       initial.freeBusyStatus === 'free' ||
       (initial.privacy && initial.privacy !== 'public') ||
       initial.categories?.length ||
+      attachmentsOf(initial.links).length ||
       initial.description ||
       initial.recurrenceRule ||
       initialReminder !== null,
@@ -157,7 +166,8 @@ export function EventDialog({
   )
   const panel = useRef<HTMLDivElement>(null)
   const mobileViewport = useMobileViewport()
-  useModal({ panel, onClose })
+  // The file picker is a modal of its own; while it is open Escape and Tab belong to it.
+  useModal({ panel, onClose, enabled: !picking })
 
   // On an invitation the organizer owns the event; we may only answer it.
   const me = initial.participants.find(
@@ -199,6 +209,7 @@ export function EventDialog({
       participants,
       // Left as it was unless changed: an event whose alerts were never read
       // must not be handed an empty map that then overwrites the server's.
+      links,
       alerts:
         reminder === initialReminder
           ? initial.alerts
@@ -310,6 +321,12 @@ export function EventDialog({
           {initial.description && (
             <p className="text-sm whitespace-pre-wrap text-ink-muted">{initial.description}</p>
           )}
+          <EventAttachments
+            links={initial.links}
+            accountId={accountId}
+            canUseFiles={false}
+            readOnly
+          />
           <div className="space-y-1">
             <span className="text-xs text-ink-muted">{t('cal.attendees')}</span>
             <ul className="space-y-0.5">
@@ -553,6 +570,18 @@ export function EventDialog({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                 />
+                {!occurrence && (
+                  <div className="space-y-1">
+                    <span className="text-xs text-ink-muted">{t('cal.attachments')}</span>
+                    <EventAttachments
+                      links={links}
+                      accountId={accountId}
+                      canUseFiles={canUseFiles}
+                      onChange={setLinks}
+                      onPicking={setPicking}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}

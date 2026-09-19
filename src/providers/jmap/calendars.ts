@@ -12,6 +12,7 @@ import type { Transport } from './client/transport'
 import { Cap, type SetError, type SetResponse } from './client/types/core'
 import { syncCollection } from './collectionSync'
 import { toAlerts } from '../../lib/alerts'
+import { toLinks } from '../../lib/attachments'
 
 const USING = [Cap.core, Cap.calendars]
 
@@ -65,6 +66,7 @@ export interface JmapCalendarEvent {
   } | null
   recurrenceOverrides?: Record<string, Record<string, unknown>> | null
   alerts?: Record<string, Record<string, unknown>> | null
+  links?: Record<string, Record<string, unknown>> | null
   participants?: Record<string, JmapParticipant> | null
   organizerCalendarAddress?: string | null
   /** false on the invitation copy the server keeps for an attendee. */
@@ -204,6 +206,7 @@ export function toEvent(e: JmapCalendarEvent): CalendarEvent {
     recurrenceRule: rule,
     recurrenceOverrides: toOverrides(e.recurrenceOverrides),
     alerts: toAlerts(e.alerts),
+    links: toLinks(e.links),
     participants: toParticipants(e),
     isOrganizerCopy: e.isOrigin ?? true,
   }
@@ -259,6 +262,8 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
      * would delete reminders another client set.
      */
     alerts: ev.alerts === undefined ? undefined : Object.keys(ev.alerts).length ? ev.alerts : null,
+    // As with alerts: null for a known-empty map, absent for a row that never read one.
+    links: ev.links === undefined ? undefined : Object.keys(ev.links).length ? ev.links : null,
     participants: fromParticipants(ev.participants),
     organizerCalendarAddress: organizerAddress(ev.participants),
   }

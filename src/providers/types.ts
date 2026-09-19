@@ -186,6 +186,10 @@ export interface FilesProvider {
   destroyNodes(ids: string[]): Promise<SetFailure | null>
   /** null for a node that has no content (a directory). */
   readFile(node: import('../domain/file').FileNode): Promise<Blob | null>
+  /** Content by blob id — for a link that outlived the node it was made from. */
+  readBlob(blobId: string, type: string, name: string): Promise<Blob>
+  /** The URL the node's content is served from, or null for a directory. */
+  downloadHref(node: import('../domain/file').FileNode): string | null
 }
 
 export interface SieveScriptEdit {

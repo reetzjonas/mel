@@ -475,6 +475,9 @@ const en = {
   'sieve.nameRequired': 'Give the rule set a name.',
 
   'files.root': 'Files',
+  'files.pick.title': 'Choose a file',
+  'files.pick.up': 'Parent folder',
+  'files.pick.empty': 'Nothing to pick here',
   'files.empty': 'This folder is empty',
   'files.emptyHint': 'Drop files here, or use Upload.',
   'files.search': 'Search this folder',
@@ -631,6 +634,14 @@ const en = {
   'cal.duration': 'Duration',
   'cal.allDay': 'All day',
   'cal.location': 'Location',
+  'cal.attachments': 'Attachments',
+  'cal.attach.device': 'From this device',
+  'cal.attach.files': 'From Files',
+  'cal.attach.remove': 'Remove attachment',
+  'cal.attach.tooLarge':
+    'Files over 1 MB cannot be embedded in an event. Attach it from Files instead.',
+  'cal.attach.failed':
+    'The attachment could not be opened. It may have been changed or deleted in Files.',
   'cal.showAs': 'Show as',
   'cal.busy': 'Busy',
   'cal.free': 'Free',
@@ -1239,6 +1250,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'sieve.nameRequired': 'Gib dem Regelsatz einen Namen.',
 
   'files.root': 'Dateien',
+  'files.pick.title': 'Datei auswählen',
+  'files.pick.up': 'Übergeordneter Ordner',
+  'files.pick.empty': 'Hier gibt es nichts auszuwählen',
   'files.empty': 'Dieser Ordner ist leer',
   'files.emptyHint': 'Dateien hierher ziehen oder „Hochladen“ benutzen.',
   'files.search': 'Diesen Ordner durchsuchen',
@@ -1395,6 +1409,14 @@ const de: Partial<Record<MsgKey, string>> = {
   'cal.duration': 'Dauer',
   'cal.allDay': 'Ganztägig',
   'cal.location': 'Ort',
+  'cal.attachments': 'Anhänge',
+  'cal.attach.device': 'Von diesem Gerät',
+  'cal.attach.files': 'Aus Dateien',
+  'cal.attach.remove': 'Anhang entfernen',
+  'cal.attach.tooLarge':
+    'Dateien über 1 MB lassen sich nicht in einen Termin einbetten. Hänge sie stattdessen aus Dateien an.',
+  'cal.attach.failed':
+    'Der Anhang konnte nicht geöffnet werden. Er wurde in Dateien womöglich geändert oder gelöscht.',
   'cal.showAs': 'Anzeigen als',
   'cal.busy': 'Beschäftigt',
   'cal.free': 'Frei',

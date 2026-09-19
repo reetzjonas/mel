@@ -2,7 +2,13 @@ import type { FileNode } from '../../domain/file'
 import type { FilesProvider, NewFile, NodeEdit, SetFailure } from '../types'
 import { Batch } from './client/request'
 import type { Transport } from './client/transport'
-import { Cap, type GetResponse, type QueryResponse, type SetError, type SetResponse } from './client/types/core'
+import {
+  Cap,
+  type GetResponse,
+  type QueryResponse,
+  type SetError,
+  type SetResponse,
+} from './client/types/core'
 import { syncCollection } from './collectionSync'
 import { toFileNode, type JmapFileNode } from './mappers/files'
 
@@ -43,6 +49,18 @@ export function createJmapFiles(
     })
     const j = (await res.json()) as { blobId: string }
     return j.blobId
+  }
+
+  const urlFor = (blobId: string, type: string, name: string) =>
+    downloadUrl
+      .replace('{accountId}', encodeURIComponent(accountId))
+      .replace('{blobId}', encodeURIComponent(blobId))
+      .replace('{type}', encodeURIComponent(type))
+      .replace('{name}', encodeURIComponent(name))
+
+  const readBlob = async (blobId: string, type: string, name: string): Promise<Blob> => {
+    const res = await transport.fetchRaw(urlFor(blobId, type, name))
+    return res.blob()
   }
 
   return {
@@ -144,13 +162,15 @@ export function createJmapFiles(
 
     async readFile(node: FileNode): Promise<Blob | null> {
       if (!node.blobId) return null
-      const url = downloadUrl
-        .replace('{accountId}', encodeURIComponent(accountId))
-        .replace('{blobId}', encodeURIComponent(node.blobId))
-        .replace('{type}', encodeURIComponent(node.type ?? 'application/octet-stream'))
-        .replace('{name}', encodeURIComponent(node.name))
-      const res = await transport.fetchRaw(url)
-      return res.blob()
+      return readBlob(node.blobId, node.type ?? 'application/octet-stream', node.name)
+    },
+
+    readBlob,
+
+    downloadHref(node: FileNode): string | null {
+      return node.blobId
+        ? urlFor(node.blobId, node.type ?? 'application/octet-stream', node.name)
+        : null
     },
   }
 }

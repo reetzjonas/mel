@@ -428,6 +428,43 @@ describe('free/busy, privacy and categories', () => {
   })
 })
 
+describe('links (attachments)', () => {
+  const enclosure = { rel: 'enclosure', href: 'https://x/a.pdf', title: 'a.pdf', custom: 1 }
+
+  it('keeps every link whole, including ones that are not attachments', () => {
+    const e = toEvent({
+      ...base,
+      links: { a: enclosure, b: { rel: 'describedby', href: 'https://y' } },
+    })
+    expect(e.links).toEqual({ a: enclosure, b: { rel: 'describedby', href: 'https://y' } })
+  })
+
+  it('reads an event without links as known-empty', () => {
+    expect(toEvent(base).links).toEqual({})
+  })
+
+  it('writes the map back on update', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent({ ...domainEvent([]), links: { a: enclosure } })
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['links']).toEqual({ a: enclosure })
+  })
+
+  it('sends null once the last one was removed, so the server drops it too', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent({ ...domainEvent([]), links: {} })
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['links']).toBeNull()
+  })
+
+  it("leaves the server's links alone when this copy never read any", async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent(domainEvent([]))
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['links']).toBeUndefined()
+  })
+})
+
 describe('clearing a location or description', () => {
   it('sends null on update, since an absent key keeps what the server has', async () => {
     const { provider, sent } = capturing({ updated: { e1: null } })

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 
 // Desktop-only (state-mutating, see playwright.config.ts).
 async function login(page: Page) {
@@ -147,6 +148,126 @@ test('free/busy, visibility and categories reach the server and read back', asyn
   await chip().first().click()
   await page.getByRole('button', { name: 'Delete event' }).click()
   await expect(chip()).toHaveCount(0, { timeout: 10_000 })
+})
+
+test('a small file from the device is embedded in the event and can be downloaded again', async ({
+  page,
+}) => {
+  const title = `Attach-${Date.now() % 100000}`
+  const chip = () =>
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) })
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'next' }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(20))
+  await page.getByRole('button', { name: 'More details' }).click()
+
+  // Over the limit: refused with a hint, and nothing is attached.
+  const input = page.getByTestId('event-attachment-input')
+  await input.setInputFiles({
+    name: 'big.bin',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.alloc(1_200_000),
+  })
+  await expect(page.getByText(/over 1 MB/)).toBeVisible()
+  await expect(page.getByRole('button', { name: 'big.bin' })).toHaveCount(0)
+
+  await input.setInputFiles({
+    name: 'agenda.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Punkt 1: Begrüßung'),
+  })
+  await expect(page.getByRole('button', { name: 'agenda.txt', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect
+    .poll(
+      async () => {
+        const e = await serverEvent(title)
+        const links = Object.values((e?.['links'] ?? {}) as Record<string, Record<string, string>>)
+        return links.map((l) => [l['rel'], l['title'], l['href']?.startsWith('data:text/plain')])
+      },
+      { timeout: 15_000 },
+    )
+    .toEqual([['enclosure', 'agenda.txt', true]])
+
+  await chip().first().click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'agenda.txt', exact: true }).click()
+  const file = await download
+  expect(file.suggestedFilename()).toBe('agenda.txt')
+  expect(readFileSync(await file.path(), 'utf8')).toBe('Punkt 1: Begrüßung')
+
+  // Removing it reaches the server too.
+  await page.getByRole('button', { name: 'Remove attachment: agenda.txt' }).click()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect
+    .poll(async () => Boolean((await serverEvent(title))?.['links']), { timeout: 15_000 })
+    .toBe(false)
+
+  await chip().first().click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await expect(chip()).toHaveCount(0, { timeout: 10_000 })
+})
+
+test('a file from Files is attached by reference and opens from the event', async ({ page }) => {
+  const title = `FromFiles-${Date.now() % 100000}`
+  const name = `plan-${Date.now() % 100000}.txt`
+  const chip = () =>
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) })
+
+  await login(page)
+  await page.getByRole('link', { name: 'Files' }).first().click()
+  await page.locator('input[type="file"]').setInputFiles({
+    name,
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Grundriss'),
+  })
+  await expect(page.getByRole('button', { name, exact: true })).toBeVisible({ timeout: 15_000 })
+
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'next' }).click()
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(20))
+  await page.getByRole('button', { name: 'More details' }).click()
+  await page.getByRole('button', { name: 'From Files' }).click()
+  await page.getByRole('dialog', { name: 'Choose a file' }).getByRole('button', { name }).click()
+  await expect(page.getByRole('button', { name, exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  // A reference: a blob id and a URL, not the bytes.
+  await expect
+    .poll(
+      async () => {
+        const e = await serverEvent(title)
+        const links = Object.values((e?.['links'] ?? {}) as Record<string, Record<string, string>>)
+        return links.map((l) => [l['title'], Boolean(l['blobId']), l['href']?.startsWith('http')])
+      },
+      { timeout: 15_000 },
+    )
+    .toEqual([[name, true, true]])
+
+  await chip().first().click()
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name, exact: true }).click()
+  expect(readFileSync(await (await download).path(), 'utf8')).toBe('Grundriss')
+
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await expect(chip()).toHaveCount(0, { timeout: 10_000 })
+
+  await page.getByRole('link', { name: 'Files' }).first().click()
+  await page.getByRole('checkbox', { name: `Select ${name}` }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await page
+    .getByRole('dialog', { name: 'Delete' })
+    .getByRole('button', { name: 'Delete', exact: true })
+    .click()
+  await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0, { timeout: 15_000 })
 })
 
 test('a custom recurrence (every 2 days, 3 times) shows exactly three occurrences', async ({

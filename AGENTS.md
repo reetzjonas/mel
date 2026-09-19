@@ -130,6 +130,8 @@ working on that specific feature, not on every session:
 - **Notes** (the fifth app: why a note is a Markdown file and not a JSON blob,
   why images are separate files, why the id lives in the file, and how the live
   Markdown editor is built): `docs/notes/notes-app.md`
+- **Event attachments** (JSCalendar `links`, what Stalwart drops, embedded vs
+  referenced from Files, why a `blobId` needs an `href`): `docs/notes/calendar-attachments.md`
 - **Calendar reminders** (what an alert is and is not, why a closed browser
   shows nothing, the catch-up rule, DST and the optional `alerts` field):
   `docs/notes/calendar-alerts.md`

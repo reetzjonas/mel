@@ -43,6 +43,16 @@ export type EventAlerts = Record<string, Record<string, unknown>>
 export type FreeBusyStatus = 'busy' | 'free'
 export type EventPrivacy = 'public' | 'private' | 'secret'
 
+/**
+ * A JSCalendar `links` map (RFC 8984 §4.2.7), kept whole.
+ *
+ * Open like `alerts`, for the same reason: mel edits the attachments in it
+ * (`rel: "enclosure"`) and rewrites the whole map on every save, so a link that
+ * is not an attachment, or a field another client put on one, has to come back
+ * untouched. `lib/attachments.ts` reads what it needs.
+ */
+export type EventLinks = Record<string, Record<string, unknown>>
+
 export type ParticipationStatus = 'needs-action' | 'accepted' | 'declined' | 'tentative'
 
 /**
@@ -107,6 +117,8 @@ export interface CalendarEvent {
    * an event that did not change.
    */
   alerts?: EventAlerts
+  /** Attachments and other links; optional for the same reason as `alerts`. */
+  links?: EventLinks
   /** Empty for a plain, unscheduled event. */
   participants: Participant[]
   /**

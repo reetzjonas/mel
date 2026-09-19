@@ -848,6 +848,7 @@ function CalendarApp() {
           initial={dialog.event}
           calendars={calendars ?? []}
           accountId={account.id}
+          canUseFiles={Boolean(account.capabilities.files)}
           self={self}
           occurrence={dialog.recurrenceId !== null}
           onClose={() => setDialog(null)}
