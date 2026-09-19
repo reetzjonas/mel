@@ -43,6 +43,7 @@ test('create a single and a weekly recurring event in the month view', async ({ 
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(weekly)
   await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(7))
+  await page.getByRole('button', { name: 'More details' }).click()
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect
@@ -115,6 +116,9 @@ test('week view: click a time slot creates an event, editing opens the same even
   await expect(chip).toBeVisible({ timeout: 10_000 })
   await chip.click()
   await expect(page.getByPlaceholder('Title')).toHaveValue(title)
+  // Accidental taps on the dimmed calendar must not discard an in-progress edit.
+  await page.mouse.click(4, 4)
+  await expect(page.getByPlaceholder('Title')).toHaveValue(title)
 
   // Clean up.
   await page.getByRole('button', { name: 'Delete event' }).click()
@@ -186,6 +190,8 @@ test('edit and delete an event', async ({ page }) => {
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(title)
   await page.getByLabel('Date', { exact: true }).fill(dateValue)
+  await page.getByLabel('Start', { exact: true }).fill('09:30')
+  await page.getByLabel('End', { exact: true }).fill('11:15')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.getByRole('button', { name: 'next' }).click()
 
@@ -195,6 +201,8 @@ test('edit and delete an event', async ({ page }) => {
     .first()
   await expect(chip).toBeVisible({ timeout: 10_000 })
   await chip.click()
+  await expect(page.getByLabel('Start', { exact: true })).toHaveValue('09:30')
+  await expect(page.getByLabel('End', { exact: true })).toHaveValue('11:15')
   await page.getByPlaceholder('Title').fill(`${title}-2`)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(
@@ -512,6 +520,7 @@ test('move one occurrence of a series and leave the rest where they were', async
 
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(weekly)
+  await page.getByRole('button', { name: 'More details' }).click()
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
@@ -597,6 +606,7 @@ test('drag a whole series onto another weekday', async ({ page }) => {
 
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(weekly)
+  await page.getByRole('button', { name: 'More details' }).click()
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
@@ -781,6 +791,7 @@ test('a reminder is stored on the event, survives a reload, and is shown when it
   await page.getByPlaceholder('Title').fill(title)
   await page.getByLabel('Date', { exact: true }).fill(date)
   await page.getByLabel('Start', { exact: true }).fill(time)
+  await page.getByRole('button', { name: 'More details' }).click()
   await page.getByRole('combobox', { name: 'Reminder' }).selectOption({ label: '5 minutes before' })
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
@@ -804,6 +815,7 @@ test('a reminder is stored on the event, survives a reload, and is shown when it
   await page.reload()
   await expect(chip).toBeVisible({ timeout: 20_000 })
   await chip.click()
+  await page.getByRole('button', { name: 'More details' }).click()
   await expect(page.getByRole('combobox', { name: 'Reminder' })).toHaveValue('none')
 
   await page.getByRole('button', { name: 'Delete event' }).click()
