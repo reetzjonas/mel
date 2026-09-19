@@ -99,6 +99,56 @@ test('a meeting link and a map link are actionable, and clearing them reaches th
   await expect(chip()).toHaveCount(0, { timeout: 10_000 })
 })
 
+test('free/busy, visibility and categories reach the server and read back', async ({ page }) => {
+  const title = `Fields-${Date.now() % 100000}`
+  const chip = () =>
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) })
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'next' }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(20))
+  await page.getByRole('button', { name: 'More details' }).click()
+  await page.getByRole('combobox', { name: 'Show as' }).selectOption('free')
+  await page.getByRole('combobox', { name: 'Visibility' }).selectOption('private')
+  await page.getByLabel('Categories, separated by commas').fill('Work, Family')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect
+    .poll(
+      async () => {
+        const e = await serverEvent(title)
+        return JSON.stringify([e?.['freeBusyStatus'], e?.['privacy'], e?.['categories']])
+      },
+      { timeout: 15_000 },
+    )
+    .toBe(JSON.stringify(['free', 'private', { Work: true, Family: true }]))
+
+  // Back to the defaults has to reach the server too.
+  await chip().first().click()
+  await expect(page.getByRole('combobox', { name: 'Show as' })).toHaveValue('free')
+  await page.getByRole('combobox', { name: 'Show as' }).selectOption('busy')
+  await page.getByRole('combobox', { name: 'Visibility' }).selectOption('public')
+  await page.getByLabel('Categories, separated by commas').fill('')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect
+    .poll(
+      async () => {
+        const e = await serverEvent(title)
+        return [e?.['freeBusyStatus'] ?? 'busy', e?.['privacy'] ?? 'public', !!e?.['categories']]
+      },
+      { timeout: 15_000 },
+    )
+    .toEqual(['busy', 'public', false])
+
+  await chip().first().click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await expect(chip()).toHaveCount(0, { timeout: 10_000 })
+})
+
 test('a custom recurrence (every 2 days, 3 times) shows exactly three occurrences', async ({
   page,
 }) => {

@@ -47,6 +47,9 @@ export interface JmapCalendarEvent {
   description?: string | null
   locations?: Record<string, { name?: string | null }> | null
   virtualLocations?: Record<string, { uri?: string | null }> | null
+  freeBusyStatus?: string | null
+  privacy?: string | null
+  categories?: Record<string, boolean> | null
   start?: string
   timeZone?: string | null
   duration?: string
@@ -188,6 +191,11 @@ export function toEvent(e: JmapCalendarEvent): CalendarEvent {
     description: e.description ?? '',
     location: Object.values(e.locations ?? {})[0]?.name ?? '',
     meetingUrl: Object.values(e.virtualLocations ?? {})[0]?.uri ?? '',
+    freeBusyStatus: e.freeBusyStatus === 'free' ? 'free' : 'busy',
+    privacy: e.privacy === 'private' || e.privacy === 'secret' ? e.privacy : 'public',
+    categories: Object.entries(e.categories ?? {})
+      .filter(([, on]) => on)
+      .map(([name]) => name),
     start: e.start ?? '',
     timeZone: e.timeZone ?? null,
     duration: e.duration ?? 'PT0S',
@@ -214,6 +222,12 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
     title: ev.title,
     description: ev.description || undefined,
     locations: ev.location ? { l0: { '@type': 'Location', name: ev.location } } : undefined,
+    // Left out at their defaults, like the rest: the server reads absent as busy / public.
+    freeBusyStatus: ev.freeBusyStatus === 'free' ? 'free' : undefined,
+    privacy: ev.privacy === 'private' || ev.privacy === 'secret' ? ev.privacy : undefined,
+    categories: ev.categories?.length
+      ? Object.fromEntries(ev.categories.map((name) => [name, true]))
+      : undefined,
     virtualLocations: ev.meetingUrl
       ? { v0: { '@type': 'VirtualLocation', name: 'Meeting', uri: ev.meetingUrl } }
       : undefined,
@@ -296,6 +310,10 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
       if (!event.description) patch['description'] = null
       if (!event.location) patch['locations'] = null
       if (event.meetingUrl === '') patch['virtualLocations'] = null
+      // The same for the three that are only known once this copy has read them.
+      if (event.freeBusyStatus === 'busy') patch['freeBusyStatus'] = null
+      if (event.privacy === 'public') patch['privacy'] = null
+      if (event.categories?.length === 0) patch['categories'] = null
       const b = batch()
       const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {
         accountId,

@@ -3,10 +3,13 @@ import { Temporal } from 'temporal-polyfill'
 import type {
   Calendar,
   CalendarEvent,
+  EventPrivacy,
+  FreeBusyStatus,
   Participant,
   ParticipationStatus,
 } from '../../domain/calendar'
 import { REMINDER_PRESETS, reminderOf, withReminder } from '../../lib/alerts'
+import { formatCategories, parseCategories } from '../../lib/categories'
 import { t, type MsgKey } from '../../lib/i18n'
 import { mapHref, webHref } from '../../lib/links'
 import { followStartDay, formOf, repeatError, ruleOf, sameForm } from '../../lib/recurrenceForm'
@@ -131,6 +134,9 @@ export function EventDialog({
   const [allDay, setAllDay] = useState(initial.showWithoutTime)
   const [location, setLocation] = useState(initial.location)
   const [meetingUrl, setMeetingUrl] = useState(initial.meetingUrl ?? '')
+  const [freeBusy, setFreeBusy] = useState<FreeBusyStatus>(initial.freeBusyStatus ?? 'busy')
+  const [privacy, setPrivacy] = useState<EventPrivacy>(initial.privacy ?? 'public')
+  const [categories, setCategories] = useState(formatCategories(initial.categories))
   const [description, setDescription] = useState(initial.description)
   const initialRepeat = formOf(initial.recurrenceRule, initialParts.date)
   const [repeat, setRepeat] = useState(initialRepeat)
@@ -141,6 +147,9 @@ export function EventDialog({
     Boolean(
       initial.location ||
       initial.meetingUrl ||
+      initial.freeBusyStatus === 'free' ||
+      (initial.privacy && initial.privacy !== 'public') ||
+      initial.categories?.length ||
       initial.description ||
       initial.recurrenceRule ||
       initialReminder !== null,
@@ -172,6 +181,15 @@ export function EventDialog({
       // A row that never read the link stays "unknown" unless the field was
       // filled: an empty box there is not a request to clear the server's.
       meetingUrl: meetingUrl.trim() || (initial.meetingUrl === undefined ? undefined : ''),
+      // Same rule for these: a row that never read them stays unknown while the
+      // controls sit at their defaults, so a save does not clear the server's.
+      freeBusyStatus:
+        initial.freeBusyStatus === undefined && freeBusy === 'busy' ? undefined : freeBusy,
+      privacy: initial.privacy === undefined && privacy === 'public' ? undefined : privacy,
+      categories:
+        initial.categories === undefined && !categories.trim()
+          ? undefined
+          : parseCategories(categories),
       description: description.trim(),
       // Untouched controls keep the rule as the server has it, including what
       // they cannot show (a `byMonthDay`, an `until` with a time of day).
@@ -499,6 +517,36 @@ export function EventDialog({
                     {t('cal.join')}
                   </ExternalLink>
                 )}
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1">
+                    <span className="text-xs text-ink-muted">{t('cal.showAs')}</span>
+                    <Select
+                      value={freeBusy}
+                      onChange={(e) => setFreeBusy(e.target.value as FreeBusyStatus)}
+                    >
+                      <option value="busy">{t('cal.busy')}</option>
+                      <option value="free">{t('cal.free')}</option>
+                    </Select>
+                  </label>
+                  <label className="space-y-1">
+                    <span className="text-xs text-ink-muted">{t('cal.privacy')}</span>
+                    <Select
+                      value={privacy}
+                      onChange={(e) => setPrivacy(e.target.value as EventPrivacy)}
+                    >
+                      <option value="public">{t('cal.privacy.public')}</option>
+                      <option value="private">{t('cal.privacy.private')}</option>
+                      <option value="secret">{t('cal.privacy.secret')}</option>
+                    </Select>
+                  </label>
+                </div>
+                <input
+                  className={inputClass}
+                  placeholder={t('cal.categories')}
+                  aria-label={t('cal.categories')}
+                  value={categories}
+                  onChange={(e) => setCategories(e.target.value)}
+                />
                 <textarea
                   className={`${inputClass} min-h-20`}
                   placeholder={t('cal.descriptionField')}

@@ -40,6 +40,9 @@ export type RecurrencePatch = Record<string, unknown>
  */
 export type EventAlerts = Record<string, Record<string, unknown>>
 
+export type FreeBusyStatus = 'busy' | 'free'
+export type EventPrivacy = 'public' | 'private' | 'secret'
+
 export type ParticipationStatus = 'needs-action' | 'accepted' | 'declined' | 'tentative'
 
 /**
@@ -73,6 +76,15 @@ export interface CalendarEvent {
    * has none, and "unknown" must not be written back as "cleared".
    */
   meetingUrl?: string
+  /**
+   * Whether the event blocks time (RFC 8984 `freeBusyStatus`, default busy).
+   * Optional like `meetingUrl`: a row synced before it was read has none.
+   */
+  freeBusyStatus?: FreeBusyStatus
+  /** Who may see the details when the calendar is shared (`privacy`, default public). */
+  privacy?: EventPrivacy
+  /** Free-form tags on the event itself, apart from its calendar's colour. */
+  categories?: string[]
   /** JSCalendar local date-time without offset ("2026-08-03T10:00:00"). */
   start: string
   /** IANA zone; null → floating (interpreted in the viewer's zone). */

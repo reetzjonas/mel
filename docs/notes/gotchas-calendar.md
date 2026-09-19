@@ -80,3 +80,13 @@
   URL in `virtualLocations` is shown as nothing, not as a link. The map link is
   the same OpenStreetMap search the contact card uses (`mapHref`); structured
   `coordinates` are not read yet.
+- **`freeBusyStatus`, `privacy` and `categories`** (issue #67) follow the same
+  rules as the meeting link: optional on `CalendarEvent`, read as their RFC 8984
+  defaults (busy / public / none), left off the wire at those defaults on create,
+  and sent as `null` on update once known to be at the default — while a row that
+  never read them (`undefined`) stays untouched by a save whose controls are
+  still at rest. `categories` is a `String[Boolean]` map on the wire and a plain
+  list in the domain. Stalwart round-trips all three (`e2e/calendar.spec.ts`,
+  "free/busy, visibility and categories…"). Nothing reads them yet: mel neither
+  hides a `private` event from a sharee nor treats a `free` one as non-blocking,
+  because it has no free/busy view — they are stored and edited, that is all.

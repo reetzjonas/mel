@@ -350,6 +350,84 @@ describe('the online meeting link', () => {
   })
 })
 
+describe('free/busy, privacy and categories', () => {
+  it('reads busy and public when the server says nothing', () => {
+    const e = toEvent(base)
+    expect(e.freeBusyStatus).toBe('busy')
+    expect(e.privacy).toBe('public')
+    expect(e.categories).toEqual([])
+  })
+
+  it('reads what the server holds', () => {
+    const e = toEvent({
+      ...base,
+      freeBusyStatus: 'free',
+      privacy: 'secret',
+      categories: { Work: true, Old: false, Family: true },
+    })
+    expect(e.freeBusyStatus).toBe('free')
+    expect(e.privacy).toBe('secret')
+    expect(e.categories).toEqual(['Work', 'Family'])
+  })
+
+  it('treats a value it does not know as the default', () => {
+    const e = toEvent({ ...base, freeBusyStatus: 'oof', privacy: 'confidential' })
+    expect(e.freeBusyStatus).toBe('busy')
+    expect(e.privacy).toBe('public')
+  })
+
+  it('round-trips through the wire shape', () => {
+    const wire = fromEvent({
+      ...domainEvent([]),
+      freeBusyStatus: 'free',
+      privacy: 'private',
+      categories: ['Work', 'Family'],
+    }) as unknown as JmapCalendarEvent
+    expect(wire.categories).toEqual({ Work: true, Family: true })
+    const back = toEvent({ ...wire, id: 'e1' })
+    expect([back.freeBusyStatus, back.privacy, back.categories]).toEqual([
+      'free',
+      'private',
+      ['Work', 'Family'],
+    ])
+  })
+
+  it('leaves defaults off the wire when creating', () => {
+    const wire = fromEvent({
+      ...domainEvent([]),
+      freeBusyStatus: 'busy',
+      privacy: 'public',
+      categories: [],
+    })
+    expect(wire['freeBusyStatus']).toBeUndefined()
+    expect(wire['privacy']).toBeUndefined()
+    expect(wire['categories']).toBeUndefined()
+  })
+
+  it('sends null on update when they went back to the default', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent({
+      ...domainEvent([]),
+      freeBusyStatus: 'busy',
+      privacy: 'public',
+      categories: [],
+    })
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['freeBusyStatus']).toBeNull()
+    expect(patch['privacy']).toBeNull()
+    expect(patch['categories']).toBeNull()
+  })
+
+  it('leaves the server alone when this copy never read them', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent(domainEvent([]))
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['freeBusyStatus']).toBeUndefined()
+    expect(patch['privacy']).toBeUndefined()
+    expect(patch['categories']).toBeUndefined()
+  })
+})
+
 describe('clearing a location or description', () => {
   it('sends null on update, since an absent key keeps what the server has', async () => {
     const { provider, sent } = capturing({ updated: { e1: null } })
