@@ -133,6 +133,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const draftId = useRef<string | null>(init.draftId ?? null)
   /** The same fact, as state: a ref cannot make the delete button appear. */
   const [hasDraft, setHasDraft] = useState(Boolean(init.draftId))
+  const [saving, setSaving] = useState(false)
   /*
    * Saves run one after another. Each one *replaces* the draft (create plus
    * destroy in one Email/set), so two overlapping calls would each replace the
@@ -306,6 +307,23 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
       const a = await stageAttachment(accountId, file)
       setAttachments((cur) => [...cur, a])
     }
+  }
+
+  /**
+   * Save on demand. The autosave only fires 2.5 s after the last change, which
+   * is invisible from outside — closing the window inside that window dropped
+   * the edit with nothing to show for it, and there was no way to make sure.
+   */
+  async function saveNow() {
+    if (!navigator.onLine) {
+      setError(t('compose.saveOffline'))
+      return
+    }
+    setSaving(true)
+    setError(null)
+    const ok = await storeDraft()
+    setSaving(false)
+    if (!ok) setError(t('compose.saveFailed'))
   }
 
   /** Throws the stored draft away and closes — the counterpart to sending it. */
@@ -579,6 +597,17 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               {dirty ? t('compose.unsavedChanges') : t('compose.draftSaved')}
             </span>
           )}
+          <Tooltip label={t('compose.saveDraft')}>
+            <button
+              type="button"
+              aria-label={t('compose.saveDraft')}
+              onClick={() => void saveNow()}
+              disabled={saving || busy}
+              className={`${dirty || draftSaved ? '' : 'ml-auto '}rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50`}
+            >
+              <Icon name="save" size={16} />
+            </button>
+          </Tooltip>
         </footer>
       </div>
     </div>

@@ -29,7 +29,7 @@ body back into a `ComposeInit`. Four things that are easy to miss:
   autosave replaces the message, so an idle reopen would churn through draft ids
   for nothing. Attachments come back by blob id (nothing is re-uploaded); inline
   `cid:` parts are left out, they belong to the HTML that references them.
-- **There is a Save button next to Send**, and the footer says *which* state it
+- **There is an icon-only Save button at the right end of the footer** (opposite the attach button), and the footer says *which* state it
   is in ("Unsaved changes" / "Draft saved"). The autosave does work — verified
   against the real server — but it only fires 2.5 s after the last change and
   showed nothing until it did, so closing the window inside that gap dropped
