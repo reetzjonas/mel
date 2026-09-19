@@ -55,6 +55,17 @@ export function isHidden(node: FileNode): boolean {
   return node.name.startsWith('.')
 }
 
+/** Whether a node is the given folder or is nested below it. */
+export function isInFolder(all: FileNode[], id: string | null, folderId: string): boolean {
+  const parentOf = new Map(all.map((n) => [n.id, n.parentId]))
+  const seen = new Set<string>()
+  for (let at = id; at !== null && !seen.has(at); at = parentOf.get(at) ?? null) {
+    if (at === folderId) return true
+    seen.add(at)
+  }
+  return false
+}
+
 /**
  * Where the given nodes may be moved to.
  *

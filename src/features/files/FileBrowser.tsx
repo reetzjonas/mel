@@ -1,9 +1,9 @@
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useMemo, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
-import type { FileNode } from '../../domain/file'
+import type { FileNode, FileNodeRole } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
-import { t } from '../../lib/i18n'
+import { t, type MsgKey } from '../../lib/i18n'
 import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { saveBlob } from '../../lib/saveBlob'
 import { useSelection } from '../../lib/selection'
@@ -17,7 +17,7 @@ import {
 } from '../../services/files'
 import { EmptyState } from '../../ui/EmptyState'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
-import { Icon } from '../../ui/Icon'
+import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
@@ -39,16 +39,48 @@ import { archiveName } from './archive'
 import { symlinkPath } from './symlink'
 import { FilePreview } from './FilePreview'
 import { useAllNodes, useFilePath, useFolderChildren } from './hooks'
-import { isHidden, moveTargets } from './tree'
+import { isHidden, isInFolder, moveTargets } from './tree'
 
 type Dialog =
   | { kind: 'newFolder' }
   | { kind: 'rename'; node: FileNode }
   | { kind: 'move'; anchor: HTMLElement | null }
-  | { kind: 'delete'; title: string; message: string; onConfirm: () => void }
+  | { kind: 'delete'; title: string; message: string; confirmLabel: string; onConfirm: () => void }
 
 const SHOW_HIDDEN_KEY = 'mel:files:showHidden'
 const PREVIEW_LIMITS: PanelLimits = { min: 280, max: 640, initial: 384 }
+
+function nodeLabel(node: FileNode): string {
+  const labels: Record<NonNullable<FileNodeRole>, MsgKey> = {
+    root: 'files.root',
+    home: 'files.role.home',
+    temp: 'files.role.temp',
+    trash: 'files.role.trash',
+    documents: 'files.role.documents',
+    downloads: 'files.role.downloads',
+    music: 'files.role.music',
+    pictures: 'files.role.pictures',
+    videos: 'files.role.videos',
+  }
+  return node.parentId === null && node.role ? t(labels[node.role]) : node.name
+}
+
+function nodeIcon(node: FileNode): IconName {
+  if (node.nodeType !== 'directory') return node.nodeType === 'symlink' ? 'link' : 'file'
+  if (node.parentId !== null) return 'folder'
+  const icons: Record<NonNullable<FileNodeRole>, IconName> = {
+    root: 'folder',
+    home: 'home',
+    temp: 'folder',
+    trash: 'trash',
+    documents: 'file',
+    downloads: 'download',
+    music: 'music',
+    pictures: 'image',
+    videos: 'video',
+  }
+  return icons[node.role ?? 'root']
+}
 
 export function FileBrowser({
   accountId,
@@ -89,6 +121,7 @@ export function FileBrowser({
     : shownChildren
   const trail = useFilePath(accountId, folderId)
   const allNodes = useAllNodes(accountId)
+  const trash = allNodes?.find((node) => node.role === 'trash' && node.nodeType === 'directory')
   const navigate = useNavigate()
   const { showSnackbar } = useUi()
   const [dialog, setDialog] = useState<Dialog | null>(null)
@@ -168,29 +201,61 @@ export function FileBrowser({
     clear()
   }
 
+  const movesToTrash = (ids: string[]) =>
+    Boolean(
+      trash &&
+        !ids.includes(trash.id) &&
+        !ids.some((id) => isInFolder(allNodes ?? [], id, trash.id)),
+    )
+
+  const remove = async (ids: string[]) => {
+    const moved = movesToTrash(ids)
+    setBusy(true)
+    try {
+      const error = await deleteNodes(accountId, ids)
+      if (error) report(error)
+      else if (moved) {
+        showSnackbar({
+          message: t('files.movedToTrash'),
+          actionLabel: t('mail.undo'),
+          action: () => void run(() => moveNodes(accountId, ids, folderId)),
+        })
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const removeChecked = () => {
     const ids = [...checked]
+    const moved = movesToTrash(ids)
     setDialog({
       kind: 'delete',
-      title: t('files.delete'),
-      message: t('files.delete.selection'),
+      title: moved ? t('files.moveToTrash') : t('files.delete'),
+      message: moved ? t('files.moveToTrash.confirm') : t('files.delete.selection'),
+      confirmLabel: moved ? t('files.moveToTrash') : t('files.delete'),
       onConfirm: () => {
         clear()
         if (preview && ids.includes(preview.id)) setPreview(null)
-        void run(() => deleteNodes(accountId, ids))
+        void remove(ids)
       },
     })
   }
 
   const removeOne = (node: FileNode) => {
+    const moved = movesToTrash([node.id])
     setDialog({
       kind: 'delete',
-      title: t('files.delete'),
-      message:
-        node.nodeType === 'directory' ? t('files.deleteFolder.confirm') : t('files.delete.confirm'),
+      title: moved ? t('files.moveToTrash') : t('files.delete'),
+      message: moved
+        ? t('files.moveToTrash.confirm')
+        : node.nodeType === 'directory'
+          ? t('files.deleteFolder.confirm')
+          : t('files.delete.confirm'),
+      confirmLabel: moved ? t('files.moveToTrash') : t('files.delete'),
       onConfirm: () => {
         if (preview?.id === node.id) setPreview(null)
-        void run(() => deleteNodes(accountId, [node.id]))
+        void remove([node.id])
       },
     })
   }
@@ -251,7 +316,7 @@ export function FileBrowser({
             </span>
             <SelectionActionButton
               icon="trash"
-              label={t('files.delete')}
+              label={trash && !isInFolder(allNodes ?? [], folderId, trash.id) ? t('files.moveToTrash') : t('files.delete')}
               disabled={busy}
               onClick={removeChecked}
             />
@@ -460,7 +525,7 @@ export function FileBrowser({
           title={dialog.title}
           message={dialog.message}
           cancelLabel={t('contacts.cancel')}
-          confirmLabel={t('files.delete')}
+          confirmLabel={dialog.confirmLabel}
           onClose={() => setDialog(null)}
           onConfirm={() => {
             const { onConfirm } = dialog
@@ -489,7 +554,7 @@ function MoveDialog({
   // Moving to the top level is only an option when it is not where they are.
   const options: Array<{ id: string | null; name: string }> = [
     ...(atTopLevel ? [] : [{ id: null, name: t('files.move.top') }]),
-    ...targets.map((n) => ({ id: n.id as string | null, name: n.name })),
+    ...targets.map((n) => ({ id: n.id as string | null, name: nodeLabel(n) })),
   ]
   const panel = useRef<HTMLDivElement>(null)
   const mobile = useMobileLayout()
@@ -607,7 +672,7 @@ function Breadcrumb({
         <span key={node.id} className="flex min-w-0 items-center gap-1">
           <span className="text-ink-subtle">/</span>
           {i === all.length - 1 ? (
-            <span className="truncate px-1.5 py-1 font-medium text-ink">{node.name}</span>
+            <span className="truncate px-1.5 py-1 font-medium text-ink">{nodeLabel(node)}</span>
           ) : (
             <Link
               to="/files/$folderId"
@@ -615,7 +680,7 @@ function Breadcrumb({
               {...crumbProps(node.id, node.id)}
               className="truncate rounded-control px-1.5 py-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
             >
-              {node.name}
+              {nodeLabel(node)}
             </Link>
           )}
         </span>
@@ -697,7 +762,7 @@ function FileRow({
             been turned on. */}
         <span className="relative block h-[17px] w-[17px]">
           <Icon
-            name={isDir ? 'folder' : node.nodeType === 'symlink' ? 'link' : 'file'}
+            name={nodeIcon(node)}
             size={17}
             className={`${checked ? 'invisible' : ''} ${isDir ? 'text-accent' : 'text-ink-subtle'}`}
           />
@@ -727,7 +792,7 @@ function FileRow({
         // Labelled by the name alone: the visible text also carries the size
         // or "Folder", and the row's other two buttons carry the name too, so
         // without this there is no way to address just this row.
-        aria-label={node.name}
+        aria-label={nodeLabel(node)}
         // While selecting, the whole row is a target for the selection rather
         // than a way into the folder — otherwise ticking things on a phone
         // means hitting a 17px box.
@@ -735,7 +800,7 @@ function FileRow({
         className="flex min-w-0 flex-1 items-center py-2 pl-2 text-left"
       >
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-[13px] font-medium text-ink">{node.name}</span>
+          <span className="block truncate text-[13px] font-medium text-ink">{nodeLabel(node)}</span>
           <span className="block truncate text-xs text-ink-subtle">
             {isDir
               ? t('files.folder')

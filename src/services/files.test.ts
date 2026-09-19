@@ -60,8 +60,9 @@ const {
 } = await import('./files')
 
 const node = (id: string, parentId: string | null): FileNode => ({
-  id,
-  parentId,
+    id,
+    parentId,
+    role: null,
   nodeType: parentId === null ? 'directory' : 'file',
   name: id,
   blobId: null,
@@ -85,6 +86,44 @@ beforeEach(() => {
 })
 
 describe('deleting a folder', () => {
+  it('moves nodes to the server Trash when one exists', async () => {
+    tree = [
+      { ...node('trash', null), role: 'trash' },
+      node('document', null),
+      node('folder', null),
+      node('nested', 'folder'),
+    ]
+
+    expect(await deleteNodes('acc', ['document', 'folder'])).toBeNull()
+
+    expect(edited).toEqual([
+      { id: 'document', edit: { parentId: 'trash' } },
+      { id: 'folder', edit: { parentId: 'trash' } },
+    ])
+    expect(destroyed).toEqual([])
+  })
+
+  it('permanently destroys nodes already in Trash', async () => {
+    tree = [{ ...node('trash', null), role: 'trash' }, node('document', 'trash')]
+
+    await deleteNodes('acc', ['document'])
+
+    expect(destroyed).toEqual([['document']])
+  })
+
+  it('does not permanently delete an ordinary sibling selected with Trash', async () => {
+    tree = [
+      { ...node('trash', null), role: 'trash' },
+      node('document', null),
+      node('old', 'trash'),
+    ]
+
+    await deleteNodes('acc', ['trash', 'document'])
+
+    expect(edited).toEqual([{ id: 'document', edit: { parentId: 'trash' } }])
+    expect(destroyed).toEqual([['old'], ['trash']])
+  })
+
   it('destroys the deepest level first, one call per level', async () => {
     /*
      * The server refuses a parent and its child in the same call — the child

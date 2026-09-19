@@ -4,10 +4,25 @@
 
 export type FileNodeType = 'file' | 'directory' | 'symlink'
 
+/** Standard top-level folder roles from draft-ietf-jmap-filenode. */
+export type FileNodeRole =
+  | 'root'
+  | 'home'
+  | 'temp'
+  | 'trash'
+  | 'documents'
+  | 'downloads'
+  | 'music'
+  | 'pictures'
+  | 'videos'
+  | null
+
 export interface FileNode {
   id: string
   /** null for a node at the top level of the account. */
   parentId: string | null
+  /** A server-designated top-level folder, or null for an ordinary node. */
+  role?: FileNodeRole
   nodeType: FileNodeType
   /** Unique among its siblings; the server rejects duplicates. */
   name: string

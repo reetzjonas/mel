@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { FileNode } from '../../domain/file'
-import { deepestFirst, isHidden, moveTargets, withDescendants } from './tree'
+import { deepestFirst, isHidden, isInFolder, moveTargets, withDescendants } from './tree'
 
 const dir = (id: string, parentId: string | null = null): FileNode => ({
   id,
@@ -69,6 +69,20 @@ describe('isHidden', () => {
 
   it('is false for an ordinary name', () => {
     expect(isHidden(dir('Notes'))).toBe(false)
+  })
+})
+
+describe('isInFolder', () => {
+  it('recognizes a folder and everything below it', () => {
+    const all = [dir('trash'), dir('nested', 'trash'), file('document', 'nested')]
+
+    expect(isInFolder(all, 'trash', 'trash')).toBe(true)
+    expect(isInFolder(all, 'document', 'trash')).toBe(true)
+    expect(isInFolder(all, 'trash', 'nested')).toBe(false)
+  })
+
+  it('stops at a broken or cyclic parent chain', () => {
+    expect(isInFolder([dir('loop', 'loop')], 'loop', 'trash')).toBe(false)
   })
 })
 

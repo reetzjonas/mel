@@ -234,6 +234,21 @@ node and refuses to change it: `invalidProperties`, "Field could not be set."
 A toggle would be a control that does nothing, and hiding nodes on a flag that
 is always true would be a filter nobody can turn off.
 
+## Special folders and Trash
+
+The FileNode `role` is preserved for standard top-level folders: root, home,
+temp, trash, documents, downloads, music, pictures and videos. The browser
+uses the localized role name and a matching icon rather than the server's
+ordinary folder presentation. Unknown roles stay ordinary folders so a future
+registration never hides a node.
+
+When a directory carries the `trash` role, delete moves nodes into it and offers
+an Undo snackbar that restores them to the folder they came from. Deleting a
+node already under Trash remains permanent. Servers without a Trash expose the
+old permanent-delete behavior unchanged. Stalwart 0.16 advertises FileNode but
+does not create any role folders in the seeded account, so this is covered by
+unit tests rather than its FileNode end-to-end flow.
+
 ## What the server does that the spec does not say
 
 Each of these cost a round of probing; none is guessable from the draft.

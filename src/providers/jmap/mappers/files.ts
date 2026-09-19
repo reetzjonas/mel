@@ -1,12 +1,13 @@
-import type { FileNode, FileNodeType } from '../../../domain/file'
+import type { FileNode, FileNodeRole, FileNodeType } from '../../../domain/file'
 
 // FileNode objects as served by draft-ietf-jmap-filenode. Only what we use;
-// the spec also carries accessed, isSubscribed, myRights, shareWith and role —
-// see filenode.md for why the first two stay out.
+// the spec also carries accessed, isSubscribed, myRights and shareWith — see
+// filenode.md for why the first two stay out.
 
 export interface JmapFileNode {
   id: string
   parentId?: string | null
+  role?: string | null
   nodeType?: string | null
   name?: string | null
   blobId?: string | null
@@ -19,6 +20,17 @@ export interface JmapFileNode {
 }
 
 const NODE_TYPES: readonly string[] = ['file', 'directory', 'symlink']
+const ROLES: readonly string[] = [
+  'root',
+  'home',
+  'temp',
+  'trash',
+  'documents',
+  'downloads',
+  'music',
+  'pictures',
+  'videos',
+]
 
 /**
  * An unknown nodeType becomes 'file' rather than being dropped.
@@ -29,6 +41,11 @@ const NODE_TYPES: readonly string[] = ['file', 'directory', 'symlink']
  */
 function toNodeType(v: string | null | undefined): FileNodeType {
   return NODE_TYPES.includes(v ?? '') ? (v as FileNodeType) : 'file'
+}
+
+/** Unknown roles are not actionable, so keep them as ordinary folders. */
+function toRole(v: string | null | undefined): FileNodeRole {
+  return ROLES.includes(v ?? '') ? (v as FileNodeRole) : null
 }
 
 /**
@@ -49,6 +66,7 @@ export function toFileNode(n: JmapFileNode): FileNode {
   return {
     id: n.id,
     parentId: n.parentId ?? null,
+    role: toRole(n.role),
     nodeType: toNodeType(n.nodeType),
     name: n.name ?? '',
     blobId: n.blobId ?? null,

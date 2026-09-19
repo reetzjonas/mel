@@ -126,8 +126,39 @@ export async function deleteNodes(accountId: string, ids: string[]): Promise<str
   if (!files) return 'noProvider'
   const all = (await files.syncNodes()).created
 
+  const trash = all.find((node) => node.role === 'trash' && node.nodeType === 'directory')
+  const parentOf = new Map(all.map((node) => [node.id, node.parentId]))
+  const isInTrash = (id: string) => {
+    const seen = new Set<string>()
+    for (let at: string | null = id; at !== null && !seen.has(at); at = parentOf.get(at) ?? null) {
+      if (at === trash?.id) return true
+      seen.add(at)
+    }
+    return false
+  }
+
+  // A Trash turns delete into a reversible re-parent. Nodes already there, and
+  // the Trash itself, retain the explicit permanent-delete behavior. Split a
+  // mixed root selection so choosing Trash alongside another folder cannot
+  // accidentally destroy the other folder too.
+  const toTrash = trash ? ids.filter((id) => id !== trash.id && !isInTrash(id)) : []
+  const toDestroy = ids.filter((id) => !toTrash.includes(id))
+  if (trash && toTrash.length) {
+    let failed: string | null = null
+    for (const id of toTrash) {
+      const failure = await files.editNode(id, { parentId: trash.id })
+      if (failure && !failed) failed = message(failure)
+    }
+    for (const level of deepestFirst(all, withDescendants(all, toDestroy))) {
+      const failure = await files.destroyNodes(level)
+      if (failure && !failed) failed = message(failure)
+    }
+    await syncFileTree(accountId)
+    return failed
+  }
+
   let failed: string | null = null
-  for (const level of deepestFirst(all, withDescendants(all, ids))) {
+  for (const level of deepestFirst(all, withDescendants(all, toDestroy))) {
     const failure = await files.destroyNodes(level)
     if (failure && !failed) failed = message(failure)
   }

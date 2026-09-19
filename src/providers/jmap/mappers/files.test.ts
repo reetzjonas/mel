@@ -7,6 +7,7 @@ describe('toFileNode', () => {
       toFileNode({
         id: 'f1',
         parentId: 'd1',
+        role: null,
         nodeType: 'file',
         name: 'notes.txt',
         blobId: 'b1',
@@ -19,6 +20,7 @@ describe('toFileNode', () => {
     ).toEqual({
       id: 'f1',
       parentId: 'd1',
+      role: null,
       nodeType: 'file',
       name: 'notes.txt',
       blobId: 'b1',
@@ -43,6 +45,11 @@ describe('toFileNode', () => {
 
     expect(dir).toMatchObject({ nodeType: 'directory', blobId: null, type: null, size: null })
     expect(dir.parentId).toBeNull()
+  })
+
+  it('keeps a recognized top-level folder role', () => {
+    expect(toFileNode({ id: 'trash', nodeType: 'directory', role: 'trash' }).role).toBe('trash')
+    expect(toFileNode({ id: 'future', role: 'future' }).role).toBeNull()
   })
 
   it('falls back to created when the client that wrote the node left modified unset', () => {
