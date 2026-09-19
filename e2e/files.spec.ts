@@ -13,6 +13,13 @@ async function login(page: Page) {
   })
 }
 
+async function confirmDelete(page: Page) {
+  await page
+    .getByRole('dialog', { name: 'Delete' })
+    .getByRole('button', { name: 'Delete', exact: true })
+    .click()
+}
+
 test('select several items, move them into a folder, then delete them together', async ({
   page,
 }) => {
@@ -65,6 +72,7 @@ test('select several items, move them into a folder, then delete them together',
   await page.getByRole('checkbox', { name: 'Select one.txt' }).click()
   await page.getByRole('checkbox', { name: 'Select two.txt' }).click()
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await confirmDelete(page)
   await expect(page.getByText('This folder is empty')).toBeVisible({ timeout: 15_000 })
 
   // Clean up the folder itself.
@@ -74,6 +82,7 @@ test('select several items, move them into a folder, then delete them together',
     .filter({ hasText: box })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: box, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -131,11 +140,13 @@ test('download a folder and a file beside it as one zip', async ({ page }) => {
     .filter({ hasText: 'beside.txt' })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await page
     .getByRole('listitem')
     .filter({ hasText: box })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: box, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -173,6 +184,7 @@ test('a narrow window shows icons, not checkboxes, until selecting is turned on'
     .filter({ hasText: 'narrow.txt' })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: 'narrow.txt', exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -205,6 +217,7 @@ test('the row stops being draggable while the pointer is on its checkbox', async
   await expect(row).toHaveAttribute('draggable', 'false')
 
   await row.getByRole('button', { name: /^Delete / }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: 'handle.txt', exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -229,6 +242,7 @@ test('shift-click takes the whole run between two rows', async ({ page }) => {
   await expect(page.getByText('3 selected')).toBeVisible()
 
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: 'b.txt', exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -291,11 +305,13 @@ test('drag a file onto a folder to move it, and onto the breadcrumb to bring it 
     .filter({ hasText: 'dragged.txt' })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await page
     .getByRole('listitem')
     .filter({ hasText: box })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: box, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -380,6 +396,7 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
     .filter({ hasText: folder })
     .getByRole('button', { name: /^Delete / })
     .click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: folder, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -415,6 +432,7 @@ test('the search box narrows the folder to matching names, and the clear button 
   await page.getByRole('checkbox', { name: `Select apple-${tag}.txt` }).click()
   await page.getByRole('checkbox', { name: `Select banana-${tag}.txt` }).click()
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name: `apple-${tag}.txt`, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -465,6 +483,7 @@ test('the preview panel can be resized, and the width survives a reload', async 
   // Cleanup.
   await page.getByRole('checkbox', { name: `Select ${name}` }).click()
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0, {
     timeout: 15_000,
   })

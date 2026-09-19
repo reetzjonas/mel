@@ -75,9 +75,16 @@ test('enable encryption, reload, unlock, read mail — no plaintext at rest', as
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
 
   // Clean up: disable encryption again for the other test runs.
-  page.on('dialog', (d) => void d.accept(PASSPHRASE))
   await openSettings(page, 'Security')
   await page.getByRole('button', { name: 'Disable encryption' }).click()
+  await page
+    .getByRole('dialog', { name: 'Disable encryption' })
+    .getByRole('textbox')
+    .fill(PASSPHRASE)
+  await page
+    .getByRole('dialog', { name: 'Disable encryption' })
+    .getByRole('button', { name: 'Disable encryption' })
+    .click()
   await expect(page.getByRole('button', { name: 'Encrypt local data' })).toBeVisible({
     timeout: 20_000,
   })

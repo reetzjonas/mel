@@ -16,6 +16,7 @@ import {
   uploadFiles,
 } from '../../services/files'
 import { EmptyState } from '../../ui/EmptyState'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { ResizeHandle } from '../../ui/ResizeHandle'
@@ -44,6 +45,7 @@ type Dialog =
   | { kind: 'newFolder' }
   | { kind: 'rename'; node: FileNode }
   | { kind: 'move'; anchor: HTMLElement | null }
+  | { kind: 'delete'; title: string; message: string; onConfirm: () => void }
 
 const SHOW_HIDDEN_KEY = 'mel:files:showHidden'
 const PREVIEW_LIMITS: PanelLimits = { min: 280, max: 640, initial: 384 }
@@ -167,19 +169,30 @@ export function FileBrowser({
   }
 
   const removeChecked = () => {
-    if (!window.confirm(t('files.delete.selection'))) return
     const ids = [...checked]
-    clear()
-    if (preview && ids.includes(preview.id)) setPreview(null)
-    void run(() => deleteNodes(accountId, ids))
+    setDialog({
+      kind: 'delete',
+      title: t('files.delete'),
+      message: t('files.delete.selection'),
+      onConfirm: () => {
+        clear()
+        if (preview && ids.includes(preview.id)) setPreview(null)
+        void run(() => deleteNodes(accountId, ids))
+      },
+    })
   }
 
   const removeOne = (node: FileNode) => {
-    const question =
-      node.nodeType === 'directory' ? t('files.deleteFolder.confirm') : t('files.delete.confirm')
-    if (!window.confirm(question)) return
-    if (preview?.id === node.id) setPreview(null)
-    void run(() => deleteNodes(accountId, [node.id]))
+    setDialog({
+      kind: 'delete',
+      title: t('files.delete'),
+      message:
+        node.nodeType === 'directory' ? t('files.deleteFolder.confirm') : t('files.delete.confirm'),
+      onConfirm: () => {
+        if (preview?.id === node.id) setPreview(null)
+        void run(() => deleteNodes(accountId, [node.id]))
+      },
+    })
   }
 
   /** Accept a node drop onto a folder, unless it is one of the nodes in flight. */
@@ -439,6 +452,20 @@ export function FileBrowser({
           onPick={(parentId) => {
             setDialog(null)
             void move([...checked], parentId)
+          }}
+        />
+      )}
+      {dialog?.kind === 'delete' && (
+        <ConfirmDialog
+          title={dialog.title}
+          message={dialog.message}
+          cancelLabel={t('contacts.cancel')}
+          confirmLabel={t('files.delete')}
+          onClose={() => setDialog(null)}
+          onConfirm={() => {
+            const { onConfirm } = dialog
+            setDialog(null)
+            onConfirm()
           }}
         />
       )}

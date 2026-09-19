@@ -1,9 +1,11 @@
 import { useLiveQuery } from 'dexie-react-hooks'
+import { useState } from 'react'
 import { formatRelativePast } from '../../lib/dates'
 import { t } from '../../lib/i18n'
 import { db, type OutboxRow } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
 import { discardAction, retryAction, type OutboxAction } from '../../sync/outbox'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { secondaryButtonClass } from '../../ui/styles'
 import { describeAction } from './queue'
 
@@ -32,7 +34,7 @@ function statusLine(row: OutboxRow): { text: string; failed: boolean } {
   return { text: t('queue.status.waiting'), failed: false }
 }
 
-function Entry({ row }: { row: OutboxRow }) {
+function Entry({ row, onDiscard }: { row: OutboxRow; onDiscard: (seq: number) => void }) {
   let title: string
   try {
     const summary = describeAction(openEnvelope(row.payload) as OutboxAction)
@@ -74,7 +76,7 @@ function Entry({ row }: { row: OutboxRow }) {
         onClick={() => {
           // Discarding loses the change for good, and the next sync puts the
           // server's version back over the local one — worth one question.
-          if (window.confirm(t('queue.discardConfirm'))) void discardAction(row.seq!)
+          onDiscard(row.seq!)
         }}
       >
         {t('queue.discard')}
@@ -92,6 +94,7 @@ function Entry({ row }: { row: OutboxRow }) {
  * whatever blocked it is gone — or thrown away.
  */
 export function OutboxQueue({ accountId }: { accountId: string }) {
+  const [discarding, setDiscarding] = useState<number | null>(null)
   // toArray, not a cursor: the outbox carries an encrypted payload, and cursor
   // reads bypass the crypto middleware (see storage/crypto/middleware.ts).
   const rows = useLiveQuery(
@@ -100,15 +103,31 @@ export function OutboxQueue({ accountId }: { accountId: string }) {
     [] as OutboxRow[],
   )
 
-  if (!rows.length) return <p className="text-sm text-ink-muted">{t('queue.empty')}</p>
+  if (!rows.length && discarding === null)
+    return <p className="text-sm text-ink-muted">{t('queue.empty')}</p>
   return (
-    <div className="space-y-2">
-      <ul>
-        {[...rows].sort(order).map((row) => (
-          <Entry key={row.seq} row={row} />
-        ))}
-      </ul>
-      <p className="text-xs text-ink-subtle">{t('queue.hint')}</p>
-    </div>
+    <>
+      <div className="space-y-2">
+        <ul>
+          {[...rows].sort(order).map((row) => (
+            <Entry key={row.seq} row={row} onDiscard={setDiscarding} />
+          ))}
+        </ul>
+        <p className="text-xs text-ink-subtle">{t('queue.hint')}</p>
+      </div>
+      {discarding !== null && (
+        <ConfirmDialog
+          title={t('queue.discard')}
+          message={t('queue.discardConfirm')}
+          cancelLabel={t('folder.cancel')}
+          confirmLabel={t('queue.discard')}
+          onClose={() => setDiscarding(null)}
+          onConfirm={() => {
+            void discardAction(discarding)
+            setDiscarding(null)
+          }}
+        />
+      )}
+    </>
   )
 }

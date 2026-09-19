@@ -29,6 +29,13 @@ async function openFilterRules(page: Page) {
 const SCRIPT =
   'require ["fileinto"];\nif header :contains "subject" "mel-e2e" {\n  fileinto "INBOX";\n}\n'
 
+async function confirmDelete(page: Page) {
+  await page
+    .getByRole('dialog', { name: 'Delete' })
+    .getByRole('button', { name: 'Delete', exact: true })
+    .click()
+}
+
 test('build a rule in the form, and the server accepts what it generated', async ({ page }) => {
   const name = `wiz-${Date.now() % 100000}`
   page.on('dialog', (d) => void d.accept())
@@ -70,6 +77,7 @@ test('build a rule in the form, and the server accepts what it generated', async
 
   await row.getByRole('button', { name: 'Switch filtering off' }).click()
   await row.getByRole('button', { name: 'Delete' }).click()
+  await confirmDelete(page)
   await expect(rules.getByRole('listitem').filter({ hasText: name })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -136,6 +144,7 @@ test('a hand-written script is offered as text, not rewritten by the form', asyn
   await rules.getByRole('button', { name: 'Cancel' }).click()
 
   await row.getByRole('button', { name: 'Delete' }).click()
+  await confirmDelete(page)
   await expect(rules.getByRole('listitem').filter({ hasText: name })).toHaveCount(0, {
     timeout: 15_000,
   })
@@ -178,6 +187,7 @@ test('write a rule set, have the server check it, activate and delete it', async
 
   // The active script cannot be deleted, and saying so is the useful part.
   await row.getByRole('button', { name: 'Delete' }).click()
+  await confirmDelete(page)
   await expect(rules.getByRole('status')).toContainText('Switch this rule set off', {
     timeout: 15_000,
   })
@@ -185,6 +195,7 @@ test('write a rule set, have the server check it, activate and delete it', async
   await row.getByRole('button', { name: 'Switch filtering off' }).click()
   await expect(row).not.toContainText('Active', { timeout: 15_000 })
   await row.getByRole('button', { name: 'Delete' }).click()
+  await confirmDelete(page)
   await expect(rules.getByRole('listitem').filter({ hasText: name })).toHaveCount(0, {
     timeout: 15_000,
   })

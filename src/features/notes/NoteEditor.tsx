@@ -4,6 +4,7 @@ import { t } from '../../lib/i18n'
 import { imageNames, imageRef } from '../../lib/noteFile'
 import { deleteNote, saveNote, stageNoteImage } from '../../services/notes'
 import { Icon } from '../../ui/Icon'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { inputClass, secondaryButtonClass } from '../../ui/styles'
 import { useNoteImages } from './hooks'
 
@@ -42,6 +43,7 @@ export function NoteEditor({
     body: note.body,
   })
   const picker = useRef<HTMLInputElement>(null)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   /*
    * The note as the store has it, beside what is being typed. Switching notes
@@ -86,83 +88,95 @@ export function NoteEditor({
   const imageUrls = useNoteImages(accountId, note, imageNames(body))
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
-        <input
-          /* No focus ring on either box: both fill their half of the pane, so
+    <>
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
+          <input
+            /* No focus ring on either box: both fill their half of the pane, so
              a ring is a line around the whole panel, and the caret already
              says where the writing goes — the same call compose makes for the
              message body (.ProseMirror in index.css). */
-          className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-ink outline-none focus-visible:outline-none placeholder:text-ink-subtle"
-          placeholder={t('notes.titlePlaceholder')}
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          aria-label={t('notes.title')}
-        />
-        <button
-          type="button"
-          aria-label={t('notes.pin')}
-          aria-pressed={note.pinned}
-          onClick={() => write({ pinned: !note.pinned })}
-          className={`rounded-control p-1.5 transition-colors hover:bg-surface-2 ${
-            note.pinned ? 'text-accent' : 'text-ink-muted'
-          }`}
-        >
-          <Icon name="flag" size={15} />
-        </button>
-        <button
-          type="button"
-          aria-label={t('notes.addImage')}
-          onClick={() => picker.current?.click()}
-          className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-        >
-          <Icon name="paperclip" size={15} />
-        </button>
-        <input
-          ref={picker}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            void addImage(e.target.files?.[0])
-            e.target.value = ''
-          }}
-        />
-      </div>
-
-      <Suspense fallback={<div className="min-h-0 flex-1" />}>
-        <MarkdownEditor
-          value={body}
-          images={imageUrls}
-          placeholder={t('notes.bodyPlaceholder')}
-          ariaLabel={t('notes.body')}
-          onChange={setBody}
-        />
-      </Suspense>
-
-      <div className="flex items-center gap-2 border-t border-line p-3">
-        <label className="flex items-center gap-2 text-xs text-ink-muted">
-          {t('notes.due')}
-          <input
-            type="date"
-            className={`${inputClass} !w-auto !py-1`}
-            value={note.due ?? ''}
-            onChange={(e) => write({ due: e.target.value || null })}
-            aria-label={t('notes.due')}
+            className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-ink outline-none focus-visible:outline-none placeholder:text-ink-subtle"
+            placeholder={t('notes.titlePlaceholder')}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            aria-label={t('notes.title')}
           />
-        </label>
-        <span className="text-xs text-ink-subtle">{dirty ? t('notes.saving') : ''}</span>
-        <button
-          type="button"
-          onClick={() => {
-            if (!window.confirm(t('notes.delete.confirm'))) return
+          <button
+            type="button"
+            aria-label={t('notes.pin')}
+            aria-pressed={note.pinned}
+            onClick={() => write({ pinned: !note.pinned })}
+            className={`rounded-control p-1.5 transition-colors hover:bg-surface-2 ${
+              note.pinned ? 'text-accent' : 'text-ink-muted'
+            }`}
+          >
+            <Icon name="flag" size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label={t('notes.addImage')}
+            onClick={() => picker.current?.click()}
+            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <Icon name="paperclip" size={15} />
+          </button>
+          <input
+            ref={picker}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              void addImage(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
+        </div>
+
+        <Suspense fallback={<div className="min-h-0 flex-1" />}>
+          <MarkdownEditor
+            value={body}
+            images={imageUrls}
+            placeholder={t('notes.bodyPlaceholder')}
+            ariaLabel={t('notes.body')}
+            onChange={setBody}
+          />
+        </Suspense>
+
+        <div className="flex items-center gap-2 border-t border-line p-3">
+          <label className="flex items-center gap-2 text-xs text-ink-muted">
+            {t('notes.due')}
+            <input
+              type="date"
+              className={`${inputClass} !w-auto !py-1`}
+              value={note.due ?? ''}
+              onChange={(e) => write({ due: e.target.value || null })}
+              aria-label={t('notes.due')}
+            />
+          </label>
+          <span className="text-xs text-ink-subtle">{dirty ? t('notes.saving') : ''}</span>
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            className={`ml-auto ${secondaryButtonClass} !text-danger`}
+          >
+            {t('notes.delete')}
+          </button>
+        </div>
+      </div>
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={t('notes.delete')}
+          message={t('notes.delete.confirm')}
+          cancelLabel={t('contacts.cancel')}
+          confirmLabel={t('notes.delete')}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false)
             void deleteNote(accountId, note).then(onDeleted)
           }}
-          className={`ml-auto ${secondaryButtonClass} !text-danger`}
-        >
-          {t('notes.delete')}
-        </button>
-      </div>
-    </div>
+        />
+      )}
+    </>
   )
 }

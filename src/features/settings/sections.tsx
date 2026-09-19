@@ -32,6 +32,7 @@ import { scheduleSettingsSync } from '../../services/settings'
 import type { Account } from '../../domain/account'
 import type { VacationSettings } from '../../providers/types'
 import { Select } from '../../ui/Select'
+import { NameDialog } from '../../ui/NameDialog'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { anchorId, type SettingsAnchor } from './tabs'
 
@@ -323,44 +324,59 @@ export function EncryptionSetting({ accountId }: { accountId: string }) {
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [disabling, setDisabling] = useState(false)
   const bumpUnlock = useUi((s) => s.bumpUnlock)
 
   if (enabled) {
     return (
-      <div className="space-y-3">
-        <p className="text-sm text-ink-muted">{t('crypto.enabled')}</p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            className={secondaryButtonClass}
-            onClick={() => {
-              lock(accountId)
-              bumpUnlock()
-            }}
-          >
-            {t('crypto.lockNow')}
-          </button>
-          <button
-            type="button"
-            className="rounded-control border border-danger px-3 py-2 text-sm text-danger transition-colors hover:bg-danger-wash"
-            onClick={() => {
-              const p = prompt(t('crypto.currentPassphrase'))
-              if (!p) return
+      <>
+        <div className="space-y-3">
+          <p className="text-sm text-ink-muted">{t('crypto.enabled')}</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              onClick={() => {
+                lock(accountId)
+                bumpUnlock()
+              }}
+            >
+              {t('crypto.lockNow')}
+            </button>
+            <button
+              type="button"
+              className="rounded-control border border-danger px-3 py-2 text-sm text-danger transition-colors hover:bg-danger-wash"
+              onClick={() => setDisabling(true)}
+              disabled={busy}
+            >
+              {t('crypto.disable')}
+            </button>
+          </div>
+          {error && <p className="text-sm text-danger">{error}</p>}
+        </div>
+        {disabling && (
+          <NameDialog
+            title={t('crypto.disable')}
+            inputType="password"
+            trimValue={false}
+            confirmLabel={t('crypto.disable')}
+            cancelLabel={t('folder.cancel')}
+            onClose={() => setDisabling(false)}
+            onConfirm={(p) => {
               setBusy(true)
               void disableEncryption(accountId, p)
                 .then((ok) => {
                   if (ok) setEnabled(false)
                   else setError(t('crypto.wrongPassphrase'))
                 })
-                .finally(() => setBusy(false))
+                .finally(() => {
+                  setBusy(false)
+                  setDisabling(false)
+                })
             }}
-            disabled={busy}
-          >
-            {t('crypto.disable')}
-          </button>
-        </div>
-        {error && <p className="text-sm text-danger">{error}</p>}
-      </div>
+          />
+        )}
+      </>
     )
   }
 

@@ -293,7 +293,6 @@ test('select several contacts and delete them together', async ({ page }) => {
   const tag = Date.now() % 100000
   const nameA = `BulkAlpha${tag}`
   const nameB = `BulkBeta${tag}`
-  page.on('dialog', (d) => void d.accept())
 
   await login(page)
   await page.getByRole('link', { name: 'Contacts' }).first().click()
@@ -317,6 +316,10 @@ test('select several contacts and delete them together', async ({ page }) => {
 
   await page
     .getByTestId('selection-toolbar')
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Delete contact' })
     .getByRole('button', { name: 'Delete contact' })
     .click()
   await expect(page.getByRole('link', { name: `Erika ${nameA}` })).toHaveCount(0)

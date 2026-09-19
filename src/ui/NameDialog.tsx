@@ -6,6 +6,8 @@ import { DialogHeader } from './DialogHeader'
 export function NameDialog({
   title,
   initial = '',
+  inputType = 'text',
+  trimValue = true,
   confirmLabel,
   cancelLabel,
   onConfirm,
@@ -13,6 +15,8 @@ export function NameDialog({
 }: {
   title: string
   initial?: string
+  inputType?: 'text' | 'url' | 'password'
+  trimValue?: boolean
   confirmLabel: string
   cancelLabel: string
   onConfirm: (value: string) => void
@@ -38,7 +42,8 @@ export function NameDialog({
         style={mobileViewport ? { maxHeight: `${mobileViewport.height - 32}px` } : undefined}
         onSubmit={(e) => {
           e.preventDefault()
-          if (value.trim()) onConfirm(value.trim())
+          const confirmed = trimValue ? value.trim() : value
+          if (confirmed) onConfirm(confirmed)
         }}
       >
         <DialogHeader
@@ -58,6 +63,8 @@ export function NameDialog({
           <input
             autoFocus
             ref={input}
+            type={inputType}
+            aria-label={title}
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className={inputClass}

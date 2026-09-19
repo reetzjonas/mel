@@ -11,6 +11,13 @@ async function login(page: Page) {
   })
 }
 
+async function confirmDelete(page: Page) {
+  await page
+    .getByRole('dialog', { name: 'Delete note' })
+    .getByRole('button', { name: 'Delete note', exact: true })
+    .click()
+}
+
 /** A small PNG made in the page, so the test carries no binary of its own. */
 async function picture(page: Page): Promise<Buffer> {
   const base64 = await page.evaluate(() => {
@@ -109,6 +116,7 @@ test('write a note, tick an item off, and find it again after a reload', async (
   // Cleanup: the note is a folder, and deleting it takes the folder with it.
   await page.getByRole('link', { name: title }).click()
   await page.getByRole('button', { name: 'Delete note' }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
 })
 
@@ -159,6 +167,7 @@ test('a picture in a note is a file beside it, and survives a reload', async ({ 
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await page.getByRole('link', { name: title }).click()
   await page.getByRole('button', { name: 'Delete note' }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
 })
 
@@ -214,6 +223,7 @@ test('a note written offline is waiting on the server once the connection is bac
   await expect(page.getByText('kein Netz, trotzdem geschrieben')).toBeVisible({ timeout: 15_000 })
 
   await page.getByRole('button', { name: 'Delete note' }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
 })
 
@@ -265,6 +275,7 @@ test('the toolbar writes the markdown, and the file has it', async ({ page }) =>
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await page.getByRole('link', { name: title }).click()
   await page.getByRole('button', { name: 'Delete note' }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('link', { name: title })).toHaveCount(0, { timeout: 15_000 })
 })
 
@@ -312,6 +323,7 @@ test('select several notes, pin and delete them together', async ({ page }) => {
   await page.getByRole('checkbox', { name: `Select ${titleA}` }).click()
   await page.getByRole('checkbox', { name: `Select ${titleB}` }).click()
   await page.getByTestId('selection-toolbar').getByRole('button', { name: 'Delete note' }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('link', { name: titleA })).toHaveCount(0, { timeout: 15_000 })
   await expect(page.getByRole('link', { name: titleB })).toHaveCount(0)
 })
@@ -352,6 +364,7 @@ test('the search box narrows the list to matching titles, and the clear button r
   await page.getByRole('checkbox', { name: `Select ${titleA}` }).click()
   await page.getByRole('checkbox', { name: `Select ${titleB}` }).click()
   await page.getByTestId('selection-toolbar').getByRole('button', { name: 'Delete note' }).click()
+  await confirmDelete(page)
   await expect(page.getByRole('link', { name: titleA })).toHaveCount(0, { timeout: 15_000 })
   await expect(page.getByRole('link', { name: titleB })).toHaveCount(0)
 })

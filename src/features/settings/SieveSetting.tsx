@@ -23,6 +23,7 @@ import {
   type SieveOutcome,
 } from '../../services/sieve'
 import { Icon } from '../../ui/Icon'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 
 /**
@@ -57,6 +58,7 @@ export function SieveSetting({ accountId }: { accountId: string }) {
   )
   const [note, setNote] = useState<Note>(null)
   const [busy, setBusy] = useState(false)
+  const [deleting, setDeleting] = useState<SieveScript | null>(null)
   const mailboxes = useMailboxes(accountId)
   const setFilterSeed = useUi((s) => s.setFilterSeed)
   const folders = mailboxPaths(mailboxes ?? [])
@@ -144,176 +146,192 @@ export function SieveSetting({ accountId }: { accountId: string }) {
   }
 
   const remove = (script: SieveScript) => {
-    if (!window.confirm(t('sieve.delete.confirm'))) return
-    void run(() => deleteScript(accountId, script.id))
+    setDeleting(script)
   }
 
   if (scripts === null) return <p className="text-sm text-ink-muted">{t('sieve.loading')}</p>
 
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-ink-muted">{t('sieve.hint')}</p>
+    <>
+      <div className="space-y-3">
+        <p className="text-sm text-ink-muted">{t('sieve.hint')}</p>
 
-      {note && (
-        <p
-          role="status"
-          className={`rounded-control px-3 py-2 text-xs ${
-            note.kind === 'error' ? 'bg-danger/10 text-danger' : 'bg-accent-wash text-ink'
-          }`}
-        >
-          {note.text}
-        </p>
-      )}
+        {note && (
+          <p
+            role="status"
+            className={`rounded-control px-3 py-2 text-xs ${
+              note.kind === 'error' ? 'bg-danger/10 text-danger' : 'bg-accent-wash text-ink'
+            }`}
+          >
+            {note.text}
+          </p>
+        )}
 
-      {draft ? (
-        <div className="space-y-2">
-          <input
-            className={inputClass}
-            aria-label={t('sieve.name')}
-            placeholder={t('sieve.name')}
-            value={draft.name}
-            onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-          />
-          {draft.mode === 'rules' ? (
-            <RuleWizard
-              rules={draft.rules}
-              folders={folders}
-              onChange={(rules) => setDraft({ ...draft, rules })}
+        {draft ? (
+          <div className="space-y-2">
+            <input
+              className={inputClass}
+              aria-label={t('sieve.name')}
+              placeholder={t('sieve.name')}
+              value={draft.name}
+              onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             />
-          ) : (
-            <>
-              <p className="text-xs text-ink-subtle">
-                {draft.handWritten ? t('rule.handWritten') : t('rule.textWarning')}
-              </p>
-              <textarea
-                className={`${inputClass} min-h-48 font-mono text-xs`}
-                aria-label={t('sieve.script')}
-                spellCheck={false}
-                value={draft.content}
-                onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+            {draft.mode === 'rules' ? (
+              <RuleWizard
+                rules={draft.rules}
+                folders={folders}
+                onChange={(rules) => setDraft({ ...draft, rules })}
               />
-            </>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              className={primaryButtonClass}
-              onClick={() => void save(true)}
-            >
-              {t('sieve.saveActive')}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              className={secondaryButtonClass}
-              onClick={() => void save(false)}
-            >
-              {t('sieve.save')}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              className={secondaryButtonClass}
-              onClick={() => void check()}
-            >
-              {t('sieve.check')}
-            </button>
-            {draft.mode === 'rules' && (
-              /*
-               * One way only. Going back would mean reading the rules off the
-               * marker line, which no longer describes a body edited by hand —
-               * so the form would show one thing, saving would write another,
-               * and the text edits would be gone without a word.
-               */
+            ) : (
+              <>
+                <p className="text-xs text-ink-subtle">
+                  {draft.handWritten ? t('rule.handWritten') : t('rule.textWarning')}
+                </p>
+                <textarea
+                  className={`${inputClass} min-h-48 font-mono text-xs`}
+                  aria-label={t('sieve.script')}
+                  spellCheck={false}
+                  value={draft.content}
+                  onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                />
+              </>
+            )}
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                className={primaryButtonClass}
+                onClick={() => void save(true)}
+              >
+                {t('sieve.saveActive')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className={secondaryButtonClass}
+                onClick={() => void save(false)}
+              >
+                {t('sieve.save')}
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                className={secondaryButtonClass}
+                onClick={() => void check()}
+              >
+                {t('sieve.check')}
+              </button>
+              {draft.mode === 'rules' && (
+                /*
+                 * One way only. Going back would mean reading the rules off the
+                 * marker line, which no longer describes a body edited by hand —
+                 * so the form would show one thing, saving would write another,
+                 * and the text edits would be gone without a word.
+                 */
+                <button
+                  type="button"
+                  className={secondaryButtonClass}
+                  onClick={() =>
+                    setDraft({
+                      mode: 'text',
+                      ...(draft.id ? { id: draft.id } : {}),
+                      name: draft.name,
+                      content: toSieveScript(draft.rules),
+                      handWritten: false,
+                    })
+                  }
+                >
+                  {t('rule.asText')}
+                </button>
+              )}
               <button
                 type="button"
                 className={secondaryButtonClass}
-                onClick={() =>
-                  setDraft({
-                    mode: 'text',
-                    ...(draft.id ? { id: draft.id } : {}),
-                    name: draft.name,
-                    content: toSieveScript(draft.rules),
-                    handWritten: false,
-                  })
-                }
+                onClick={() => {
+                  setDraft(null)
+                  setNote(null)
+                }}
               >
-                {t('rule.asText')}
+                {t('sieve.cancel')}
               </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {scripts.length === 0 ? (
+              <p className="text-sm text-ink-muted">{t('sieve.none')}</p>
+            ) : (
+              <ul className="space-y-1">
+                {scripts.map((script) => (
+                  <li
+                    key={script.id}
+                    className="flex items-center gap-2 rounded-control bg-surface-2 px-3 py-2"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm">{script.name}</span>
+                    {script.isActive && (
+                      <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold tracking-wide text-accent-ink uppercase">
+                        <Icon name="check" size={11} />
+                        {t('sieve.active')}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="shrink-0 text-xs text-accent hover:underline"
+                      onClick={() =>
+                        void run(() =>
+                          setActiveScript(accountId, script.isActive ? null : script.id),
+                        )
+                      }
+                    >
+                      {script.isActive ? t('sieve.deactivate') : t('sieve.activate')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="shrink-0 text-xs text-ink-muted hover:text-ink hover:underline"
+                      onClick={() => void edit(script)}
+                    >
+                      {t('sieve.edit')}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      className="shrink-0 text-xs text-ink-muted hover:text-danger hover:underline"
+                      onClick={() => remove(script)}
+                    >
+                      {t('sieve.delete')}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
             <button
               type="button"
               className={secondaryButtonClass}
               onClick={() => {
-                setDraft(null)
                 setNote(null)
+                setDraft({ mode: 'rules', name: '', rules: [emptyRule()] })
               }}
             >
-              {t('sieve.cancel')}
+              {t('sieve.new')}
             </button>
-          </div>
-        </div>
-      ) : (
-        <>
-          {scripts.length === 0 ? (
-            <p className="text-sm text-ink-muted">{t('sieve.none')}</p>
-          ) : (
-            <ul className="space-y-1">
-              {scripts.map((script) => (
-                <li
-                  key={script.id}
-                  className="flex items-center gap-2 rounded-control bg-surface-2 px-3 py-2"
-                >
-                  <span className="min-w-0 flex-1 truncate text-sm">{script.name}</span>
-                  {script.isActive && (
-                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold tracking-wide text-accent-ink uppercase">
-                      <Icon name="check" size={11} />
-                      {t('sieve.active')}
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="shrink-0 text-xs text-accent hover:underline"
-                    onClick={() =>
-                      void run(() => setActiveScript(accountId, script.isActive ? null : script.id))
-                    }
-                  >
-                    {script.isActive ? t('sieve.deactivate') : t('sieve.activate')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="shrink-0 text-xs text-ink-muted hover:text-ink hover:underline"
-                    onClick={() => void edit(script)}
-                  >
-                    {t('sieve.edit')}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    className="shrink-0 text-xs text-ink-muted hover:text-danger hover:underline"
-                    onClick={() => remove(script)}
-                  >
-                    {t('sieve.delete')}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <button
-            type="button"
-            className={secondaryButtonClass}
-            onClick={() => {
-              setNote(null)
-              setDraft({ mode: 'rules', name: '', rules: [emptyRule()] })
-            }}
-          >
-            {t('sieve.new')}
-          </button>
-        </>
+          </>
+        )}
+      </div>
+      {deleting && (
+        <ConfirmDialog
+          title={t('sieve.delete')}
+          message={t('sieve.delete.confirm')}
+          cancelLabel={t('sieve.cancel')}
+          confirmLabel={t('sieve.delete')}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => {
+            void run(() => deleteScript(accountId, deleting.id))
+            setDeleting(null)
+          }}
+        />
       )}
-    </div>
+    </>
   )
 }

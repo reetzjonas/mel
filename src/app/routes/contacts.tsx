@@ -11,6 +11,7 @@ import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/pane
 import { useSelection, type Selection } from '../../lib/selection'
 import { deleteContacts } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
 import { ResizeHandle } from '../../ui/ResizeHandle'
@@ -35,6 +36,7 @@ function ContactsLayout() {
   const { showSnackbar } = useUi()
   const [filter, setFilter] = useState('')
   const [busy, setBusy] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
   const listPanel = usePanelWidth('contacts-list', LIST_LIMITS)
   const listRef = useRef<HTMLElement | null>(null)
 
@@ -55,7 +57,7 @@ function ContactsLayout() {
   const { selected: checked, selecting, setSelecting, clear } = selection
 
   const removeChecked = async () => {
-    if (!account || !window.confirm(t('contacts.delete.selection'))) return
+    if (!account) return
     const ids = [...checked]
     clear()
     setBusy(true)
@@ -74,81 +76,96 @@ function ContactsLayout() {
   const inDetail = Boolean(params.contactId)
 
   return (
-    <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
-      <section
-        ref={listRef}
-        style={{ [PANEL_WIDTH_VAR]: `${listPanel.width}px` } as React.CSSProperties}
-        className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-[var(--mel-panel-w)] lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
-      >
-        {checked.size > 0 ? (
-          <SelectionToolbar count={checked.size} onClear={clear} busy={busy}>
-            <SelectionActionButton
-              icon="trash"
-              label={t('contacts.delete')}
-              disabled={busy}
-              onClick={() => void removeChecked()}
-            />
-          </SelectionToolbar>
-        ) : (
-          <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
-            <SearchInput
-              value={filter}
-              onChange={setFilter}
-              placeholder={t('contacts.search')}
-              clearLabel={t('search.clear')}
-            />
-            <button
-              type="button"
-              aria-pressed={selecting}
-              onClick={() => setSelecting(!selecting)}
-              className={`${secondaryButtonClass} ${selecting ? 'bg-surface-2 text-ink' : ''}`}
-            >
-              {t('contacts.selectToggle')}
-            </button>
-            <Tooltip label={t('contacts.new')}>
+    <>
+      <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
+        <section
+          ref={listRef}
+          style={{ [PANEL_WIDTH_VAR]: `${listPanel.width}px` } as React.CSSProperties}
+          className={`panel flex h-full w-full min-w-0 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none lg:flex lg:w-[var(--mel-panel-w)] lg:shrink-0 ${inDetail ? 'hidden' : ''}`}
+        >
+          {checked.size > 0 ? (
+            <SelectionToolbar count={checked.size} onClear={clear} busy={busy}>
+              <SelectionActionButton
+                icon="trash"
+                label={t('contacts.delete')}
+                disabled={busy}
+                onClick={() => setConfirmingDelete(true)}
+              />
+            </SelectionToolbar>
+          ) : (
+            <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
+              <SearchInput
+                value={filter}
+                onChange={setFilter}
+                placeholder={t('contacts.search')}
+                clearLabel={t('search.clear')}
+              />
               <button
                 type="button"
-                aria-label={t('contacts.new')}
-                onClick={() => void navigate({ to: '/contacts/new' })}
-                className={primaryIconButtonClass}
+                aria-pressed={selecting}
+                onClick={() => setSelecting(!selecting)}
+                className={`${secondaryButtonClass} ${selecting ? 'bg-surface-2 text-ink' : ''}`}
               >
-                <Icon name="compose" size={15} />
+                {t('contacts.selectToggle')}
               </button>
-            </Tooltip>
-          </div>
-        )}
-        <div className="min-h-0 flex-1">
-          {filtered === undefined ? (
-            <ListSkeleton avatar="circle" lines={1} />
-          ) : filtered.length === 0 ? (
-            <EmptyState
-              icon="contact"
-              title={filter ? t('contacts.noResults') : t('contacts.empty')}
-            />
-          ) : (
-            <ContactRows
-              contacts={filtered}
-              selectedId={params.contactId}
-              selection={selection}
-              selecting={selecting || checked.size > 0}
-            />
+              <Tooltip label={t('contacts.new')}>
+                <button
+                  type="button"
+                  aria-label={t('contacts.new')}
+                  onClick={() => void navigate({ to: '/contacts/new' })}
+                  className={primaryIconButtonClass}
+                >
+                  <Icon name="compose" size={15} />
+                </button>
+              </Tooltip>
+            </div>
           )}
-        </div>
-      </section>
-      <ResizeHandle
-        limits={LIST_LIMITS}
-        label={t('contacts.resizeList')}
-        width={listPanel.width}
-        targetRef={listRef}
-        onCommit={listPanel.commit}
-        onReset={listPanel.reset}
-      />
-      <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
-        <div className="panel h-full overflow-y-auto max-sm:rounded-none max-sm:shadow-none">
-          <Outlet />
+          <div className="min-h-0 flex-1">
+            {filtered === undefined ? (
+              <ListSkeleton avatar="circle" lines={1} />
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                icon="contact"
+                title={filter ? t('contacts.noResults') : t('contacts.empty')}
+              />
+            ) : (
+              <ContactRows
+                contacts={filtered}
+                selectedId={params.contactId}
+                selection={selection}
+                selecting={selecting || checked.size > 0}
+              />
+            )}
+          </div>
+        </section>
+        <ResizeHandle
+          limits={LIST_LIMITS}
+          label={t('contacts.resizeList')}
+          width={listPanel.width}
+          targetRef={listRef}
+          onCommit={listPanel.commit}
+          onReset={listPanel.reset}
+        />
+        <div className={`h-full min-w-0 flex-1 lg:block ${inDetail ? '' : 'hidden'}`}>
+          <div className="panel h-full overflow-y-auto max-sm:rounded-none max-sm:shadow-none">
+            <Outlet />
+          </div>
         </div>
       </div>
-    </div>
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={t('contacts.delete')}
+          message={t('contacts.delete.selection')}
+          cancelLabel={t('contacts.cancel')}
+          confirmLabel={t('contacts.delete')}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false)
+            void removeChecked()
+          }}
+        />
+      )}
+    </>
   )
 }
 
