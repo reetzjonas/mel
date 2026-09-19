@@ -67,6 +67,12 @@ export interface CalendarEvent {
   title: string
   description: string
   location: string
+  /**
+   * Link to an online meeting (the first JSCalendar `virtualLocations` entry).
+   * Optional for the same reason as `alerts`: a row synced before it was read
+   * has none, and "unknown" must not be written back as "cleared".
+   */
+  meetingUrl?: string
   /** JSCalendar local date-time without offset ("2026-08-03T10:00:00"). */
   start: string
   /** IANA zone; null → floating (interpreted in the viewer's zone). */

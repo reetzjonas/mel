@@ -46,6 +46,7 @@ export interface JmapCalendarEvent {
   title?: string | null
   description?: string | null
   locations?: Record<string, { name?: string | null }> | null
+  virtualLocations?: Record<string, { uri?: string | null }> | null
   start?: string
   timeZone?: string | null
   duration?: string
@@ -186,6 +187,7 @@ export function toEvent(e: JmapCalendarEvent): CalendarEvent {
     title: e.title ?? '',
     description: e.description ?? '',
     location: Object.values(e.locations ?? {})[0]?.name ?? '',
+    meetingUrl: Object.values(e.virtualLocations ?? {})[0]?.uri ?? '',
     start: e.start ?? '',
     timeZone: e.timeZone ?? null,
     duration: e.duration ?? 'PT0S',
@@ -212,6 +214,9 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
     title: ev.title,
     description: ev.description || undefined,
     locations: ev.location ? { l0: { '@type': 'Location', name: ev.location } } : undefined,
+    virtualLocations: ev.meetingUrl
+      ? { v0: { '@type': 'VirtualLocation', name: 'Meeting', uri: ev.meetingUrl } }
+      : undefined,
     start: ev.start,
     timeZone: ev.showWithoutTime ? undefined : (ev.timeZone ?? undefined),
     duration: ev.duration,
@@ -281,6 +286,16 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
     async updateEvent(event) {
       // In RFC 8984 / JMAP Calendars, uid is immutable and cannot be changed on update.
       const { uid: _uid, ...patch } = fromEvent(event)
+      /*
+       * A cleared field is absent from `fromEvent` (create must not send nulls),
+       * and an absent key in an update keeps what the server has — so an
+       * emptied location would come back on the next sync. Say null instead.
+       * `meetingUrl` is only cleared when known to be empty: undefined means
+       * this row never read it.
+       */
+      if (!event.description) patch['description'] = null
+      if (!event.location) patch['locations'] = null
+      if (event.meetingUrl === '') patch['virtualLocations'] = null
       const b = batch()
       const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {
         accountId,

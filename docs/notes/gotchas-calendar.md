@@ -61,3 +61,22 @@
 - e2e: desktop and mobile share one server account → state-mutating specs are desktop
   only (`testIgnore`); tests must clean up their server-side artifacts or use random
   names/days (calendar cells cap at 3 chips).
+- **Clearing a field needs an explicit `null` on update.** `fromEvent` leaves an
+  empty location, description or meeting link out (a create must not send
+  nulls), and an absent key in `CalendarEvent/set` update **keeps what the
+  server has** — so an emptied field used to come back on the next sync.
+  `updateEvent` therefore sets `locations`, `description` and `virtualLocations`
+  to `null` when they are empty. `meetingUrl` is optional on the type and is only
+  cleared when it is `''` (known empty); `undefined` means the row was synced
+  before the link was read, and there an empty dialog field must not wipe the
+  server's value. Stalwart accepts `virtualLocations` as
+  `{v0: {"@type": "VirtualLocation", uri}}` and `null` clears it (checked by
+  `e2e/calendar.spec.ts`, "a meeting link and a map link…"). Like `locations`,
+  only the first entry is read and `v0` is written, so a second virtual location
+  from another client is replaced on save.
+- **Meeting and map links are an allow-listed `href`.** An event arrives from
+  someone else's invitation, so the join link goes through `webHref`
+  (`lib/links.ts`: http/https only, a bare host becomes https) — a `javascript:`
+  URL in `virtualLocations` is shown as nothing, not as a link. The map link is
+  the same OpenStreetMap search the contact card uses (`mapHref`); structured
+  `coordinates` are not read yet.

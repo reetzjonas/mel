@@ -303,6 +303,71 @@ function capturing(response: Record<string, unknown> = {}) {
   return { provider: createJmapCalendars(transport, 'acc1'), sent }
 }
 
+describe('the online meeting link', () => {
+  it('reads the first virtual location as the meeting link', () => {
+    const e = toEvent({
+      ...base,
+      virtualLocations: { v1: { uri: 'https://meet.example/abc' }, v2: { uri: 'https://other' } },
+    })
+    expect(e.meetingUrl).toBe('https://meet.example/abc')
+  })
+
+  it('reads an event without one as known-empty', () => {
+    expect(toEvent(base).meetingUrl).toBe('')
+  })
+
+  it('round-trips through the wire shape', () => {
+    const wire = fromEvent({
+      ...domainEvent([]),
+      meetingUrl: 'https://meet.example/abc',
+    }) as unknown as JmapCalendarEvent
+    expect(wire.virtualLocations).toEqual({
+      v0: { '@type': 'VirtualLocation', name: 'Meeting', uri: 'https://meet.example/abc' },
+    })
+    expect(toEvent({ ...wire, id: 'e1' }).meetingUrl).toBe('https://meet.example/abc')
+  })
+
+  it('sends null on update when the link was removed, so the server drops it too', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent({ ...domainEvent([]), meetingUrl: '' })
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['virtualLocations']).toBeNull()
+  })
+
+  it("leaves the server's link alone when this copy never read one", async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent(domainEvent([]))
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['virtualLocations']).toBeUndefined()
+  })
+
+  it('does not send nulls when creating', async () => {
+    const { provider, sent } = capturing({ created: { e0: { id: 'n' } } })
+    await provider.createEvent({ ...domainEvent([]), meetingUrl: '' })
+    const created = (sent[0]!['create'] as Record<string, Record<string, unknown>>)['e0']!
+    expect(created['virtualLocations']).toBeUndefined()
+    expect(created['locations']).toBeUndefined()
+  })
+})
+
+describe('clearing a location or description', () => {
+  it('sends null on update, since an absent key keeps what the server has', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent(domainEvent([]))
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['locations']).toBeNull()
+    expect(patch['description']).toBeNull()
+  })
+
+  it('keeps a location that is set', async () => {
+    const { provider, sent } = capturing({ updated: { e1: null } })
+    await provider.updateEvent({ ...domainEvent([]), location: 'Room 4', description: 'Hi' })
+    const patch = (sent[0]!['update'] as Record<string, Record<string, unknown>>)['e1']!
+    expect(patch['locations']).toEqual({ l0: { '@type': 'Location', name: 'Room 4' } })
+    expect(patch['description']).toBe('Hi')
+  })
+})
+
 /*
  * Every write carries sendSchedulingMessages, and each value is a decision
  * about mail leaving the building: too eager and the server invites people to

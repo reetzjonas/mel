@@ -6,7 +6,7 @@ import { keyBytes, keyFileName, keyKind, keySize, type ContactKey } from '../../
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
 import { birthdayLabel } from '../../features/contacts/birthday'
-import { mapHref, profileHref, telHref, webHref } from '../../features/contacts/links'
+import { mapHref, profileHref, telHref, webHref } from '../../lib/links'
 import { useAccounts, useCanSend } from '../../features/mail/hooks'
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'

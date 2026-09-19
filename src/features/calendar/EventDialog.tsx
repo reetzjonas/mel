@@ -8,6 +8,7 @@ import type {
 } from '../../domain/calendar'
 import { REMINDER_PRESETS, reminderOf, withReminder } from '../../lib/alerts'
 import { t, type MsgKey } from '../../lib/i18n'
+import { mapHref, webHref } from '../../lib/links'
 import { followStartDay, formOf, repeatError, ruleOf, sameForm } from '../../lib/recurrenceForm'
 import { requestNotificationPermission } from '../../services/notifications'
 import { DialogHeader } from '../../ui/DialogHeader'
@@ -49,6 +50,31 @@ function reminderChoices(current: number | null): Array<[number, string]> {
         ? t(REMINDER_LABELS[m])
         : `${t('cal.reminder.custom')}: ${m} ${t('cal.min')}`,
     ])
+}
+
+/** An outbound link the person chooses to follow; nothing here is fetched by mel. */
+function ExternalLink({
+  href,
+  join = false,
+  children,
+}: {
+  href: string | null
+  join?: boolean
+  children: ReactNode
+}) {
+  if (!href) return null
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={
+        join ? `${primaryButtonClass} inline-block` : 'ml-2 text-sm text-accent hover:underline'
+      }
+    >
+      {children}
+    </a>
+  )
 }
 
 function partsOf(start: string, duration: string) {
@@ -104,6 +130,7 @@ export function EventDialog({
   const [endTime, setEndTime] = useState(initialParts.endTime)
   const [allDay, setAllDay] = useState(initial.showWithoutTime)
   const [location, setLocation] = useState(initial.location)
+  const [meetingUrl, setMeetingUrl] = useState(initial.meetingUrl ?? '')
   const [description, setDescription] = useState(initial.description)
   const initialRepeat = formOf(initial.recurrenceRule, initialParts.date)
   const [repeat, setRepeat] = useState(initialRepeat)
@@ -112,7 +139,11 @@ export function EventDialog({
   const [reminder, setReminder] = useState<number | null>(initialReminder)
   const [showDetails, setShowDetails] = useState(
     Boolean(
-      initial.location || initial.description || initial.recurrenceRule || initialReminder !== null,
+      initial.location ||
+      initial.meetingUrl ||
+      initial.description ||
+      initial.recurrenceRule ||
+      initialReminder !== null,
     ),
   )
   const panel = useRef<HTMLDivElement>(null)
@@ -138,6 +169,9 @@ export function EventDialog({
       duration,
       showWithoutTime: allDay,
       location: location.trim(),
+      // A row that never read the link stays "unknown" unless the field was
+      // filled: an empty box there is not a request to clear the server's.
+      meetingUrl: meetingUrl.trim() || (initial.meetingUrl === undefined ? undefined : ''),
       description: description.trim(),
       // Untouched controls keep the rule as the server has it, including what
       // they cannot show (a `byMonthDay`, an `until` with a time of day).
@@ -230,7 +264,22 @@ export function EventDialog({
             {initial.location && (
               <div className="flex gap-2">
                 <dt className="w-20 shrink-0 text-ink-muted">{t('cal.location')}</dt>
-                <dd>{initial.location}</dd>
+                <dd className="min-w-0">
+                  <span className="break-words">{initial.location}</span>
+                  <ExternalLink href={mapHref(initial.location)}>
+                    {t('cal.openInMaps')}
+                  </ExternalLink>
+                </dd>
+              </div>
+            )}
+            {webHref(initial.meetingUrl ?? '') && (
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-ink-muted">{t('cal.meetingLink')}</dt>
+                <dd className="min-w-0">
+                  <ExternalLink href={webHref(initial.meetingUrl ?? '')} join>
+                    {t('cal.join')}
+                  </ExternalLink>
+                </dd>
               </div>
             )}
             {organizer && (
@@ -433,6 +482,23 @@ export function EventDialog({
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
                 />
+                {location.trim() && (
+                  <ExternalLink href={mapHref(location)}>{t('cal.openInMaps')}</ExternalLink>
+                )}
+                <input
+                  className={inputClass}
+                  type="url"
+                  inputMode="url"
+                  placeholder={t('cal.meetingLink')}
+                  aria-label={t('cal.meetingLink')}
+                  value={meetingUrl}
+                  onChange={(e) => setMeetingUrl(e.target.value)}
+                />
+                {webHref(meetingUrl) && (
+                  <ExternalLink href={webHref(meetingUrl)} join>
+                    {t('cal.join')}
+                  </ExternalLink>
+                )}
                 <textarea
                   className={`${inputClass} min-h-20`}
                   placeholder={t('cal.descriptionField')}

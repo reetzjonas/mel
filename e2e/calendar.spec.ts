@@ -17,6 +17,88 @@ function randomNextMonthDate(maxDay: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+/** What the server itself holds for an event, read behind the app's back. */
+async function serverEvent(title: string) {
+  const base = 'http://localhost:8080'
+  const auth =
+    'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
+  const call = async (name: string, args: Record<string, unknown>) => {
+    const res = await fetch(`${base}/jmap/`, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:calendars'],
+        methodCalls: [[name, args, 'c']],
+      }),
+    })
+    return (await res.json()).methodResponses[0][1] as Record<string, unknown>
+  }
+  const session = await (
+    await fetch(`${base}/.well-known/jmap`, { headers: { Authorization: auth } })
+  ).json()
+  const accountId = Object.keys(session.accounts)[0]!
+  const got = await call('CalendarEvent/get', { accountId, ids: null })
+  const list = got['list'] as Array<Record<string, unknown>>
+  return list.find((e) => e['title'] === title)
+}
+
+test('a meeting link and a map link are actionable, and clearing them reaches the server', async ({
+  page,
+}) => {
+  const title = `Link-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'next' }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(20))
+  await page.getByRole('button', { name: 'More details' }).click()
+  await page.getByPlaceholder('Location').fill('Alexanderplatz 1, Berlin')
+  await page.getByLabel('Video call link').fill('meet.example.org/room-42')
+  await expect(page.getByRole('link', { name: 'Join' })).toHaveAttribute(
+    'href',
+    'https://meet.example.org/room-42',
+  )
+  await expect(page.getByRole('link', { name: 'Open in maps' })).toHaveAttribute(
+    'href',
+    /openstreetmap\.org\/search\?query=Alexanderplatz/,
+  )
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect
+    .poll(
+      async () => {
+        const e = await serverEvent(title)
+        return JSON.stringify([e?.['locations'], e?.['virtualLocations']])
+      },
+      { timeout: 15_000 },
+    )
+    .toContain('room-42')
+
+  // Emptying both fields has to clear them on the server as well, not just here.
+  const chip = () =>
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) })
+  await chip().first().click()
+  await page.getByPlaceholder('Location').fill('')
+  await page.getByLabel('Video call link').fill('')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect
+    .poll(
+      async () => {
+        const e = await serverEvent(title)
+        return [Boolean(e?.['locations']), Boolean(e?.['virtualLocations'])]
+      },
+      { timeout: 15_000 },
+    )
+    .toEqual([false, false])
+
+  await chip().first().click()
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await expect(chip()).toHaveCount(0, { timeout: 10_000 })
+})
+
 test('a custom recurrence (every 2 days, 3 times) shows exactly three occurrences', async ({
   page,
 }) => {
