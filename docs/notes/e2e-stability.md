@@ -12,28 +12,28 @@ put down to CPU load. That was **wrong** — there were real causes, all fixed:
    now trims the inbox back to the seeded subjects (`SEEDED_INBOX`).
 
 0a. **Stalwart provisions no Archive mailbox.** Its defaults are Inbox, Drafts,
-   Sent Items, Deleted Items and Junk Mail, so the *first* archive action has to
-   create one — which only shows up on a freshly seeded server, i.e. in CI and
-   never locally once a run has created it. Two consequences: the assertion on
-   the "Archived" snackbar gets a longer timeout, and `ensureArchiveId()` uses
-   the id `Mailbox/set` returns instead of syncing the whole account to look it
-   up (measured at 143ms vs 166ms locally — a real simplification, but *not*
-   what made CI fail; do not credit it with that).
-   The actual cause was the third instance of the same pattern as 0b:
-   `archiveEmail` returns null when no Archive mailbox could be created and
-   every call site did `if (undo) showSnackbar(...)`, so a failure was
-   **indistinguishable from success** — nothing happened at all. All three call
-   sites now report it.
+Sent Items, Deleted Items and Junk Mail, so the _first_ archive action has to
+create one — which only shows up on a freshly seeded server, i.e. in CI and
+never locally once a run has created it. Two consequences: the assertion on
+the "Archived" snackbar gets a longer timeout, and `ensureArchiveId()` uses
+the id `Mailbox/set` returns instead of syncing the whole account to look it
+up (measured at 143ms vs 166ms locally — a real simplification, but _not_
+what made CI fail; do not credit it with that).
+The actual cause was the third instance of the same pattern as 0b:
+`archiveEmail` returns null when no Archive mailbox could be created and
+every call site did `if (undo) showSnackbar(...)`, so a failure was
+**indistinguishable from success** — nothing happened at all. All three call
+sites now report it.
 
 0b. **Buttons that silently do nothing.** "New event" began with
-   `if (!defaultCalendarId) return` — before the calendars had synced, clicking did
-   nothing and the test ran into its timeout. Under load (2 workers) it hit that
-   window roughly every third run. The button is `disabled` now, which makes
-   Playwright wait on its own. **Rule: a handler that returns early belongs behind a
-   visible `disabled`** — otherwise it is a dead button for people and tests alike.
+`if (!defaultCalendarId) return` — before the calendars had synced, clicking did
+nothing and the test ran into its timeout. Under load (2 workers) it hit that
+window roughly every third run. The button is `disabled` now, which makes
+Playwright wait on its own. **Rule: a handler that returns early belongs behind a
+visible `disabled`** — otherwise it is a dead button for people and tests alike.
 
 1. **Accumulated test data.** Every run left drafts/sent mail/contacts/events behind
-   (the draft-autosave test *must* leave a draft; failing tests skip their cleanup).
+   (the draft-autosave test _must_ leave a draft; failing tests skip their cleanup).
    After ~50 mails the initial sync got slow enough that 15s waits expired. →
    `e2e/global-setup.ts` resets both accounts to the seeded state before every run.
    Per-test cleanup alone is not enough in principle.
@@ -42,7 +42,7 @@ put down to CPU load. That was **wrong** — there were real causes, all fixed:
    you back. Regression: `e2e/navigation.spec.ts`.
 3. **Stalwart rate limit**: 25 mails per hour per sender/recipient pair. The send test
    goes alice→bob every run; after ~25 runs it produced `452 4.4.5 Rate limit
-   exceeded` — visible only as "the mail never arrives". Switched off for dev in
+exceeded` — visible only as "the mail never arrives". Switched off for dev in
    `seed.sh` (`x:MtaInboundThrottle`, `enable:false`).
 
 4. **`maxConcurrentRequests: 4`, per account.** Found while adding the storage
@@ -50,7 +50,7 @@ put down to CPU load. That was **wrong** — there were real causes, all fixed:
    single alice from two workers, each holding an SSE stream and a sync, which
    sits right on that budget — so one extra request anywhere in the app pushed a
    worker over and whichever spec lost the race died on a timeout, in a
-   *different file each run*. That moving target is exactly what makes it read as
+   _different file each run_. That moving target is exactly what makes it read as
    flakiness rather than as a limit, and it is why a bisect is worth more than a
    guess here: two full runs with the change (red, red) against two with it
    stashed (green, green) is what named the cause. Raised in `seed.sh` for dev
@@ -89,7 +89,7 @@ The moral for the next flake: this one looked exactly like environment noise and
 was not. Two runs on a stashed tree settled it in four minutes — measure before
 attributing.
 
-One *other* race in the same test was fixed alongside: it waited for
+One _other_ race in the same test was fixed alongside: it waited for
 `[aria-label$="messages"]` across the whole list, which any conversation left
 over from another spec satisfies immediately, leaving the real wait to a 5s
 default timeout. The badge is now scoped to the row under test.
@@ -107,7 +107,7 @@ and the full suite against the built image passes locally. So it is intermittent
 and the moral from the threading flake applies again — measure before attributing.
 
 What the measuring did show is a real window, and it is not the one you would
-guess. Clicking a link updates the URL *synchronously* (instrumented: the URL is
+guess. Clicking a link updates the URL _synchronously_ (instrumented: the URL is
 already `/calendar` while that route's chunk is still held in flight), so a pending
 navigation is not the problem. The problem is that the guard read `pathname` from
 `useRouterState`, i.e. **this render's snapshot**. The mailboxes arriving and the
@@ -124,7 +124,7 @@ Honest limit: the interleaving could not be forced from outside the app — hold
 the `Mailbox/get` response and the calendar route chunk in every combination did
 not reproduce it. So the fix is reasoned from the mechanism, not demonstrated by a
 red-then-green test. The e2e test remains the guard; if it flickers again, it is
-worth instrumenting *which* of the two updates committed first rather than
+worth instrumenting _which_ of the two updates committed first rather than
 widening a timeout.
 
 ## The 429 that read as "server unreachable" (2026-09-12)
@@ -189,3 +189,18 @@ So before reading anything into a red run: **did the last edit land before the
 run started?** Wait for the dev server to settle, then re-run. That is not the
 same as "it was load" — the run is repeatable and the cause is on this machine,
 not in the number of workers.
+
+## A fresh event can hide behind a day cell's three-chip cap
+
+`navigation.spec.ts` "the calendar keeps syncing without anyone visiting Mail"
+failed in CI and in every full local run that day, and passed alone. It created
+an event _today_ and looked for it in the month grid; other specs leave events
+on today's cell (`calendar.spec.ts` cleans up only at the next run's start),
+and a contact's birthday that happens to fall on the same day is a chip too. A
+cell shows three, so the fourth event was simply not rendered — the sync worked.
+It now creates the event three days ahead and finds it through the sidebar's
+search, which has no such cap. The same limit is why calendar specs use random
+future days; see the last bullet of `gotchas-calendar.md`.
+
+`global-setup.ts` also removes calendars a test created and did not get to
+delete (a failed run stops before its own cleanup), keeping the default one.

@@ -425,9 +425,11 @@ async function serverSideEvent(title: string) {
   const accountId = Object.keys(session.accounts)[0]!
   const [[, cals]] = await jmap([['Calendar/get', { accountId, ids: null }, 'c']])
   const calendarId = (cals['list'] as unknown as Array<{ id: string }>)[0]!.id
-  const now = new Date()
-  const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(
-    Math.min(28, now.getDate()),
+  // A few days ahead, so it is an *upcoming* event whatever time the suite runs
+  // at (an event this morning is already over by lunchtime).
+  const soon = new Date(Date.now() + 3 * 86_400_000)
+  const start = `${soon.getFullYear()}-${String(soon.getMonth() + 1).padStart(2, '0')}-${String(
+    soon.getDate(),
   ).padStart(2, '0')}T09:00:00`
   const [[, set]] = await jmap([
     [
@@ -476,7 +478,14 @@ test('the calendar keeps syncing without anyone visiting Mail', async ({ page })
   const title = `Sched-${Date.now() % 100000}`
   const id = await serverSideEvent(title)
   try {
-    await expect(page.getByText(new RegExp(title)).first()).toBeVisible({ timeout: 45_000 })
+    // Found through the sidebar's search rather than by looking at the month
+    // grid: a day cell shows three chips, so leftovers from other specs (or a
+    // contact whose birthday it happens to be) can hide a fresh event on a
+    // grid that is otherwise working.
+    await page.getByPlaceholder('Search upcoming events').fill(title)
+    await expect(page.getByTestId('calendar-sidebar').getByText(new RegExp(title))).toBeVisible({
+      timeout: 45_000,
+    })
   } finally {
     await destroyEvent(id)
   }

@@ -265,6 +265,31 @@ async function resetAccount(user: string, pass: string) {
       )
       removed.push(`${events.list.length} event(s)`)
     }
+
+    // Calendars a test created and did not get to delete (a failed run stops
+    // before its own cleanup). The default one is the account's own and stays.
+    const calendars = (
+      await jmap(
+        auth,
+        [CORE, CALENDARS],
+        [['Calendar/get', { accountId: calAcc, ids: null, properties: ['id', 'isDefault'] }, 'c0']],
+      )
+    ).methodResponses[0]![1] as { list: Array<{ id: string; isDefault: boolean }> }
+    const extra = calendars.list.filter((c) => !c.isDefault)
+    if (extra.length) {
+      await jmap(
+        auth,
+        [CORE, CALENDARS],
+        [
+          [
+            'Calendar/set',
+            { accountId: calAcc, destroy: extra.map((c) => c.id), onDestroyRemoveEvents: true },
+            'c0',
+          ],
+        ],
+      )
+      removed.push(`${extra.length} calendar(s)`)
+    }
   }
 
   if (conAcc) {
