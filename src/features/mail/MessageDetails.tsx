@@ -16,6 +16,7 @@ import { formatBytes } from '../../lib/bytes'
 import { formatFullDate } from '../../lib/dates'
 import { t } from '../../lib/i18n'
 import { downloadOriginal, getMessageMetadata } from '../../services/mail'
+import { DialogHeader } from '../../ui/DialogHeader'
 import { Icon } from '../../ui/Icon'
 import { Skeleton } from '../../ui/Skeleton'
 import { modalPanelClass, secondaryButtonClass } from '../../ui/styles'
@@ -194,23 +195,15 @@ export function MessageDetails({
         aria-label={t('mail.details')}
         className={`${modalPanelClass} max-h-[92dvh] max-w-2xl max-sm:rounded-t-panel`}
       >
-        <div className="flex items-start gap-3 px-5 py-3">
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-semibold">{t('mail.details')}</h2>
-            <p className="truncate text-xs text-ink-muted">
-              {email.subject || t('mail.noSubject')}
-            </p>
-          </div>
-          <button
-            ref={closeRef}
-            type="button"
-            aria-label={t('shortcuts.close')}
-            onClick={onClose}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Icon name="close" size={16} />
-          </button>
-        </div>
+        <DialogHeader
+          title={t('mail.details')}
+          closeLabel={t('shortcuts.close')}
+          closeRef={closeRef}
+          onClose={onClose}
+        />
+        <p className="shrink-0 truncate px-5 pt-3 text-xs text-ink-muted">
+          {email.subject || t('mail.noSubject')}
+        </p>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Section title={t('mail.details.overview')}>

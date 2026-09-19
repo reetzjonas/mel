@@ -45,15 +45,19 @@ test('formatting toolbar output — bold, italic, a list and a link — survives
   )
   await page.keyboard.type('list item')
 
-  // A link on freshly typed text: select it, then answer the URL prompt.
+  // A link on freshly typed text: select it, then enter the URL in the dialog.
   await page.keyboard.press('Enter')
   await page.getByRole('button', { name: 'Bulleted list' }).click() // leave the list
-  page.once('dialog', (d) => void d.accept('https://example.com'))
   await page.keyboard.type('a link')
   await page.keyboard.down('Shift')
   for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowLeft')
   await page.keyboard.up('Shift')
   await page.getByRole('button', { name: 'Add link' }).click()
+  await page
+    .getByRole('dialog', { name: 'Add link' })
+    .getByRole('textbox')
+    .fill('https://example.com')
+  await page.getByRole('dialog', { name: 'Add link' }).getByRole('button', { name: 'Save' }).click()
   await expect(page.getByRole('button', { name: 'Remove link' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Send' }).click()

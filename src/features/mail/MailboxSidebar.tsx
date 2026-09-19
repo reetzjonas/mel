@@ -14,6 +14,7 @@ import {
 import { bulkMove } from '../../services/mailActions'
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
 import { useMobileViewport, useModal } from '../../ui/useModal'
@@ -46,6 +47,7 @@ type Dialog =
   | { kind: 'create'; parentId: string | null }
   | { kind: 'rename'; mailbox: Mailbox }
   | { kind: 'move'; mailbox: Mailbox; anchor: HTMLElement | null }
+  | { kind: 'delete'; mailbox: Mailbox; children: number; mails: number }
   | null
 
 function FolderMenu({
@@ -311,13 +313,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
     const lines = [t('folder.deleteConfirm')]
     if (children) lines.push(`${t('folder.deleteChildren')} (${children})`)
     if (mails) lines.push(`${t('folder.deleteEmails')} (${mails})`)
-    if (!confirm(lines.join('\n\n'))) return
-
-    const r = await deleteMailbox(accountId, mailbox.id, {
-      recursive: children > 0,
-      withEmails: mails > 0,
-    })
-    report(r.ok ? null : (r.message ?? t('folder.deleteFailed')))
+    setDialog({ kind: 'delete', mailbox, children, mails })
   }
 
   return (
@@ -414,7 +410,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
              * appears on hover.
              */
             const ariaLabel = m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name
-            const className = `group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink ${
+            const className = `group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink focus-visible:!outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
               isActive ? 'bg-accent-wash font-medium text-accent' : ''
             } ${dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''} ${
               canDrag ? draggableTouchClass : ''
@@ -541,6 +537,26 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
           onConfirm={(name) => {
             setDialog(null)
             void renameMailbox(accountId, dialog.mailbox.id, name).then(report)
+          }}
+        />
+      )}
+      {dialog?.kind === 'delete' && (
+        <ConfirmDialog
+          title={t('folder.delete')}
+          message={[
+            t('folder.deleteConfirm'),
+            ...(dialog.children ? [`${t('folder.deleteChildren')} (${dialog.children})`] : []),
+            ...(dialog.mails ? [t('folder.deleteEmails')] : []),
+          ].join(' ')}
+          cancelLabel={t('folder.cancel')}
+          confirmLabel={t('folder.delete')}
+          onClose={() => setDialog(null)}
+          onConfirm={() => {
+            setDialog(null)
+            void deleteMailbox(accountId, dialog.mailbox.id, {
+              recursive: dialog.children > 0,
+              withEmails: dialog.mails > 0,
+            }).then((r) => report(r.ok ? null : (r.message ?? t('folder.deleteFailed'))))
           }}
         />
       )}

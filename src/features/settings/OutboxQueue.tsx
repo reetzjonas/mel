@@ -123,8 +123,7 @@ export function OutboxQueue({ accountId }: { accountId: string }) {
           confirmLabel={t('queue.discard')}
           onClose={() => setDiscarding(null)}
           onConfirm={() => {
-            void discardAction(discarding)
-            setDiscarding(null)
+            void discardAction(discarding).then(() => setDiscarding(null))
           }}
         />
       )}

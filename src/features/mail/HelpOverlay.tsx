@@ -28,7 +28,8 @@ export function HelpOverlay() {
 
 function HelpDialog({ onClose }: { onClose: () => void }) {
   const panel = useRef<HTMLDivElement>(null)
-  useModal({ panel, onClose })
+  const close = useRef<HTMLButtonElement>(null)
+  useModal({ panel, initialFocus: close, onClose })
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
@@ -42,14 +43,15 @@ function HelpDialog({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal
         aria-label={t('shortcuts.title')}
-        className={`${modalPanelClass} max-w-sm p-5 max-sm:rounded-t-panel`}
+        className={`${modalPanelClass} max-h-[92dvh] max-w-sm max-sm:rounded-t-panel`}
       >
         <DialogHeader
           title={t('shortcuts.title')}
           closeLabel={t('shortcuts.close')}
+          closeRef={close}
           onClose={onClose}
         />
-        <dl className="space-y-1.5 p-5">
+        <dl className="min-h-0 space-y-1.5 overflow-y-auto p-5">
           {rows.map(([key, label]) => (
             <div key={key} className="flex items-center justify-between text-sm">
               <dt>

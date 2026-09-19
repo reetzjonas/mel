@@ -35,8 +35,11 @@ test('signing out clears the account and its cached data from the device', async
   // inbox. Against the local Stalwart the first sync usually beats the click,
   // so this does not reliably exercise the sign-out-mid-sync race that
   // services/accounts.ts sequences around — it checks the wipe is complete.
-  page.once('dialog', (d) => void d.accept())
   await page.getByRole('button', { name: 'Sign out' }).click({ timeout: 15_000 })
+  await page
+    .getByRole('dialog', { name: 'Sign out' })
+    .getByRole('button', { name: 'Sign out' })
+    .click()
 
   // Back to the setup screen, and no account row left behind.
   await expect(page.getByPlaceholder('you@example.com')).toBeVisible({ timeout: 10_000 })
@@ -256,9 +259,12 @@ test('an action that never reached the server is reported, not dropped quietly',
   await expect(entries.first()).toContainText('400')
 
   // Discarding: gone for good, and the server's version stands.
-  page.once('dialog', (d) => void d.accept())
   await entries.first().getByRole('button', { name: 'Discard' }).click()
-  await expect(page.getByText('Nothing is waiting to be sent.')).toBeVisible({ timeout: 10_000 })
+  await page
+    .getByRole('dialog', { name: 'Discard' })
+    .getByRole('button', { name: 'Discard' })
+    .click()
+  await expect(entries).toHaveCount(0, { timeout: 10_000 })
 
   // And once more, to retry instead — keeping a failed action around rather
   // than dropping it is only worth anything if the cause can go away.
@@ -273,7 +279,7 @@ test('an action that never reached the server is reported, not dropped quietly',
   await expect(entries).toHaveCount(1, { timeout: 15_000 })
   await page.unroute('http://localhost:8080/jmap/**')
   await entries.first().getByRole('button', { name: 'Retry' }).click()
-  await expect(page.getByText('Nothing is waiting to be sent.')).toBeVisible({ timeout: 20_000 })
+  await expect(entries).toHaveCount(0, { timeout: 20_000 })
 
   await closeSettings(page)
   await expect(rows.first()).toBeVisible({ timeout: 15_000 })

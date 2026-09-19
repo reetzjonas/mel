@@ -1,10 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
 import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
 import type { Mailbox } from '../../domain/mailbox'
 import { t } from '../../lib/i18n'
 import { Icon } from '../../ui/Icon'
 import { scrimClass } from '../../ui/styles'
+import { useModal } from '../../ui/useModal'
 import { MailboxSidebar } from './MailboxSidebar'
 
 /**
@@ -18,21 +19,7 @@ export function MailboxDrawer({ account, mailboxes }: { account: Account; mailbo
   const setOpen = useUi((s) => s.setFolderDrawerOpen)
   const panel = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    if (!open) return
-    // Whatever opened the drawer gets the focus back when it closes, so a
-    // keyboard user is not dropped at the top of the document.
-    const opener = document.activeElement as HTMLElement | null
-    panel.current?.focus()
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      opener?.focus?.()
-    }
-  }, [open, setOpen])
+  useModal({ panel, onClose: () => setOpen(false), enabled: open })
 
   if (!open) return null
 

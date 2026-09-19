@@ -541,7 +541,7 @@ export function ThreadList({
 
   return (
     <Virtuoso
-      className="px-1.5 pb-1.5"
+      className="min-w-0 overflow-x-hidden pb-1.5"
       data={items}
       endReached={onEndReached}
       increaseViewportBy={600}

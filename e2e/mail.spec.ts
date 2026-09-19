@@ -167,6 +167,29 @@ test('the folder list is reachable on mobile, where the sidebar is off-screen', 
   await expect(page.getByRole('dialog', { name: 'Folders' })).toBeHidden()
 })
 
+test('focusing the active folder stays within the mail viewport', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'the permanent folder list is desktop-only')
+  await login(page)
+  const inbox = page.getByRole('link', { name: /^Inbox( \d+)?$/ })
+  await expect(inbox).toBeVisible({ timeout: 15_000 })
+  await inbox.click()
+  await page.keyboard.press('Shift')
+
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.scrollWidth))
+    .toBeLessThanOrEqual(await page.evaluate(() => document.documentElement.clientWidth))
+  await expect
+    .poll(() =>
+      page.locator('[data-testid="virtuoso-scroller"]').evaluate((element) => element.scrollWidth),
+    )
+    .toBeLessThanOrEqual(
+      await page
+        .locator('[data-testid="virtuoso-scroller"]')
+        .evaluate((element) => element.clientWidth),
+    )
+  await expect(inbox).toHaveCSS('outline-style', 'none')
+})
+
 test('message details: headers, delivery path, copy and export', async ({ page, context }) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await login(page)

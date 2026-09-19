@@ -1,6 +1,6 @@
 import { Link, Outlet, useNavigate } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAppBadge } from '../features/mail/appBadge'
@@ -12,6 +12,7 @@ import { t } from '../lib/i18n'
 import { dekFor } from '../storage/crypto/keyring'
 import { db } from '../storage/db'
 import { Icon, type IconName } from '../ui/Icon'
+import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
@@ -71,17 +72,13 @@ function ThemeToggle() {
   )
 }
 
-function SignOutButton({ accountId }: { accountId: string }) {
-  const navigate = useNavigate()
+function SignOutButton({ onClick }: { onClick: () => void }) {
   return (
     <Tooltip label={t('settings.signOut')}>
       <button
         type="button"
         aria-label={t('settings.signOut')}
-        onClick={() => {
-          if (!confirm(t('settings.signOut.confirm'))) return
-          void signOut(accountId).then(() => navigate({ to: '/mail' }))
-        }}
+        onClick={onClick}
         className={secondaryIconButtonClass}
       >
         <Icon name="signOut" />
@@ -91,9 +88,11 @@ function SignOutButton({ accountId }: { accountId: string }) {
 }
 
 export function AppShell() {
+  const navigate = useNavigate()
   const accounts = useAccounts()
   const account = accounts?.[0]
   const { compose } = useUi()
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const settings = useSettingsRoute()
   useAppBadge(account?.id)
   const unlockVersion = useUi((s) => s.unlockVersion)
@@ -152,7 +151,7 @@ export function AppShell() {
             <StorageWarning accountId={account.id} enabled={account.capabilities.quota} />
           )}
           <ThemeToggle />
-          {account && <SignOutButton accountId={account.id} />}
+          {account && <SignOutButton onClick={() => setConfirmingSignOut(true)} />}
           <Tooltip label={t('settings.title')}>
             <button
               type="button"
@@ -165,7 +164,20 @@ export function AppShell() {
           </Tooltip>
         </div>
       </header>
-      <main className="min-h-0 flex-1">
+      {account && confirmingSignOut && (
+        <ConfirmDialog
+          title={t('settings.signOut')}
+          message={t('settings.signOut.confirm')}
+          cancelLabel={t('folder.cancel')}
+          confirmLabel={t('settings.signOut')}
+          onClose={() => setConfirmingSignOut(false)}
+          onConfirm={() => {
+            setConfirmingSignOut(false)
+            void signOut(account.id).then(() => navigate({ to: '/mail' }))
+          }}
+        />
+      )}
+      <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Outlet />
       </main>
       {/* Mobile: bottom navigation as app switcher */}

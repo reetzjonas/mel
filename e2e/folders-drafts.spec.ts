@@ -11,6 +11,13 @@ async function login(page: Page) {
   })
 }
 
+async function confirmFolderDelete(page: Page) {
+  await page
+    .getByRole('dialog', { name: 'Delete folder' })
+    .getByRole('button', { name: 'Delete folder', exact: true })
+    .click()
+}
+
 test('create, rename and delete a folder', async ({ page }) => {
   const name = `Folder-${Date.now() % 100000}`
   await login(page)
@@ -29,10 +36,10 @@ test('create, rename and delete a folder', async ({ page }) => {
   const renamed = page.getByRole('link', { name: `${name}-neu` })
   await expect(renamed).toBeVisible({ timeout: 10_000 })
 
-  page.on('dialog', (d) => void d.accept())
   await renamed.hover()
   await renamed.getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Delete folder' }).click()
+  await confirmFolderDelete(page)
   await expect(page.getByRole('link', { name: `${name}-neu` })).toHaveCount(0, {
     timeout: 10_000,
   })
@@ -72,12 +79,12 @@ test('dragging a folder nests it, and the account row lifts it back out', async 
     .dragTo(page.getByText('alice@localhost', { exact: true }))
   await expect.poll(indent, { timeout: 15_000 }).toBe(before)
 
-  page.on('dialog', (d) => void d.accept())
   for (const name of [child, parent]) {
     const row = page.getByRole('link', { name })
     await row.hover()
     await row.getByRole('button', { name: 'Folder actions' }).click()
     await page.getByRole('button', { name: 'Delete folder' }).click()
+    await confirmFolderDelete(page)
     await expect(page.getByRole('link', { name })).toHaveCount(0, { timeout: 10_000 })
   }
 })
@@ -297,19 +304,16 @@ test('delete a folder that has a subfolder and still holds mail', async ({ page 
   await expect(parentRow).toBeVisible({ timeout: 15_000 })
 
   // One confirmation that spells out both consequences, then it just works.
-  let prompt = ''
-  page.once('dialog', (d) => {
-    prompt = d.message()
-    void d.accept()
-  })
   await parentRow.hover()
   await parentRow.getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Delete folder' }).click()
+  const confirmation = page.getByRole('dialog', { name: 'Delete folder' })
+  await expect(confirmation).toContainText('subfolders')
+  await expect(confirmation).toContainText('mail')
+  await confirmFolderDelete(page)
 
   await expect(folderRow(parent)).toHaveCount(0, { timeout: 15_000 })
   await expect(folderRow(child)).toHaveCount(0)
-  expect(prompt).toContain('subfolders')
-  expect(prompt).toContain('mail')
 
   // Filed in the inbox as well, so it loses the folder and nothing more.
   await expect(page.getByText('Willkommen bei mel').first()).toBeVisible({ timeout: 15_000 })
@@ -361,10 +365,10 @@ test('move a folder under another one, and back to the top level', async ({ page
 
   // Clean up both folders.
   for (const name of [inner, outer]) {
-    page.once('dialog', (d) => void d.accept())
     await row(name).hover()
     await row(name).getByRole('button', { name: 'Folder actions' }).click()
     await page.getByRole('button', { name: 'Delete folder' }).click()
+    await confirmFolderDelete(page)
     await expect(row(name)).toHaveCount(0, { timeout: 15_000 })
   }
 })
