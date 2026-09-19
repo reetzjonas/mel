@@ -88,3 +88,18 @@ describe('the translation tables themselves', () => {
     }
   })
 })
+
+describe('tf', () => {
+  it('fills placeholders, and leaves one it was given no value for', async () => {
+    const { tf } = await loadWith('en-US')
+    expect(tf('cal.notif.accepted', { name: 'Bob', title: 'Plan' })).toBe('Bob accepted “Plan”')
+    expect(tf('cal.notif.accepted', { name: 'Bob' })).toBe('Bob accepted “{title}”')
+  })
+
+  it('reorders the sentence per language rather than gluing words together', async () => {
+    const { tf } = await loadWith('de-DE')
+    expect(tf('cal.notif.accepted', { name: 'Bob', title: 'Plan' })).toBe(
+      'Bob hat „Plan“ angenommen',
+    )
+  })
+})

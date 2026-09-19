@@ -145,6 +145,12 @@ export interface CalendarProvider {
     status: import('../domain/calendar').ParticipationStatus,
   ): Promise<SetFailure | null>
   destroyEvents(ids: string[]): Promise<SetFailure | null>
+  /** Other people's changes to events we are part of, newest state first as the server keeps it. */
+  syncEventNotifications(
+    sinceState?: string,
+  ): Promise<SyncPage<import('../domain/calendar').EventNotification>>
+  /** Dismiss notifications — they are gone from the server for every client. */
+  dismissEventNotifications(ids: string[]): Promise<SetFailure | null>
   editCalendar(edit: CalendarEdit): Promise<{ id: string | null; failure: SetFailure | null }>
 }
 

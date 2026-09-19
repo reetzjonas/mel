@@ -500,12 +500,30 @@ describe('syncing contacts and calendars', () => {
         Promise.resolve(
           page({ created: [{ id: 'e1', calendarIds: { cal: true } }], newState: 'e1' }),
         ),
+      syncEventNotifications: () => Promise.resolve(page()),
     } as never
 
     const { syncAccount } = await import('./engine')
     await syncAccount(ACCOUNT)
 
     expect((await db.events.get([ACCOUNT, 'e1']))!.calendarIds).toEqual(['cal'])
+  })
+
+  it('mirrors event notifications into their own table, with a cursor of their own', async () => {
+    calendars = {
+      syncCalendars: () => Promise.resolve(page({ newState: 'c1' })),
+      syncEvents: () => Promise.resolve(page({ newState: 'e1' })),
+      syncEventNotifications: () =>
+        Promise.resolve(page({ created: [{ id: 'n1', kind: 'accepted' }], newState: 'n1' })),
+    } as never
+
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    expect(
+      (await db.eventNotifications.where('accountId').equals(ACCOUNT).toArray()).map((r) => r.id),
+    ).toEqual(['n1'])
+    expect(await storedState('CalendarEventNotification')).toBe('n1')
   })
 
   it('skips a collection the server does not offer', async () => {

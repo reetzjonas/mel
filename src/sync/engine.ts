@@ -58,7 +58,8 @@ const MODEL_VERSION: Record<string, number> = {
   // server for until the release that added them.
   FileNode: 3,
   // 2: recurrenceOverrides, so cached series carry their per-occurrence edits.
-  CalendarEvent: 2,
+  // 3: meeting link, free/busy, privacy, categories and links (attachments).
+  CalendarEvent: 3,
 }
 
 function modelVersion(collection: string): number {
@@ -285,6 +286,13 @@ async function syncCalendarData(accountId: string, calendars: CalendarProvider) 
       calendarIds: Object.keys(e.calendarIds),
       payload: sealPlain(e),
     }),
+  )
+  await syncCollection(
+    accountId,
+    'CalendarEventNotification',
+    db.eventNotifications,
+    (s) => calendars.syncEventNotifications(s),
+    (n) => ({ accountId, id: n.id, payload: sealPlain(n) }),
   )
 }
 

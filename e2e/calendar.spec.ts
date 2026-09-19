@@ -289,7 +289,8 @@ test('create, rename and delete a calendar from the sidebar', async ({ page }) =
   await page.getByRole('button', { name: 'New calendar' }).click()
   const dialog = page.getByRole('dialog', { name: 'New calendar' })
   await dialog.getByRole('textbox', { name: 'Name' }).fill(name)
-  await dialog.getByRole('radio', { name: '#0e9488' }).check({ force: true })
+  // The swatch is the visible part of a label around a visually hidden radio.
+  await dialog.locator('label:has(input[value="#0e9488"])').click()
   await dialog.getByRole('button', { name: 'Save' }).click()
   await expect(sidebar.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 })
   expect(await serverCalendar(name)).toMatchObject({ color: '#0e9488' })
@@ -675,6 +676,25 @@ test('invite the other account, accept there, and see the reply on the organizer
       { timeout: 45_000, intervals: [3_000] },
     )
     .toBeGreaterThan(0)
+
+  // The same reply also shows up as an update: who accepted what. Dismissing
+  // it reaches the server, and it does not come back.
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await page.getByRole('button', { name: /^Updates/ }).click()
+  const updates = page.getByRole('dialog', { name: 'Updates' })
+  await expect(updates.getByText(new RegExp(`accepted “${title}”`))).toBeVisible({
+    timeout: 30_000,
+  })
+  await updates.getByRole('button', { name: new RegExp(`^Dismiss: .*accepted “${title}”`) }).click()
+  await expect(updates.getByText(new RegExp(`accepted “${title}”`))).toHaveCount(0, {
+    timeout: 10_000,
+  })
+  await updates.getByRole('button', { name: 'Close' }).click()
+  await page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+    .click()
 
   // Clean up on both sides (deleting sends bob a cancellation).
   await page.getByRole('button', { name: 'Delete event' }).click()

@@ -1,7 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import type { Account } from '../../domain/account'
-import type { Calendar, CalendarEvent } from '../../domain/calendar'
+import type { Calendar, CalendarEvent, EventNotification } from '../../domain/calendar'
 import { db } from '../../storage/db'
 import { openEnvelope } from '../../storage/envelope'
 import { getIdentities } from '../../services/send'
@@ -19,6 +19,19 @@ export function useEvents(accountId: string | undefined): CalendarEvent[] | unde
     if (!accountId) return []
     const rows = await db.events.where('accountId').equals(accountId).toArray()
     return rows.map((r) => openEnvelope(r.payload))
+  }, [accountId])
+}
+
+/** Other people's changes to our events, newest first. */
+export function useEventNotifications(
+  accountId: string | undefined,
+): EventNotification[] | undefined {
+  return useLiveQuery(async () => {
+    if (!accountId) return []
+    const rows = await db.eventNotifications.where('accountId').equals(accountId).toArray()
+    return rows
+      .map((r) => openEnvelope(r.payload))
+      .sort((a, b) => b.created.localeCompare(a.created))
   }, [accountId])
 }
 

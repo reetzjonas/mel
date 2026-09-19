@@ -1,6 +1,6 @@
 import Dexie, { type Table, type Transaction } from 'dexie'
 import type { Account, Credentials } from '../domain/account'
-import type { Calendar, CalendarEvent } from '../domain/calendar'
+import type { Calendar, CalendarEvent, EventNotification } from '../domain/calendar'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { FileNode } from '../domain/file'
@@ -129,6 +129,12 @@ export interface CalendarRow {
   payload: Envelope<Calendar>
 }
 
+export interface EventNotificationRow {
+  accountId: string
+  id: string
+  payload: Envelope<EventNotification>
+}
+
 export interface EventRow {
   accountId: string
   id: string
@@ -200,6 +206,7 @@ export class MelDb extends Dexie {
   contacts!: Table<ContactRow, AccountScopedKey>
   calendars!: Table<CalendarRow, AccountScopedKey>
   events!: Table<EventRow, AccountScopedKey>
+  eventNotifications!: Table<EventNotificationRow, AccountScopedKey>
   files!: Table<FileNodeRow, AccountScopedKey>
   notes!: Table<NoteRow, AccountScopedKey>
   imageSenders!: Table<ImageSendersRow, string>
@@ -249,6 +256,7 @@ export class MelDb extends Dexie {
       notes: '&[accountId+id], accountId, [accountId+pinned]',
     })
     this.version(8).stores({ imageSenders: '&accountId' })
+    this.version(9).stores({ eventNotifications: '&[accountId+id], accountId' })
     this.use(cryptoMiddleware)
   }
 }

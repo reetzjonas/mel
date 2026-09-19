@@ -3,7 +3,7 @@ import type { Transport } from './client/transport'
 import type { Invocation, JmapRequest } from './client/types/core'
 import { createJmapCalendars } from './calendars'
 import type { CalendarEvent, Participant } from '../../domain/calendar'
-import { fromEvent, toEvent, type JmapCalendarEvent } from './calendars'
+import { fromEvent, toEvent, toNotification, type JmapCalendarEvent } from './calendars'
 
 const base: JmapCalendarEvent = {
   id: 'e1',
@@ -726,5 +726,110 @@ describe('syncing calendars and their events', () => {
     })
 
     await expect(provider.syncCalendars('ancient')).rejects.toThrow()
+  })
+})
+
+describe('event notifications', () => {
+  const rsvp = (status: string, by = 'bob@localhost') => ({
+    id: 'n1',
+    created: '2026-09-19T15:41:21Z',
+    type: 'updated',
+    calendarEventId: 'ev1',
+    changedBy: { name: 'Bob (dev)', email: by },
+    eventPatch: {
+      title: 'Planning',
+      participants: {
+        p1: { calendarAddress: 'mailto:alice@localhost', roles: { owner: true } },
+        p2: { calendarAddress: `mailto:${by}`, participationStatus: status },
+      },
+    },
+  })
+
+  it.each(['accepted', 'declined', 'tentative'] as const)(
+    'reads a reply of %s as that',
+    (status) => {
+      expect(toNotification(rsvp(status)).kind).toBe(status)
+    },
+  )
+
+  it('names who did it, which event and when', () => {
+    expect(toNotification(rsvp('accepted'))).toMatchObject({
+      id: 'n1',
+      by: 'Bob (dev)',
+      byEmail: 'bob@localhost',
+      eventId: 'ev1',
+      title: 'Planning',
+      created: '2026-09-19T15:41:21Z',
+    })
+  })
+
+  it('reads an update in which the sender did not answer as a plain change', () => {
+    // Bob moved the time; his own entry is still waiting for an answer.
+    expect(toNotification(rsvp('needs-action')).kind).toBe('changed')
+  })
+
+  it("looks only at the sender's own entry, not at everyone's answers", () => {
+    const n = rsvp('needs-action')
+    ;(n.eventPatch.participants as Record<string, unknown>)['p3'] = {
+      calendarAddress: 'mailto:carol@localhost',
+      participationStatus: 'accepted',
+    }
+    expect(toNotification(n).kind).toBe('changed')
+  })
+
+  it('matches the sender case-insensitively', () => {
+    const n = rsvp('accepted', 'Bob@Localhost')
+    n.changedBy.email = 'bob@localhost'
+    expect(toNotification(n).kind).toBe('accepted')
+  })
+
+  it('reads created as an invitation and destroyed as a cancellation', () => {
+    expect(toNotification({ id: 'a', type: 'created' }).kind).toBe('invited')
+    expect(toNotification({ id: 'a', type: 'destroyed' }).kind).toBe('cancelled')
+  })
+
+  it('falls back to the address when the sender has no name, and to blanks for the rest', () => {
+    const n = toNotification({ id: 'a', type: 'updated', changedBy: { email: 'x@y' } })
+    expect(n).toMatchObject({ by: 'x@y', title: '', comment: '', eventId: null, kind: 'changed' })
+  })
+
+  it('asks for the properties Stalwart leaves out of a plain get', async () => {
+    const { provider, sent } = serverAnswering({
+      'CalendarEventNotification/get': { list: [rsvp('accepted')], state: 'n-1' },
+    })
+    const page = await provider.syncEventNotifications(undefined)
+    const props = sent[0]![1]['properties'] as string[]
+    expect(props).toEqual(expect.arrayContaining(['calendarEventId', 'eventPatch', 'changedBy']))
+    expect(page.created).toHaveLength(1)
+    expect(page.newState).toBe('n-1')
+  })
+
+  it('does not take the calendar sync down when the server has no notifications', async () => {
+    const { provider } = serverAnswering({
+      'CalendarEventNotification/get': { error: { type: 'unknownMethod' } },
+    })
+    await expect(provider.syncEventNotifications(undefined)).resolves.toMatchObject({
+      created: [],
+      hasMore: false,
+    })
+  })
+
+  it('still reports any other failure', async () => {
+    const { provider } = serverAnswering({
+      'CalendarEventNotification/get': { error: { type: 'serverFail' } },
+    })
+    await expect(provider.syncEventNotifications(undefined)).rejects.toThrow()
+  })
+
+  it('dismisses by destroying, and reports a refusal', async () => {
+    const ok = serverAnswering({ 'CalendarEventNotification/set': { destroyed: ['n1'] } })
+    await expect(ok.provider.dismissEventNotifications(['n1'])).resolves.toBeNull()
+    expect(ok.sent[0]![1]['destroy']).toEqual(['n1'])
+    const refused = serverAnswering({
+      'CalendarEventNotification/set': { notDestroyed: { n1: { type: 'notFound' } } },
+    })
+    await expect(refused.provider.dismissEventNotifications(['n1'])).resolves.toMatchObject({
+      type: 'notFound',
+    })
   })
 })

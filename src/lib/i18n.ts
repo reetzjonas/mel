@@ -717,6 +717,19 @@ const en = {
   'cal.scope.one': 'This event',
   'cal.scope.all': 'All events',
   'cal.calendars': 'Calendars',
+  'cal.notif.button': 'Updates',
+  'cal.notif.someone': 'Someone',
+  'cal.notif.title': 'Updates',
+  'cal.notif.empty': 'No updates',
+  'cal.notif.dismiss': 'Dismiss',
+  'cal.notif.dismissAll': 'Dismiss all',
+  'cal.notif.failed': 'Could not dismiss. Are you online?',
+  'cal.notif.invited': '{name} invited you to “{title}”',
+  'cal.notif.accepted': '{name} accepted “{title}”',
+  'cal.notif.declined': '{name} declined “{title}”',
+  'cal.notif.tentative': '{name} may attend “{title}”',
+  'cal.notif.changed': '{name} changed “{title}”',
+  'cal.notif.cancelled': '{name} cancelled “{title}”',
   'cal.calendar.new': 'New calendar',
   'cal.calendar.edit': 'Edit calendar',
   'cal.calendar.editLabel': 'Edit calendar',
@@ -1505,6 +1518,19 @@ const de: Partial<Record<MsgKey, string>> = {
   'cal.scope.one': 'Nur diesen Termin',
   'cal.scope.all': 'Alle Termine',
   'cal.calendars': 'Kalender',
+  'cal.notif.button': 'Neuigkeiten',
+  'cal.notif.someone': 'Jemand',
+  'cal.notif.title': 'Neuigkeiten',
+  'cal.notif.empty': 'Keine Neuigkeiten',
+  'cal.notif.dismiss': 'Verwerfen',
+  'cal.notif.dismissAll': 'Alle verwerfen',
+  'cal.notif.failed': 'Verwerfen nicht möglich. Bist du online?',
+  'cal.notif.invited': '{name} hat dich zu „{title}“ eingeladen',
+  'cal.notif.accepted': '{name} hat „{title}“ angenommen',
+  'cal.notif.declined': '{name} hat „{title}“ abgelehnt',
+  'cal.notif.tentative': '{name} nimmt vielleicht an „{title}“ teil',
+  'cal.notif.changed': '{name} hat „{title}“ geändert',
+  'cal.notif.cancelled': '{name} hat „{title}“ abgesagt',
   'cal.calendar.new': 'Neuer Kalender',
   'cal.calendar.edit': 'Kalender bearbeiten',
   'cal.calendar.editLabel': 'Kalender bearbeiten',
@@ -1583,6 +1609,11 @@ function resolveLocale(): string {
 }
 
 export const currentLocale = resolveLocale()
+
+/** `t` with `{name}`-style placeholders filled in, for a sentence whose word order differs by language. */
+export function tf(key: MsgKey, vars: Record<string, string>): string {
+  return t(key).replace(/\{(\w+)\}/g, (whole, name: string) => vars[name] ?? whole)
+}
 
 export function t(key: MsgKey): string {
   if (currentLocale !== 'en') {

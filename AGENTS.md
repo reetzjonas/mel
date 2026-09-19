@@ -132,6 +132,8 @@ working on that specific feature, not on every session:
   Markdown editor is built): `docs/notes/notes-app.md`
 - **Event attachments** (JSCalendar `links`, what Stalwart drops, embedded vs
   referenced from Files, why a `blobId` needs an `href`): `docs/notes/calendar-attachments.md`
+- **Calendar notifications** (Stalwart's plain `get` omits the useful fields, how an
+  RSVP is recognised, dismiss is shared): `docs/notes/calendar-notifications.md`
 - **Calendar reminders** (what an alert is and is not, why a closed browser
   shows nothing, the catch-up rule, DST and the optional `alerts` field):
   `docs/notes/calendar-alerts.md`

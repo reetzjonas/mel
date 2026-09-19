@@ -1,6 +1,7 @@
 import type {
   Calendar,
   CalendarEvent,
+  EventNotification,
   Participant,
   ParticipationStatus,
   RecurrencePatch,
@@ -8,7 +9,7 @@ import type {
 } from '../../domain/calendar'
 import { type CalendarProvider, type SetFailure } from '../types'
 import { Batch } from './client/request'
-import type { Transport } from './client/transport'
+import { JmapError, type Transport } from './client/transport'
 import { Cap, type SetError, type SetResponse } from './client/types/core'
 import { syncCollection } from './collectionSync'
 import { toAlerts } from '../../lib/alerts'
@@ -73,6 +74,18 @@ export interface JmapCalendarEvent {
   isOrigin?: boolean
 }
 
+export interface JmapEventNotification {
+  id: string
+  created?: string
+  changedBy?: { name?: string | null; email?: string | null } | null
+  comment?: string | null
+  /** "created" | "updated" | "destroyed". */
+  type?: string
+  calendarEventId?: string | null
+  /** The event as it now stands (or its changes) — for RSVPs this carries the participants. */
+  eventPatch?: Record<string, unknown> | null
+}
+
 interface JmapParticipant {
   '@type'?: string
   name?: string | null
@@ -81,6 +94,48 @@ interface JmapParticipant {
   roles?: Record<string, boolean> | null
   participationStatus?: string | null
   expectReply?: boolean | null
+}
+
+const RSVP_KINDS = {
+  accepted: 'accepted',
+  declined: 'declined',
+  tentative: 'tentative',
+} as const
+
+/**
+ * A notification in the terms the UI shows it.
+ *
+ * Stalwart reports an RSVP as a plain `updated` whose patch holds the whole
+ * participant map, with no field saying *what* changed. The person who caused
+ * the notification is named though, so their own entry in that map is the
+ * answer: if they now say accepted/declined/tentative, that is what they did.
+ * Anything else — a moved time, a new agenda — is just "changed".
+ */
+export function toNotification(n: JmapEventNotification): EventNotification {
+  const email = (n.changedBy?.email ?? '').trim()
+  const patch = n.eventPatch ?? {}
+  let kind: EventNotification['kind'] =
+    n.type === 'created' ? 'invited' : n.type === 'destroyed' ? 'cancelled' : 'changed'
+  if (kind === 'changed' && email) {
+    const participants = patch['participants']
+    if (participants && typeof participants === 'object') {
+      for (const p of Object.values(participants as Record<string, JmapParticipant>)) {
+        if (addressOf(p?.calendarAddress).toLowerCase() !== email.toLowerCase()) continue
+        const status = p.participationStatus
+        if (status && status in RSVP_KINDS) kind = RSVP_KINDS[status as keyof typeof RSVP_KINDS]
+      }
+    }
+  }
+  return {
+    id: n.id,
+    created: n.created ?? '',
+    kind,
+    by: (n.changedBy?.name ?? '').trim() || email,
+    byEmail: email,
+    eventId: n.calendarEventId ?? null,
+    title: typeof patch['title'] === 'string' ? patch['title'] : '',
+    comment: n.comment ?? '',
+  }
 }
 
 function toCalendar(c: JmapCalendar): Calendar {
@@ -342,6 +397,55 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
       await b.send()
       const err = s.result.notUpdated?.[eventId]
       return err ? toFailure(err) : null
+    },
+
+    async syncEventNotifications(sinceState) {
+      try {
+        return await syncCollection<JmapEventNotification, EventNotification>(
+          batch,
+          {
+            type: 'CalendarEventNotification',
+            accountId,
+            // Asked for by name: Stalwart leaves the event id, the comment and the
+            // patch out of a plain get, and the patch is what says an RSVP happened.
+            properties: [
+              'id',
+              'created',
+              'changedBy',
+              'comment',
+              'type',
+              'calendarEventId',
+              'eventPatch',
+            ],
+            map: toNotification,
+          },
+          sinceState,
+        )
+      } catch (e) {
+        // A server that has calendars but not their notifications must not take
+        // the calendar sync down with it: report an empty, settled collection.
+        if (e instanceof JmapError && e.message.includes('unknownMethod')) {
+          return {
+            created: [],
+            updated: [],
+            destroyedIds: [],
+            newState: 'unsupported',
+            hasMore: false,
+          }
+        }
+        throw e
+      }
+    },
+
+    async dismissEventNotifications(ids) {
+      const b = batch()
+      const s = b.call<SetResponse<unknown>>('CalendarEventNotification/set', {
+        accountId,
+        destroy: ids,
+      })
+      await b.send()
+      const errs = Object.values(s.result.notDestroyed ?? {})
+      return errs.length ? toFailure(errs[0]) : null
     },
 
     async editCalendar(edit) {

@@ -73,6 +73,34 @@ export interface Participant {
   expectReply: boolean
 }
 
+/**
+ * What someone else did to an event we are part of (JMAP CalendarEventNotification).
+ *
+ * `kind` is worked out when the notification is read, from the server's own
+ * `type` and — for an update — from what the person who made it did to their
+ * own participation: someone accepting an invitation and someone rewriting the
+ * agenda are both `updated` on the wire, and only the first is worth a line of
+ * its own.
+ */
+export type NotificationKind =
+  'invited' | 'accepted' | 'declined' | 'tentative' | 'changed' | 'cancelled'
+
+export interface EventNotification {
+  id: string
+  /** UTC, ISO 8601. */
+  created: string
+  kind: NotificationKind
+  /** Who did it: their name, or their address when they have none. */
+  by: string
+  byEmail: string
+  /** null when the server names no event (or it has since gone). */
+  eventId: string | null
+  /** The event's title as the notification carried it; empty when it did not. */
+  title: string
+  /** Free text the sender attached; empty for none. */
+  comment: string
+}
+
 export interface CalendarEvent {
   id: string
   calendarIds: Record<string, true>

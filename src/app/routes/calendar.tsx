@@ -10,11 +10,17 @@ import type {
 import { CalendarDialog } from '../../features/calendar/CalendarDialog'
 import { CALENDAR_SWATCHES, FALLBACK_COLORS } from '../../features/calendar/calendarColors'
 import { EventDialog } from '../../features/calendar/EventDialog'
+import { NotificationsDialog } from '../../features/calendar/NotificationsDialog'
 import { ScopeDialog } from '../../features/calendar/ScopeDialog'
 import { TimeGrid } from '../../features/calendar/TimeGrid'
 import { dayKey } from '../../lib/dates'
 import { instantAt } from '../../features/calendar/dragGeometry'
-import { useCalendars, useEvents, useSelfIdentity } from '../../features/calendar/hooks'
+import {
+  useCalendars,
+  useEventNotifications,
+  useEvents,
+  useSelfIdentity,
+} from '../../features/calendar/hooks'
 import { useAccounts } from '../../features/mail/hooks'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { useHiddenCalendars } from '../../lib/hiddenCalendars'
@@ -242,6 +248,8 @@ function CalendarApp() {
   const [calSearch, setCalSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
   /** The calendar-list dialog: a calendar to edit, 'new' for a fresh one. */
+  const notifications = useEventNotifications(account?.id)
+  const [showNotifications, setShowNotifications] = useState(false)
   const [calendarDialog, setCalendarDialog] = useState<Calendar | 'new' | null>(null)
   const [scope, setScope] = useState<ScopeQuestion | null>(null)
   const sidebarPanel = usePanelWidth('calendar-sidebar', SIDEBAR_LIMITS)
@@ -711,6 +719,22 @@ function CalendarApp() {
             ))}
           </div>
 
+          <button
+            type="button"
+            aria-label={`${t('cal.notif.button')}${
+              notifications?.length ? ` (${notifications.length})` : ''
+            }`}
+            onClick={() => setShowNotifications(true)}
+            className={`relative ml-auto !p-1.5 ${secondaryIconButtonClass}`}
+          >
+            <Icon name="bell" size={15} />
+            {notifications && notifications.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-semibold text-accent-ink">
+                {notifications.length > 99 ? '99+' : notifications.length}
+              </span>
+            )}
+          </button>
+
           {/* Without a calendar there is nothing to create an event in, and
               openNew() would return silently — a button that does nothing when
               pressed. Disabled until the calendar list has actually arrived. */}
@@ -721,7 +745,7 @@ function CalendarApp() {
             disabled={!defaultCalendarId}
             title={defaultCalendarId ? undefined : t('cal.loading')}
             onClick={() => openNew(view === 'month' ? new Date() : anchor)}
-            className={`ml-auto flex items-center gap-2 !py-1.5 ${primaryButtonClass}`}
+            className={`flex items-center gap-2 !py-1.5 ${primaryButtonClass}`}
           >
             <Icon name="compose" size={14} />
             <span className="hidden sm:inline">{t('cal.newEvent')}</span>
@@ -872,6 +896,19 @@ function CalendarApp() {
             })}
         </div>
       </div>
+
+      {showNotifications && (
+        <NotificationsDialog
+          accountId={account.id}
+          notifications={notifications ?? []}
+          eventById={eventById}
+          onClose={() => setShowNotifications(false)}
+          onOpen={(event) => {
+            setShowNotifications(false)
+            setDialog({ isNew: false, recurrenceId: null, event })
+          }}
+        />
+      )}
 
       {calendarDialog && (
         <CalendarDialog
