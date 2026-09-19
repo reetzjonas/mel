@@ -17,6 +17,39 @@ function randomNextMonthDate(maxDay: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+test('a custom recurrence (every 2 days, 3 times) shows exactly three occurrences', async ({
+  page,
+}) => {
+  const title = `Every2-${Date.now() % 100000}`
+  const chips = () =>
+    page.locator('[data-testid="calendar-grid"]').getByRole('button', { name: new RegExp(title) })
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  await page.getByRole('button', { name: 'next' }).click()
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  // Days 1-7 of next month: every second day, three times, stays inside it.
+  await page.getByLabel('Date', { exact: true }).fill(randomNextMonthDate(7))
+  await page.getByRole('button', { name: 'More details' }).click()
+  await page.getByRole('combobox', { name: 'Repeat' }).selectOption('daily')
+  await page.getByLabel('Every', { exact: true }).fill('2')
+  await page.getByRole('combobox', { name: 'Ends' }).selectOption('count')
+  await page.getByLabel('times', { exact: true }).fill('3')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect(chips()).toHaveCount(3, { timeout: 10_000 })
+
+  // The controls read back what was written.
+  await chips().first().click()
+  await expect(page.getByLabel('Every', { exact: true })).toHaveValue('2')
+  await expect(page.getByLabel('times', { exact: true })).toHaveValue('3')
+
+  await page.getByRole('button', { name: 'Delete event' }).click()
+  await page.getByRole('button', { name: 'All events' }).click()
+  await expect(chips()).toHaveCount(0, { timeout: 10_000 })
+})
+
 test('create a single and a weekly recurring event in the month view', async ({ page }) => {
   const title = `Standup-${Date.now() % 100000}`
 

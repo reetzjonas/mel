@@ -5,16 +5,17 @@ import type {
   CalendarEvent,
   Participant,
   ParticipationStatus,
-  RecurrenceRule,
 } from '../../domain/calendar'
 import { REMINDER_PRESETS, reminderOf, withReminder } from '../../lib/alerts'
 import { t, type MsgKey } from '../../lib/i18n'
+import { followStartDay, formOf, repeatError, ruleOf, sameForm } from '../../lib/recurrenceForm'
 import { requestNotificationPermission } from '../../services/notifications'
 import { DialogHeader } from '../../ui/DialogHeader'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { useMobileViewport, useModal } from '../../ui/useModal'
 import { ParticipantsField, ParticipantStatusBadge } from './ParticipantsField'
+import { RecurrenceField } from './RecurrenceField'
 
 const RSVP_CHOICES = [
   ['accepted', 'cal.rsvp.accept'],
@@ -48,22 +49,6 @@ function reminderChoices(current: number | null): Array<[number, string]> {
         ? t(REMINDER_LABELS[m])
         : `${t('cal.reminder.custom')}: ${m} ${t('cal.min')}`,
     ])
-}
-
-type RepeatPreset = 'none' | RecurrenceRule['frequency']
-
-function presetOf(rule: RecurrenceRule | null): RepeatPreset {
-  return rule?.frequency ?? 'none'
-}
-
-function ruleFor(preset: RepeatPreset, startDate: string): RecurrenceRule | null {
-  if (preset === 'none') return null
-  if (preset === 'weekly') {
-    const codes = ['su', 'mo', 'tu', 'we', 'th', 'fr', 'sa']
-    const dow = new Date(`${startDate}T12:00:00`).getDay()
-    return { frequency: 'weekly', byDay: [codes[dow]!] }
-  }
-  return { frequency: preset }
 }
 
 function partsOf(start: string, duration: string) {
@@ -120,7 +105,8 @@ export function EventDialog({
   const [allDay, setAllDay] = useState(initial.showWithoutTime)
   const [location, setLocation] = useState(initial.location)
   const [description, setDescription] = useState(initial.description)
-  const [repeat, setRepeat] = useState<RepeatPreset>(presetOf(initial.recurrenceRule))
+  const initialRepeat = formOf(initial.recurrenceRule, initialParts.date)
+  const [repeat, setRepeat] = useState(initialRepeat)
   const [participants, setParticipants] = useState<Participant[]>(initial.participants)
   const initialReminder = reminderOf(initial.alerts ?? {})?.minutes ?? null
   const [reminder, setReminder] = useState<number | null>(initialReminder)
@@ -139,7 +125,7 @@ export function EventDialog({
   )
 
   function save() {
-    if (!title.trim() || !date) return
+    if (!title.trim() || !date || repeatError(repeat, date)) return
     const start = allDay ? `${date}T00:00:00` : `${date}T${time}:00`
     const end = allDay ? `${endDate}T00:00:00` : `${endDate}T${endTime}:00`
     const duration = durationBetween(start, end, allDay)
@@ -153,10 +139,11 @@ export function EventDialog({
       showWithoutTime: allDay,
       location: location.trim(),
       description: description.trim(),
-      recurrenceRule:
-        presetOf(initial.recurrenceRule) === repeat
-          ? initial.recurrenceRule
-          : ruleFor(repeat, date),
+      // Untouched controls keep the rule as the server has it, including what
+      // they cannot show (a `byMonthDay`, an `until` with a time of day).
+      recurrenceRule: sameForm(initialRepeat, repeat)
+        ? initial.recurrenceRule
+        : ruleOf(repeat, date, initial.recurrenceRule),
       participants,
       // Left as it was unless changed: an event whose alerts were never read
       // must not be handed an empty map that then overwrites the server's.
@@ -183,6 +170,7 @@ export function EventDialog({
     }).days
     setDate(next)
     setEndDate(Temporal.PlainDate.from(endDate).add({ days: shift }).toString())
+    setRepeat((form) => followStartDay(form, date, next))
   }
 
   function changeStartTime(next: string) {
@@ -202,6 +190,7 @@ export function EventDialog({
   const start = allDay ? `${date}T00:00:00` : `${date}T${time}:00`
   const end = allDay ? `${endDate}T00:00:00` : `${endDate}T${endTime}:00`
   const invalidEnd = !durationBetween(start, end, allDay)
+  const invalidRepeat = repeatError(repeat, date) !== null
 
   const shell = (children: ReactNode) => (
     <div
@@ -298,7 +287,7 @@ export function EventDialog({
           <button
             type="button"
             onClick={save}
-            disabled={!title.trim() || invalidEnd}
+            disabled={!title.trim() || invalidEnd || invalidRepeat}
             className="text-sm font-semibold text-ink-muted hover:text-accent disabled:text-ink-subtle"
           >
             {participants.length > 0 ? t('cal.saveAndInvite') : t('cal.save')}
@@ -410,16 +399,7 @@ export function EventDialog({
           </button>
           {showDetails && (
             <div className="space-y-4">
-              <label className="space-y-1">
-                <span className="text-xs text-ink-muted">{t('cal.repeat')}</span>
-                <Select value={repeat} onChange={(e) => setRepeat(e.target.value as RepeatPreset)}>
-                  <option value="none">{t('cal.repeat.none')}</option>
-                  <option value="daily">{t('cal.repeat.daily')}</option>
-                  <option value="weekly">{t('cal.repeat.weekly')}</option>
-                  <option value="monthly">{t('cal.repeat.monthly')}</option>
-                  <option value="yearly">{t('cal.repeat.yearly')}</option>
-                </Select>
-              </label>
+              <RecurrenceField value={repeat} startDate={date} onChange={setRepeat} />
               {!occurrence && (
                 <label className="space-y-1">
                   <span className="text-xs text-ink-muted">{t('cal.reminder')}</span>
