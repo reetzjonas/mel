@@ -33,6 +33,7 @@ import { connectionFor } from '../../sync/connections'
 import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
+import { usePopover } from '../../ui/usePopover'
 import { Skeleton } from '../../ui/Skeleton'
 import { useSettingsRoute } from '../settings/navigation'
 
@@ -129,15 +130,7 @@ function SplitAction({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
+  usePopover({ panel: ref, onClose: () => setOpen(false), enabled: open })
 
   return (
     <span ref={ref} className="relative flex items-center">

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { suggestRecipients, type Suggestion } from '../../services/contacts'
+import { usePopover } from '../../ui/usePopover'
 
 /**
  * Comma-separated recipient input with contact autocomplete on the segment
@@ -28,6 +29,7 @@ export function RecipientInput({
   // A segment too short to search on shows nothing, whatever a longer one
   // turned up a keystroke ago — a condition rather than state to be cleared.
   const suggestions = currentSegment.length < 2 ? [] : found
+  usePopover({ panel: wrapper, onClose: () => setFound([]), enabled: suggestions.length > 0 })
 
   useEffect(() => {
     let alive = true
@@ -44,14 +46,6 @@ export function RecipientInput({
       alive = false
     }
   }, [accountId, currentSegment])
-
-  useEffect(() => {
-    const close = (e: MouseEvent) => {
-      if (!wrapper.current?.contains(e.target as Node)) setFound([])
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [])
 
   function pick(s: Suggestion) {
     const parts = value.split(',')
@@ -96,7 +90,7 @@ export function RecipientInput({
         }}
       />
       {suggestions.length > 0 && (
-        <ul className="absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
+        <ul className="animate-rise absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line">
           {suggestions.map((s, i) => (
             <li key={`${s.email}-${i}`}>
               <button

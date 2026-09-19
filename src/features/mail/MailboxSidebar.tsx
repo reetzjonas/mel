@@ -1,5 +1,5 @@
 import { Link, useNavigate, useParams } from '@tanstack/react-router'
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { Account } from '../../domain/account'
 import type { Mailbox } from '../../domain/mailbox'
@@ -57,15 +57,7 @@ function FolderMenu({
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
-  }, [open])
+  usePopover({ panel: ref, onClose: () => setOpen(false), enabled: open })
 
   const custom = mailbox.role === null
   const items: Array<['rename' | 'newSub' | 'move' | 'delete', string, boolean]> = [

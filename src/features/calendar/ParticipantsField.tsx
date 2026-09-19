@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Participant, ParticipationStatus } from '../../domain/calendar'
 import { t, type MsgKey } from '../../lib/i18n'
 import { suggestRecipients, type Suggestion } from '../../services/contacts'
 import { Icon } from '../../ui/Icon'
 import { inputClass } from '../../ui/styles'
+import { usePopover } from '../../ui/usePopover'
 
 const STATUS_LABEL: Record<ParticipationStatus, MsgKey> = {
   'needs-action': 'cal.rsvp.pending',
@@ -74,9 +75,15 @@ export function ParticipantsField({
 }) {
   const [input, setInput] = useState('')
   const [found, setFound] = useState<Suggestion[]>([])
+  const suggestionPanel = useRef<HTMLDivElement>(null)
   // Too short to search on shows nothing, whatever a longer input turned up a
   // keystroke ago — a condition, not state that has to be cleared.
   const suggestions = input.trim().length < 2 ? [] : found
+  usePopover({
+    panel: suggestionPanel,
+    onClose: () => setFound([]),
+    enabled: suggestions.length > 0,
+  })
 
   useEffect(() => {
     if (input.trim().length < 2) return
@@ -142,7 +149,7 @@ export function ParticipantsField({
           ))}
         </ul>
       )}
-      <div className="relative">
+      <div ref={suggestionPanel} className="relative">
         <input
           className={inputClass}
           placeholder={t('cal.addAttendee')}
@@ -155,11 +162,13 @@ export function ParticipantsField({
               const top = suggestions[0]
               if (top && !input.includes('@')) add(top.email, top.name)
               else add(input, '')
+            } else if (e.key === 'Escape') {
+              setFound([])
             }
           }}
         />
         {suggestions.length > 0 && (
-          <ul className="absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-lg border border-line bg-surface shadow-lg">
+          <ul className="animate-rise absolute top-full right-0 left-0 z-10 mt-1 overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line">
             {suggestions.map((s) => (
               <li key={`${s.email}-${s.name}`}>
                 <button
