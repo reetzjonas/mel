@@ -18,7 +18,8 @@ import { t } from '../../lib/i18n'
 import { downloadOriginal, getMessageMetadata } from '../../services/mail'
 import { Icon } from '../../ui/Icon'
 import { Skeleton } from '../../ui/Skeleton'
-import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { modalPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { useModal } from '../../ui/useModal'
 
 /** Above this, a value is folded away behind a toggle rather than shown whole. */
 const LONG_VALUE = 200
@@ -127,7 +128,9 @@ export function MessageDetails({
   const meta: MessageMetadata | null | 'loading' =
     fetched && fetched.id === email.id ? fetched.meta : 'loading'
   const { showSnackbar } = useUi()
+  const panel = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
+  useModal({ panel, initialFocus: closeRef, onClose })
 
   useEffect(() => {
     let alive = true
@@ -139,15 +142,6 @@ export function MessageDetails({
       alive = false
     }
   }, [accountId, email.id])
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    closeRef.current?.focus()
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
 
   const headers = meta !== 'loading' && meta ? meta.headers : []
   const hops = deliveryPath(headers)
@@ -187,15 +181,18 @@ export function MessageDetails({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
     >
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={t('mail.details')}
-        className={`animate-rise flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden ${overlayPanelClass}`}
-        onClick={(e) => e.stopPropagation()}
+        className={`${modalPanelClass} max-h-[92dvh] max-w-2xl max-sm:rounded-t-panel`}
       >
         <div className="flex items-start gap-3 px-5 py-3">
           <div className="min-w-0 flex-1">

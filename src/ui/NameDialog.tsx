@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { inputClass, overlayPanelClass, primaryButtonClass } from './styles'
+import { useRef, useState } from 'react'
+import { inputClass, modalPanelClass } from './styles'
+import { useMobileViewport, useModal } from './useModal'
+import { DialogHeader } from './DialogHeader'
 
 export function NameDialog({
   title,
@@ -17,37 +19,49 @@ export function NameDialog({
   onClose: () => void
 }) {
   const [value, setValue] = useState(initial)
+  const panel = useRef<HTMLFormElement>(null)
+  const input = useRef<HTMLInputElement>(null)
+  const mobileViewport = useMobileViewport()
+  useModal({ panel, initialFocus: input, onClose })
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
     >
       <form
-        className={`animate-rise w-full max-w-xs space-y-3 p-5 ${overlayPanelClass}`}
-        onClick={(e) => e.stopPropagation()}
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        className={`${modalPanelClass} max-w-xs max-sm:rounded-t-panel`}
+        style={mobileViewport ? { maxHeight: `${mobileViewport.height - 32}px` } : undefined}
         onSubmit={(e) => {
           e.preventDefault()
           if (value.trim()) onConfirm(value.trim())
         }}
       >
-        <h2 className="text-sm font-semibold">{title}</h2>
-        <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className={inputClass}
+        <DialogHeader
+          title={title}
+          closeLabel={cancelLabel}
+          onClose={onClose}
+          action={
+            <button
+              type="submit"
+              className="text-sm font-semibold text-ink-muted hover:text-accent"
+            >
+              {confirmLabel}
+            </button>
+          }
         />
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-control px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            {cancelLabel}
-          </button>
-          <button type="submit" className={primaryButtonClass}>
-            {confirmLabel}
-          </button>
+        <div className="p-5">
+          <input
+            autoFocus
+            ref={input}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className={inputClass}
+          />
         </div>
       </form>
     </div>

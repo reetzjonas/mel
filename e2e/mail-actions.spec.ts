@@ -416,6 +416,12 @@ test('shift-clicking a second row takes the whole run between them', async ({ pa
   await expect(page.getByTestId('selection-toolbar')).toContainText('selected')
   const toolbar = page.getByTestId('selection-toolbar')
 
+  await toolbar.getByLabel('Move to folder').click()
+  const picker = page.getByTestId('move-folder-picker')
+  await expect(picker).toBeVisible()
+  await page.mouse.click(0, 0)
+  await expect(picker).toHaveCount(0)
+
   await toolbar.getByLabel('Clear selection').click()
   await expect(toolbar).toBeHidden()
 })

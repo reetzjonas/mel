@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { Temporal } from 'temporal-polyfill'
 import type {
   Calendar,
@@ -12,6 +12,7 @@ import { t, type MsgKey } from '../../lib/i18n'
 import { requestNotificationPermission } from '../../services/notifications'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { useMobileViewport, useModal } from '../../ui/useModal'
 import { ParticipantsField, ParticipantStatusBadge } from './ParticipantsField'
 
 const RSVP_CHOICES = [
@@ -127,31 +128,9 @@ export function EventDialog({
       initial.location || initial.description || initial.recurrenceRule || initialReminder !== null,
     ),
   )
-  const [mobileViewport, setMobileViewport] = useState<{ height: number; inset: number } | null>(
-    null,
-  )
-
-  useEffect(() => {
-    const viewport = window.visualViewport
-    if (!viewport) return
-    const update = () => {
-      if (viewport.width >= 640) {
-        setMobileViewport(null)
-        return
-      }
-      setMobileViewport({
-        height: viewport.height,
-        inset: Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop),
-      })
-    }
-    update()
-    viewport.addEventListener('resize', update)
-    viewport.addEventListener('scroll', update)
-    return () => {
-      viewport.removeEventListener('resize', update)
-      viewport.removeEventListener('scroll', update)
-    }
-  }, [])
+  const panel = useRef<HTMLDivElement>(null)
+  const mobileViewport = useMobileViewport()
+  useModal({ panel, onClose })
 
   // On an invitation the organizer owns the event; we may only answer it.
   const me = initial.participants.find(
@@ -215,6 +194,8 @@ export function EventDialog({
       style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
     >
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={initial.id ? t('cal.editEvent') : t('cal.newEvent')}

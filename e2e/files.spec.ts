@@ -44,6 +44,12 @@ test('select several items, move them into a folder, then delete them together',
   await expect(page.getByText('2 selected')).toBeVisible()
 
   await page.getByRole('button', { name: 'Move to…' }).click()
+  const picker = page.getByRole('dialog', { name: 'Move to…' })
+  await expect(picker).toBeVisible()
+  await expect(picker).not.toHaveAttribute('aria-modal')
+  await page.mouse.click(0, 0)
+  await expect(picker).toHaveCount(0)
+  await page.getByRole('button', { name: 'Move to…' }).click()
   // Scoped to the dialog: the row behind it carries the same name.
   await page.getByRole('dialog').getByRole('button', { name: box, exact: true }).click()
 

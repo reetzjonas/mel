@@ -23,7 +23,9 @@ import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
 import { ListSkeleton } from '../../ui/Skeleton'
 import { Tooltip } from '../../ui/Tooltip'
-import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { useMobileViewport, useModal } from '../../ui/useModal'
+import { useMobileLayout, usePopover, usePopoverPosition } from '../../ui/usePopover'
+import { modalPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import {
   clearDragState,
   draggableTouchClass,
@@ -38,7 +40,10 @@ import { FilePreview } from './FilePreview'
 import { useAllNodes, useFilePath, useFolderChildren } from './hooks'
 import { isHidden, moveTargets } from './tree'
 
-type Dialog = { kind: 'newFolder' } | { kind: 'rename'; node: FileNode } | { kind: 'move' }
+type Dialog =
+  | { kind: 'newFolder' }
+  | { kind: 'rename'; node: FileNode }
+  | { kind: 'move'; anchor: HTMLElement | null }
 
 const SHOW_HIDDEN_KEY = 'mel:files:showHidden'
 const PREVIEW_LIMITS: PanelLimits = { min: 280, max: 640, initial: 384 }
@@ -102,6 +107,7 @@ export function FileBrowser({
   const [dropping, setDropping] = useState(false)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const picker = useRef<HTMLInputElement>(null)
+  const movePicker = useRef<HTMLSpanElement>(null)
   /*
    * What is in flight, as a ref rather than state. A touch-started drag can
    * fire dragenter on the first element under the finger before any render
@@ -222,12 +228,14 @@ export function FileBrowser({
               disabled={busy}
               onClick={() => void downloadChecked()}
             />
-            <SelectionActionButton
-              icon="folder"
-              label={t('files.move')}
-              disabled={busy}
-              onClick={() => setDialog({ kind: 'move' })}
-            />
+            <span ref={movePicker}>
+              <SelectionActionButton
+                icon="folder"
+                label={t('files.move')}
+                disabled={busy}
+                onClick={() => setDialog({ kind: 'move', anchor: movePicker.current })}
+              />
+            </span>
             <SelectionActionButton
               icon="trash"
               label={t('files.delete')}
@@ -426,6 +434,7 @@ export function FileBrowser({
         <MoveDialog
           targets={moveTargets(allNodes ?? [], [...checked], folderId)}
           atTopLevel={folderId === null}
+          anchor={dialog.anchor}
           onClose={() => setDialog(null)}
           onPick={(parentId) => {
             setDialog(null)
@@ -440,11 +449,13 @@ export function FileBrowser({
 function MoveDialog({
   targets,
   atTopLevel,
+  anchor,
   onPick,
   onClose,
 }: {
   targets: FileNode[]
   atTopLevel: boolean
+  anchor: HTMLElement | null
   onPick: (parentId: string | null) => void
   onClose: () => void
 }) {
@@ -453,19 +464,18 @@ function MoveDialog({
     ...(atTopLevel ? [] : [{ id: null, name: t('files.move.top') }]),
     ...targets.map((n) => ({ id: n.id as string | null, name: n.name })),
   ]
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
-    >
-      <div
-        role="dialog"
-        aria-modal
-        aria-label={t('files.move')}
-        className={`animate-rise flex max-h-[70vh] w-full max-w-xs flex-col p-5 ${overlayPanelClass}`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 className="mb-3 text-sm font-semibold">{t('files.move')}</h2>
+  const panel = useRef<HTMLDivElement>(null)
+  const mobile = useMobileLayout()
+  const mobileViewport = useMobileViewport()
+  const position = usePopoverPosition(anchor)
+  useModal({ panel, onClose, enabled: mobile })
+  usePopover({ panel, anchor, onClose })
+  const contents = (
+    <>
+      <header className="shrink-0 border-b border-line px-4 py-3 sm:px-5">
+        <h2 className="text-center text-sm font-semibold">{t('files.move')}</h2>
+      </header>
+      <div className="min-h-0 flex-1 p-4">
         {options.length === 0 ? (
           <p className="text-xs text-ink-subtle">{t('files.move.nowhere')}</p>
         ) : (
@@ -484,6 +494,41 @@ function MoveDialog({
             ))}
           </ul>
         )}
+      </div>
+    </>
+  )
+  if (!mobile) {
+    return (
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-label={t('files.move')}
+        className="animate-rise fixed z-50 flex max-h-[70vh] w-80 flex-col overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line"
+        style={position ?? undefined}
+      >
+        {contents}
+      </div>
+    )
+  }
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-label={t('files.move')}
+        className={`${modalPanelClass} max-h-[70vh] max-w-md max-sm:max-h-[92dvh] max-sm:rounded-t-panel`}
+        style={mobileViewport ? { maxHeight: `${mobileViewport.height - 32}px` } : undefined}
+      >
+        {contents}
       </div>
     </div>
   )

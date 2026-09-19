@@ -1,5 +1,9 @@
+import { useRef } from 'react'
 import { useUi } from '../../app/store'
 import { t } from '../../lib/i18n'
+import { modalPanelClass } from '../../ui/styles'
+import { useModal } from '../../ui/useModal'
+import { DialogHeader } from '../../ui/DialogHeader'
 
 const rows: Array<[string, Parameters<typeof t>[0]]> = [
   ['j / k', 'shortcuts.jk'],
@@ -19,26 +23,33 @@ const rows: Array<[string, Parameters<typeof t>[0]]> = [
 export function HelpOverlay() {
   const { helpOpen, setHelpOpen } = useUi()
   if (!helpOpen) return null
+  return <HelpDialog onClose={() => setHelpOpen(false)} />
+}
+
+function HelpDialog({ onClose }: { onClose: () => void }) {
+  const panel = useRef<HTMLDivElement>(null)
+  useModal({ panel, onClose })
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
-      onClick={() => setHelpOpen(false)}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
     >
       <div
-        className="animate-rise w-full max-w-sm rounded-panel bg-raised p-5 shadow-overlay ring-1 ring-line"
-        onClick={(e) => e.stopPropagation()}
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-label={t('shortcuts.title')}
+        className={`${modalPanelClass} max-w-sm p-5 max-sm:rounded-t-panel`}
       >
-        <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-base font-semibold">{t('shortcuts.title')}</h2>
-          <button
-            type="button"
-            className="text-sm text-ink-muted hover:text-ink"
-            onClick={() => setHelpOpen(false)}
-          >
-            {t('shortcuts.close')}
-          </button>
-        </div>
-        <dl className="space-y-1.5">
+        <DialogHeader
+          title={t('shortcuts.title')}
+          closeLabel={t('shortcuts.close')}
+          onClose={onClose}
+        />
+        <dl className="space-y-1.5 p-5">
           {rows.map(([key, label]) => (
             <div key={key} className="flex items-center justify-between text-sm">
               <dt>

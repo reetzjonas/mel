@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
 import { formatBytes } from '../../lib/bytes'
@@ -8,7 +8,8 @@ import { canShareFiles, shareFile } from '../../lib/webShare'
 import { downloadNode, setExecutable as writeExecutable } from '../../services/files'
 import { symlinkPath } from './symlink'
 import { Icon } from '../../ui/Icon'
-import { overlayPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { modalPanelClass, secondaryButtonClass } from '../../ui/styles'
+import { useModal } from '../../ui/useModal'
 
 /** Types a browser can show inline; everything else is offered as a download. */
 const IMAGE = /^image\//
@@ -94,15 +95,6 @@ export function FilePreview({
       if (url) URL.revokeObjectURL(url)
     }
   }, [accountId, node, type])
-
-  useEffect(() => {
-    if (!expanded) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setExpanded(false)
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [expanded])
 
   const save = async () => {
     const blob = await downloadNode(accountId, node)
@@ -199,40 +191,65 @@ export function FilePreview({
       </div>
 
       {expanded && (
-        <div
-          className="animate-fade fixed inset-0 z-50 flex flex-col bg-black/50 p-2 backdrop-blur-[2px] sm:p-6"
-          onClick={() => setExpanded(false)}
-        >
-          <div
-            className={`animate-rise flex min-h-0 w-full flex-1 flex-col ${overlayPanelClass}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
-              <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">
-                {node.name}
-              </p>
-              <button
-                type="button"
-                autoFocus
-                aria-label={t('files.preview.collapse')}
-                onClick={() => setExpanded(false)}
-                className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-              >
-                <Icon name="close" size={15} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-              <PreviewBody
-                full
-                content={content}
-                type={type}
-                nodeType={node.nodeType}
-                name={node.name}
-              />
-            </div>
-          </div>
-        </div>
+        <ExpandedPreview
+          content={content}
+          type={type}
+          nodeType={node.nodeType}
+          name={node.name}
+          onClose={() => setExpanded(false)}
+        />
       )}
+    </div>
+  )
+}
+
+function ExpandedPreview({
+  content,
+  type,
+  nodeType,
+  name,
+  onClose,
+}: {
+  content: Content
+  type: string
+  nodeType: FileNode['nodeType']
+  name: string
+  onClose: () => void
+}) {
+  const panel = useRef<HTMLDivElement>(null)
+  const close = useRef<HTMLButtonElement>(null)
+  useModal({ panel, initialFocus: close, onClose })
+  return (
+    <div
+      className="animate-fade fixed inset-0 z-50 flex flex-col bg-black/50 p-2 backdrop-blur-[2px] sm:p-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
+    >
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-label={name}
+        className={`${modalPanelClass} min-h-0 flex-1`}
+      >
+        <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
+          <p className="min-w-0 flex-1 truncate text-[13px] font-medium text-ink">{name}</p>
+          <button
+            ref={close}
+            type="button"
+            aria-label={t('files.preview.collapse')}
+            onClick={onClose}
+            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          >
+            <Icon name="close" size={15} />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-auto p-3">
+          <PreviewBody full content={content} type={type} nodeType={nodeType} name={name} />
+        </div>
+      </div>
     </div>
   )
 }

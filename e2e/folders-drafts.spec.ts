@@ -339,6 +339,9 @@ test('move a folder under another one, and back to the top level', async ({ page
   await row(inner).hover()
   await row(inner).getByRole('button', { name: 'Folder actions' }).click()
   await page.getByRole('button', { name: 'Move to…' }).click()
+  await expect(page.getByRole('dialog', { name: `Move ${inner}` })).not.toHaveAttribute(
+    'aria-modal',
+  )
   // Not itself, and not a role folder: Inbox and friends mean something to the
   // server and to other clients, so user folders do not get nested inside them.
   await expect(page.getByRole('button', { name: inner, exact: true })).toHaveCount(0)

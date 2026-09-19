@@ -1,5 +1,8 @@
+import { useRef } from 'react'
 import { t } from '../../lib/i18n'
-import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { modalPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { useMobileViewport, useModal } from '../../ui/useModal'
+import { DialogHeader } from '../../ui/DialogHeader'
 
 /**
  * "This one, or all of them?" — asked once an edit to a repeating event is
@@ -19,37 +22,43 @@ export function ScopeDialog({
   onChoose: (all: boolean) => void
   onClose: () => void
 }) {
+  const panel = useRef<HTMLDivElement>(null)
+  const initialFocus = useRef<HTMLButtonElement>(null)
+  const mobileViewport = useMobileViewport()
+  useModal({ panel, initialFocus, onClose })
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-6"
-      onClick={onClose}
+      style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
     >
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal
-        className={`animate-rise w-full space-y-4 p-5 sm:max-w-sm ${overlayPanelClass} max-sm:rounded-b-none`}
-        onClick={(e) => e.stopPropagation()}
+        className={`${modalPanelClass} sm:max-w-sm max-sm:rounded-t-panel`}
+        style={mobileViewport ? { maxHeight: `${mobileViewport.height - 16}px` } : undefined}
       >
-        <p className="text-sm">{t(kind === 'delete' ? 'cal.scope.delete' : 'cal.scope.edit')}</p>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            autoFocus
-            onClick={() => onChoose(false)}
-            className={primaryButtonClass}
-          >
-            {t('cal.scope.one')}
-          </button>
-          <button type="button" onClick={() => onChoose(true)} className={secondaryButtonClass}>
-            {t('cal.scope.all')}
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            className="ml-auto rounded-control px-3 py-1.5 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            {t('cal.cancel')}
-          </button>
+        <DialogHeader
+          title={t(kind === 'delete' ? 'cal.delete' : 'cal.editEvent')}
+          closeLabel={t('cal.cancel')}
+          onClose={onClose}
+        />
+        <div className="space-y-4 p-5">
+          <p className="text-sm">{t(kind === 'delete' ? 'cal.scope.delete' : 'cal.scope.edit')}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              ref={initialFocus}
+              onClick={() => onChoose(false)}
+              className={primaryButtonClass}
+            >
+              {t('cal.scope.one')}
+            </button>
+            <button type="button" onClick={() => onChoose(true)} className={secondaryButtonClass}>
+              {t('cal.scope.all')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

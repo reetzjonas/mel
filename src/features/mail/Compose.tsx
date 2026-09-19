@@ -20,6 +20,7 @@ import { syncAccount } from '../../sync/engine'
 import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { useMobileViewport, useModal } from '../../ui/useModal'
 import { ComposeToolbar } from './ComposeToolbar'
 import { useCanSend } from './hooks'
 import { RecipientInput } from './RecipientInput'
@@ -103,6 +104,10 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+  const panel = useRef<HTMLDivElement>(null)
+  const initialFocus = useRef<HTMLElement>(null)
+  const mobileViewport = useMobileViewport()
+  useModal({ panel, initialFocus, onClose: closeCompose })
   const [editRevision, setEditRevision] = useState(0)
   const [draftSaved, setDraftSaved] = useState(false)
   /*
@@ -373,7 +378,10 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6">
+    <div
+      className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
+    >
       {/*
        * `sm:h-auto` used to size the panel to its content, so a short message
        * left the editor at little more than one line and a lot of visibly
@@ -383,7 +391,15 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
        * after the fixed header fields, in every browser, not just when there
        * happens to be enough content to reach the max-height on its own.
        */}
-      <div className="animate-rise flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line">
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-label={init.draftId ? t('compose.editDraft') : t('compose.new')}
+        className="animate-rise flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
+        style={mobileViewport ? { height: `${mobileViewport.height}px` } : undefined}
+      >
         <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
           <span className="text-sm font-semibold">
             {init.draftId ? t('compose.editDraft') : t('compose.new')}
@@ -413,7 +429,12 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
          * first field row's own `py-1` (see `fieldRowClass`) already covers
          * it, on top of the header's own py-2.5.
          */}
-        <div className="shrink-0 px-4">
+        <div
+          ref={(element) => {
+            initialFocus.current = element?.querySelector('input') ?? null
+          }}
+          className="shrink-0 px-4"
+        >
           {identities.length > 1 && (
             <div className={fieldRowClass}>
               <span className="w-10 shrink-0 text-xs text-ink-subtle" aria-hidden>

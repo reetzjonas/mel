@@ -16,7 +16,9 @@ import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
-import { overlayPanelClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { useMobileViewport, useModal } from '../../ui/useModal'
+import { useMobileLayout, usePopover, usePopoverPosition } from '../../ui/usePopover'
+import { modalPanelClass, primaryButtonClass } from '../../ui/styles'
 import {
   clearDragState,
   dragKind,
@@ -43,7 +45,7 @@ const ROLE_ICONS: Record<string, IconName> = {
 type Dialog =
   | { kind: 'create'; parentId: string | null }
   | { kind: 'rename'; mailbox: Mailbox }
-  | { kind: 'move'; mailbox: Mailbox }
+  | { kind: 'move'; mailbox: Mailbox; anchor: HTMLElement | null }
   | null
 
 function FolderMenu({
@@ -51,7 +53,7 @@ function FolderMenu({
   onAction,
 }: {
   mailbox: Mailbox
-  onAction: (a: 'rename' | 'newSub' | 'move' | 'delete') => void
+  onAction: (a: 'rename' | 'newSub' | 'move' | 'delete', anchor: HTMLElement | null) => void
 }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
@@ -111,7 +113,7 @@ function FolderMenu({
                   e.preventDefault()
                   e.stopPropagation()
                   setOpen(false)
-                  onAction(action)
+                  onAction(action, ref.current)
                 }}
                 className={`block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2 ${action === 'delete' ? 'text-danger' : ''}`}
               >
@@ -128,58 +130,92 @@ function FolderMenu({
 function MoveFolderDialog({
   mailbox,
   mailboxes,
+  anchor,
   onPick,
   onClose,
 }: {
   mailbox: Mailbox
   mailboxes: Mailbox[]
+  anchor: HTMLElement | null
   onPick: (parentId: string | null) => void
   onClose: () => void
 }) {
   const targets = moveTargets(mailboxes, mailbox)
+  const panel = useRef<HTMLDivElement>(null)
+  const mobile = useMobileLayout()
+  const mobileViewport = useMobileViewport()
+  const position = usePopoverPosition(anchor)
+  useModal({ panel, onClose, enabled: mobile })
+  usePopover({ panel, anchor, onClose })
   const depthOf = (m: Mailbox) =>
     mailboxTree(mailboxes).find((n) => n.mailbox.id === m.id)?.depth ?? 0
+  const contents = (
+    <>
+      <header className="shrink-0 border-b border-line px-4 py-3 sm:px-5">
+        <h2 className="text-center text-sm font-semibold">{t('folder.moveTitle')}</h2>
+      </header>
+      <div className="max-h-72 space-y-px overflow-y-auto p-4">
+        <p className="mb-2 truncate text-sm font-medium">{mailbox.name}</p>
+        {mailbox.parentId !== null && (
+          <button
+            type="button"
+            onClick={() => onPick(null)}
+            className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
+          >
+            {t('folder.moveTop')}
+          </button>
+        )}
+        {targets.map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            onClick={() => onPick(m.id)}
+            className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
+            style={{ paddingLeft: `${0.5 + depthOf(m) * 0.85}rem` }}
+          >
+            {m.name}
+          </button>
+        ))}
+        {targets.length === 0 && mailbox.parentId === null && (
+          <p className="text-xs text-ink-subtle">{t('folder.moveNowhere')}</p>
+        )}
+      </div>
+    </>
+  )
+
+  if (!mobile) {
+    return (
+      <div
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-label={`${t('folder.moveTitle')} ${mailbox.name}`}
+        className="animate-rise fixed z-50 flex w-80 flex-col overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line"
+        style={position ?? undefined}
+      >
+        {contents}
+      </div>
+    )
+  }
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6"
+      style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose()
+      }}
     >
       <div
-        className={`animate-rise w-full max-w-xs space-y-2 p-5 ${overlayPanelClass}`}
-        onClick={(e) => e.stopPropagation()}
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal
+        aria-label={`${t('folder.moveTitle')} ${mailbox.name}`}
+        className={`${modalPanelClass} max-w-md max-sm:rounded-t-panel`}
+        style={mobileViewport ? { maxHeight: `${mobileViewport.height - 32}px` } : undefined}
       >
-        <h2 className="text-sm font-semibold">
-          {t('folder.moveTitle')} {mailbox.name}
-        </h2>
-        <div className="max-h-72 space-y-px overflow-y-auto">
-          {mailbox.parentId !== null && (
-            <button
-              type="button"
-              onClick={() => onPick(null)}
-              className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
-            >
-              {t('folder.moveTop')}
-            </button>
-          )}
-          {targets.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => onPick(m.id)}
-              className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
-              style={{ paddingLeft: `${0.5 + depthOf(m) * 0.85}rem` }}
-            >
-              {m.name}
-            </button>
-          ))}
-          {targets.length === 0 && mailbox.parentId === null && (
-            <p className="text-xs text-ink-subtle">{t('folder.moveNowhere')}</p>
-          )}
-        </div>
-        <button type="button" onClick={onClose} className={secondaryButtonClass}>
-          {t('folder.cancel')}
-        </button>
+        {contents}
       </div>
     </div>
   )
@@ -269,10 +305,11 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
   const onMenuAction = async (
     mailbox: Mailbox,
     action: 'rename' | 'newSub' | 'move' | 'delete',
+    anchor: HTMLElement | null,
   ) => {
     if (action === 'rename') return setDialog({ kind: 'rename', mailbox })
     if (action === 'newSub') return setDialog({ kind: 'create', parentId: mailbox.id })
-    if (action === 'move') return setDialog({ kind: 'move', mailbox })
+    if (action === 'move') return setDialog({ kind: 'move', mailbox, anchor })
 
     // Counted on the server, not from our own list: subfolders it knows about
     // and we do not are exactly what makes the delete fail, and totalEmails is
@@ -400,7 +437,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
                     {m.unreadEmails}
                   </span>
                 )}
-                <FolderMenu mailbox={m} onAction={(a) => void onMenuAction(m, a)} />
+                <FolderMenu mailbox={m} onAction={(a, anchor) => void onMenuAction(m, a, anchor)} />
               </>
             )
             const dragHandlers = {
@@ -494,6 +531,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
         <MoveFolderDialog
           mailbox={dialog.mailbox}
           mailboxes={mailboxes}
+          anchor={dialog.anchor}
           onClose={() => setDialog(null)}
           onPick={(parentId) => {
             setDialog(null)

@@ -43,3 +43,11 @@ export const overlayPanelClass = 'rounded-panel bg-raised shadow-overlay ring-1 
 
 /** Full-screen scrim behind modals. */
 export const scrimClass = 'fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]'
+
+/** Shared mobile-sheet / desktop-dialog placement for finite modal panels. */
+export const modalScrimClass =
+  'fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-[2px] sm:items-center sm:p-6'
+
+/** Shared surface for a bottom sheet on phones and a floating panel on wider screens. */
+export const modalPanelClass =
+  'animate-rise flex w-full flex-col overflow-hidden bg-raised sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line'

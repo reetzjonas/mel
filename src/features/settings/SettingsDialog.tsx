@@ -9,6 +9,7 @@ import { useAccounts } from '../mail/hooks'
 import { t, type MsgKey } from '../../lib/i18n'
 import { Icon } from '../../ui/Icon'
 import { overlayPanelClass, scrimClass } from '../../ui/styles'
+import { useMobileViewport, useModal } from '../../ui/useModal'
 import { OutboxQueue } from './OutboxQueue'
 import { ThemeEditor } from './ThemeEditor'
 import { ServerCapabilities } from './ServerCapabilities'
@@ -66,16 +67,12 @@ export function SettingsDialog({
   // rewritten to the first tab in that gap — the correction below would fire
   // on the empty first render and the address bar would lose the tab.
   const tabs = visibleTabs(accounts === undefined || Boolean(account))
+  const dialogRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const active = tabs.includes(tab) ? tab : (tabs[0] ?? 'general')
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [onClose])
+  const mobileViewport = useMobileViewport()
+  useModal({ panel: dialogRef, initialFocus: closeRef, onClose })
 
   // A deep link to a tab that this account cannot show (or signing out while
   // standing on one) leaves the URL lying; correct it rather than silently
@@ -139,7 +136,10 @@ export function SettingsDialog({
   }, [anchor, active])
 
   return (
-    <div className={`${scrimClass} z-50 flex items-center justify-center sm:p-4`} onClick={onClose}>
+    <div
+      className={`${scrimClass} z-50 flex items-center justify-center sm:p-4`}
+      style={mobileViewport ? { bottom: mobileViewport.inset } : undefined}
+    >
       {/*
        * Fixed size rather than one that follows the content: tabs differ a lot
        * in length, and a panel that jumps between them reads as hectic. Same
@@ -147,16 +147,19 @@ export function SettingsDialog({
        * frame stays put, only what is inside it scrolls.
        */}
       <div
+        ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={t('settings.title')}
         className={`animate-rise flex h-full w-full flex-col sm:h-[min(85vh,38rem)] sm:max-w-4xl ${overlayPanelClass} rounded-none sm:rounded-panel`}
-        onClick={(e) => e.stopPropagation()}
+        style={mobileViewport ? { height: `${mobileViewport.height}px` } : undefined}
       >
         <header className="flex shrink-0 items-center gap-3 px-4 pt-4 pb-2 sm:px-5">
           <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
           <button
             type="button"
+            ref={closeRef}
             aria-label={t('settings.close')}
             onClick={onClose}
             className="ml-auto rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
@@ -16,6 +16,7 @@ import {
   SelectionActionButton,
   SelectionToolbar as SharedSelectionToolbar,
 } from '../../ui/SelectionToolbar'
+import { usePopover } from '../../ui/usePopover'
 
 /** Ceiling for "select everything in this folder"; anything beyond is reported, not hidden. */
 const SELECT_ALL_LIMIT = 50_000
@@ -43,6 +44,7 @@ export function SelectionToolbar({
   const { showSnackbar } = useUi()
   const [busy, setBusy] = useState(false)
   const [moveOpen, setMoveOpen] = useState(false)
+  const movePicker = useRef<HTMLSpanElement>(null)
   const ids = [...selection.selected]
   const count = ids.length
 
@@ -88,6 +90,8 @@ export function SelectionToolbar({
 
   const targets = mailboxes.filter((m) => m.id !== mailboxId)
   const inJunk = mailboxes.find((m) => m.id === mailboxId)?.role === 'junk'
+
+  usePopover({ panel: movePicker, onClose: () => setMoveOpen(false), enabled: moveOpen })
 
   return (
     <SharedSelectionToolbar
@@ -135,7 +139,7 @@ export function SelectionToolbar({
           void run(() => bulkSetKeyword(accountId, ids, '$flagged', true), t('bulk.marked'))
         }
       />
-      <span className="relative">
+      <span ref={movePicker} className="relative">
         <SelectionActionButton
           icon="folder"
           label={t('bulk.move')}
@@ -143,20 +147,28 @@ export function SelectionToolbar({
           onClick={() => setMoveOpen((o) => !o)}
         />
         {moveOpen && (
-          <span className="animate-rise absolute top-full right-0 z-20 mt-1 max-h-64 w-48 overflow-y-auto rounded-control bg-raised py-1 shadow-overlay ring-1 ring-line">
-            {targets.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className="block w-full truncate px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
-                onClick={() => {
-                  setMoveOpen(false)
-                  void run(() => bulkMove(accountId, ids, m.id), t('bulk.moved'))
-                }}
-              >
-                {m.name}
-              </button>
-            ))}
+          <span
+            data-testid="move-folder-picker"
+            className="animate-rise absolute top-full right-0 z-20 mt-1 flex max-h-64 w-80 flex-col overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line"
+          >
+            <span className="shrink-0 border-b border-line px-4 py-3">
+              <span className="block text-center text-sm font-semibold">{t('bulk.move')}</span>
+            </span>
+            <span className="min-h-0 overflow-y-auto p-2">
+              {targets.map((m) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  className="block w-full truncate rounded-control px-2 py-2 text-left text-sm transition-colors hover:bg-surface-2"
+                  onClick={() => {
+                    setMoveOpen(false)
+                    void run(() => bulkMove(accountId, ids, m.id), t('bulk.moved'))
+                  }}
+                >
+                  {m.name}
+                </button>
+              ))}
+            </span>
           </span>
         )}
       </span>
