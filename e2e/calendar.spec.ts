@@ -756,3 +756,55 @@ test('the sidebar can be resized, and the width survives a reload', async ({ pag
   // Shared with every other app's panel, so leave it as it was found.
   await handle.dblclick()
 })
+
+test('a reminder is stored on the event, survives a reload, and is shown when it falls due', async ({
+  page,
+}) => {
+  test.setTimeout(120_000)
+  const title = `Reminder-${Date.now() % 100000}`
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+
+  /*
+   * Starting in a few minutes with the reminder set to five before, so the
+   * alert is already due the moment the event exists. Headless Chromium
+   * refuses the notification permission, so the page must fall back to telling
+   * the person in the page itself.
+   */
+  const soon = new Date(Date.now() + 3 * 60_000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const date = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}`
+  const time = `${pad(soon.getHours())}:${pad(soon.getMinutes())}`
+
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(date)
+  await page.getByLabel('Start', { exact: true }).fill(time)
+  await page.getByRole('combobox', { name: 'Reminder' }).selectOption({ label: '5 minutes before' })
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+
+  await expect(page.getByRole('status')).toContainText(`${title} — in `, { timeout: 20_000 })
+
+  // A fresh load reads it back from the local copy; that the server keeps it
+  // is the provider test's business (and was checked against Stalwart by hand).
+  await page.reload()
+  const chip = page
+    .locator('[data-testid="calendar-grid"]')
+    .getByRole('button', { name: new RegExp(title) })
+    .first()
+  await expect(chip).toBeVisible({ timeout: 20_000 })
+  await chip.click()
+  await expect(page.getByRole('combobox', { name: 'Reminder' })).toHaveValue('5')
+
+  // Changing it to none clears it on the server too.
+  await page.getByRole('combobox', { name: 'Reminder' }).selectOption('none')
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await page.waitForTimeout(1500)
+  await page.reload()
+  await expect(chip).toBeVisible({ timeout: 20_000 })
+  await chip.click()
+  await expect(page.getByRole('combobox', { name: 'Reminder' })).toHaveValue('none')
+
+  await page.getByRole('button', { name: 'Delete event' }).click()
+})

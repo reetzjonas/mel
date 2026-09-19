@@ -15,6 +15,7 @@ import { Icon, type IconName } from '../ui/Icon'
 import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
+import { startEventReminders } from '../services/eventReminders'
 import { startScheduler } from '../sync/scheduler'
 import { Snackbar } from '../ui/Snackbar'
 import { secondaryIconButtonClass } from '../ui/styles'
@@ -119,6 +120,13 @@ export function AppShell() {
   const locked = Boolean(lockedIds?.length)
   useEffect(() => {
     if (accountId && !locked) startScheduler(accountId)
+  }, [accountId, locked])
+
+  // Reads decrypted events, so like the scheduler it waits for the unlock, and
+  // unlike it stops when the account or the lock changes: it holds no connection.
+  useEffect(() => {
+    if (!accountId || locked) return
+    return startEventReminders(accountId)
   }, [accountId, locked])
 
   if (lockedIds === undefined) return null

@@ -71,6 +71,11 @@ Appearance, Mail, Notifications, Security, Account) with the open one in
 `?settings=` and an optional section anchor in `?at=`, so deep links and the
 back button keep working and `/settings` redirects in. See `docs/notes/settings-modal.md`.
 
+Calendar reminders (JSCalendar `alerts`): a "Reminder" choice in the EventDialog,
+shown while mel is running as a system notification or, without permission, an
+in-page snackbar; alerts missed while closed are caught up if the event has not
+ended. A closed browser cannot be woken — see `docs/notes/calendar-alerts.md`.
+
 Storage usage (JMAP Quota, RFC 9425) sits in Settings → Account, and the shell
 header stays quiet about it until the account is ~90% full, where it shows a
 warning that opens that section. The figure is account-wide — one number over
@@ -78,7 +83,7 @@ mail, files, calendars, contacts and filter scripts — which is why it is not i
 any one app's sidebar. Stalwart only reports a quota once one is configured, so
 `seed.sh` sets one; see the quota entry in `docs/notes/gotchas-jmap-mail.md`.
 
-Tests: 1200 Vitest + 122 Playwright (desktop + mobile; state-mutating specs are
+Tests: 1249 Vitest + 123 Playwright (desktop + mobile; state-mutating specs are
 desktop-only, see `testIgnore` in playwright.config.ts). Fastmail mail interop
 confirmed by the user. `npx tsc -b` is the typecheck that runs — `tsc -p
 tsconfig.json` is a no-op, since the root config is a solution file with
@@ -125,6 +130,9 @@ working on that specific feature, not on every session:
 - **Notes** (the fifth app: why a note is a Markdown file and not a JSON blob,
   why images are separate files, why the id lives in the file, and how the live
   Markdown editor is built): `docs/notes/notes-app.md`
+- **Calendar reminders** (what an alert is and is not, why a closed browser
+  shows nothing, the catch-up rule, DST and the optional `alerts` field):
+  `docs/notes/calendar-alerts.md`
 - **Push notifications** (why naming the sender costs a request, why it is
   unencrypted-only, how the service worker reads IndexedDB without Dexie):
   `docs/notes/push-notifications.md`
@@ -182,9 +190,8 @@ Open todos and bugs are tracked as GitHub issues on `reetzjonas/mel`
 (`gh issue list`, labelled `enhancement`/`bug` plus an `area: *` label) — that
 is the current, authoritative list; do not add new items here.
 
-Everything known to be open is in that list — including the calendar follow-ups
-that used to be named here (`CalendarEventNotification/get`, local alerts,
-drag-move/resize), which are issues #3, #4 and #28.
+Everything known to be open is in that list — including the calendar follow-up
+that used to be named here (`CalendarEventNotification/get`), which is issue #3.
 
 Everything that already shipped from the old backlog (sync status bar, feature
 capability visibility, bulk editing, spam handling, image blocking, select-all

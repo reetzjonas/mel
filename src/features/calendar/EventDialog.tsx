@@ -6,7 +6,9 @@ import type {
   ParticipationStatus,
   RecurrenceRule,
 } from '../../domain/calendar'
+import { REMINDER_PRESETS, reminderOf, withReminder } from '../../lib/alerts'
 import { t, type MsgKey } from '../../lib/i18n'
+import { requestNotificationPermission } from '../../services/notifications'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { ParticipantsField, ParticipantStatusBadge } from './ParticipantsField'
@@ -25,6 +27,34 @@ const RSVP_CHOICES = [
   ['tentative', 'cal.rsvp.maybe'],
   ['declined', 'cal.rsvp.decline'],
 ] as const satisfies ReadonlyArray<readonly [ParticipationStatus, MsgKey]>
+
+const REMINDER_LABELS: Record<number, MsgKey> = {
+  0: 'cal.reminder.m0',
+  5: 'cal.reminder.m5',
+  10: 'cal.reminder.m10',
+  15: 'cal.reminder.m15',
+  30: 'cal.reminder.m30',
+  60: 'cal.reminder.m60',
+  120: 'cal.reminder.m120',
+  1440: 'cal.reminder.m1440',
+  2880: 'cal.reminder.m2880',
+}
+
+/** The presets, plus the event's own value when another client set one that is not among them. */
+function reminderChoices(current: number | null): Array<[number, string]> {
+  const minutes =
+    current !== null && !(current in REMINDER_LABELS)
+      ? [...REMINDER_PRESETS, current]
+      : REMINDER_PRESETS
+  return [...minutes]
+    .sort((a, b) => a - b)
+    .map((m) => [
+      m,
+      REMINDER_LABELS[m]
+        ? t(REMINDER_LABELS[m])
+        : `${t('cal.reminder.custom')}: ${m} ${t('cal.min')}`,
+    ])
+}
 
 type RepeatPreset = 'none' | RecurrenceRule['frequency']
 
@@ -78,6 +108,8 @@ export function EventDialog({
   const [description, setDescription] = useState(initial.description)
   const [repeat, setRepeat] = useState<RepeatPreset>(presetOf(initial.recurrenceRule))
   const [participants, setParticipants] = useState<Participant[]>(initial.participants)
+  const initialReminder = reminderOf(initial.alerts ?? {})?.minutes ?? null
+  const [reminder, setReminder] = useState<number | null>(initialReminder)
 
   // On an invitation the organizer owns the event; we may only answer it.
   const me = initial.participants.find(
@@ -100,6 +132,12 @@ export function EventDialog({
           ? initial.recurrenceRule
           : ruleFor(repeat, date),
       participants,
+      // Left as it was unless changed: an event whose alerts were never read
+      // must not be handed an empty map that then overwrites the server's.
+      alerts:
+        reminder === initialReminder
+          ? initial.alerts
+          : withReminder(initial.alerts ?? {}, reminder),
     })
   }
 
@@ -258,6 +296,27 @@ export function EventDialog({
         <option value="monthly">{t('cal.repeat.monthly')}</option>
         <option value="yearly">{t('cal.repeat.yearly')}</option>
       </Select>
+      {/* A patch for one occurrence has no alerts in it, so a change here would be lost. */}
+      {!occurrence && (
+        <Select
+          aria-label={t('cal.reminder')}
+          value={reminder === null ? 'none' : String(reminder)}
+          onChange={(e) => {
+            const next = e.target.value === 'none' ? null : Number(e.target.value)
+            setReminder(next)
+            // This is the moment the browser's prompt makes sense: the person just asked for one.
+            if (next !== null && 'Notification' in window && Notification.permission === 'default')
+              void requestNotificationPermission()
+          }}
+        >
+          <option value="none">{t('cal.reminder.none')}</option>
+          {reminderChoices(initialReminder).map(([m, label]) => (
+            <option key={m} value={m}>
+              {label}
+            </option>
+          ))}
+        </Select>
+      )}
       {/* Neither can be said about a single occurrence, so changing one is an
           edit to the series — which is worth saying before it is saved rather
           than in the question afterwards. */}

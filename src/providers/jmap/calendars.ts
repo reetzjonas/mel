@@ -11,6 +11,7 @@ import { Batch } from './client/request'
 import type { Transport } from './client/transport'
 import { Cap, type SetError, type SetResponse } from './client/types/core'
 import { syncCollection } from './collectionSync'
+import { toAlerts } from '../../lib/alerts'
 
 const USING = [Cap.core, Cap.calendars]
 
@@ -59,6 +60,7 @@ export interface JmapCalendarEvent {
     byMonthDay?: number[]
   } | null
   recurrenceOverrides?: Record<string, Record<string, unknown>> | null
+  alerts?: Record<string, Record<string, unknown>> | null
   participants?: Record<string, JmapParticipant> | null
   organizerCalendarAddress?: string | null
   /** false on the invitation copy the server keeps for an attendee. */
@@ -191,6 +193,7 @@ export function toEvent(e: JmapCalendarEvent): CalendarEvent {
     status: e.status === 'cancelled' || e.status === 'tentative' ? e.status : 'confirmed',
     recurrenceRule: rule,
     recurrenceOverrides: toOverrides(e.recurrenceOverrides),
+    alerts: toAlerts(e.alerts),
     participants: toParticipants(e),
     isOrganizerCopy: e.isOrigin ?? true,
   }
@@ -230,6 +233,13 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
     recurrenceOverrides: Object.keys(ev.recurrenceOverrides ?? {}).length
       ? ev.recurrenceOverrides
       : null,
+    /*
+     * Null when the last reminder was removed, so that it reaches a server that
+     * still has it — but absent when this copy never read any (a row synced
+     * before alerts were kept): there "none" means "unknown", and clearing
+     * would delete reminders another client set.
+     */
+    alerts: ev.alerts === undefined ? undefined : Object.keys(ev.alerts).length ? ev.alerts : null,
     participants: fromParticipants(ev.participants),
     organizerCalendarAddress: organizerAddress(ev.participants),
   }

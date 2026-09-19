@@ -90,6 +90,43 @@ describe('recurrence overrides', () => {
   })
 })
 
+describe('alerts', () => {
+  const reminder = {
+    a1: {
+      '@type': 'Alert',
+      trigger: { '@type': 'OffsetTrigger', offset: '-PT15M', relativeTo: 'start' },
+      action: 'display',
+      updated: '2026-09-01T00:00:00Z',
+    },
+    mail: { action: 'email', trigger: { offset: '-P1D' } },
+  }
+
+  it('keeps every alert whole, including the ones mel does not show', () => {
+    // mel writes the whole map back on save, so an email alert set elsewhere
+    // survives only if it is kept here.
+    expect(toEvent({ ...base, alerts: reminder }).alerts).toEqual(reminder)
+  })
+
+  it('drops an entry that is not an alert at all', () => {
+    expect(toEvent({ ...base, alerts: { ok: {}, bad: 'x' } as never }).alerts).toEqual({ ok: {} })
+  })
+
+  it('writes them back as they were', () => {
+    expect(fromEvent(toEvent({ ...base, alerts: reminder }))['alerts']).toEqual(reminder)
+  })
+
+  it('sends null rather than nothing when the last one is gone', () => {
+    // Absent would leave the server's copy in place.
+    expect(fromEvent({ ...domainEvent([]), alerts: {} })['alerts']).toBeNull()
+  })
+
+  it('sends nothing for an event whose alerts were never read', () => {
+    // A row synced before alerts were kept has none *known*, which is not none:
+    // null here would delete reminders another client set.
+    expect(fromEvent(domainEvent([]))['alerts']).toBeUndefined()
+  })
+})
+
 describe('participant mapping', () => {
   it('reads participants and strips the mailto: scheme', () => {
     const e = toEvent({

@@ -30,6 +30,16 @@ export interface RecurrenceRule {
  */
 export type RecurrencePatch = Record<string, unknown>
 
+/**
+ * A JSCalendar `alerts` map (RFC 8984 §4.5.2), kept whole.
+ *
+ * Open like RecurrencePatch, for the same reason: mel edits one kind of alert
+ * (a display reminder some minutes before the start) and rewrites the whole map
+ * on every save, so an email alert, an absolute trigger or another client's
+ * fields have to survive it untouched. `lib/alerts.ts` reads what it needs.
+ */
+export type EventAlerts = Record<string, Record<string, unknown>>
+
 export type ParticipationStatus = 'needs-action' | 'accepted' | 'declined' | 'tentative'
 
 /**
@@ -73,6 +83,12 @@ export interface CalendarEvent {
    * occurrence has been moved somewhere else.
    */
   recurrenceOverrides: Record<string, RecurrencePatch>
+  /**
+   * Reminders; the same for every occurrence of a series. Optional because rows
+   * synced before alerts were read have none, and a delta sync does not rewrite
+   * an event that did not change.
+   */
+  alerts?: EventAlerts
   /** Empty for a plain, unscheduled event. */
   participants: Participant[]
   /**

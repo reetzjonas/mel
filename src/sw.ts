@@ -70,15 +70,24 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
+  // A notification says where it leads; new mail, which never did, opens /mail.
+  const data = event.notification.data as { url?: unknown } | null
+  const url = typeof data?.url === 'string' && data.url.startsWith('/') ? data.url : '/mail'
   event.waitUntil(
     (async () => {
       const clients = await self.clients.matchAll({ type: 'window' })
       const existing = clients[0]
       if (existing) {
-        await existing.focus()
+        // Mail has always just brought the window forward; only a notification
+        // that names a destination moves it.
+        // Navigating hands back the client for the new page; that is the one to focus.
+        const target = data?.url
+          ? ((await existing.navigate(url).catch(() => null)) ?? existing)
+          : existing
+        await target.focus()
         return
       }
-      await self.clients.openWindow('/mail')
+      await self.clients.openWindow(url)
     })(),
   )
 })
