@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.1](https://github.com/reetzjonas/mel/compare/mel-v0.1.0...mel-v0.1.1) (2026-09-19)
+
+
+### Features
+
+* add local calendar reminders ([7f3da36](https://github.com/reetzjonas/mel/commit/7f3da36a10bfa39b03f740766a4074f068a444e4)), closes [#4](https://github.com/reetzjonas/mel/issues/4)
+* attachments on calendar events ([178f534](https://github.com/reetzjonas/mel/commit/178f53487af26d7dc3b703964cfb631079437530)), closes [#66](https://github.com/reetzjonas/mel/issues/66)
+* create, rename and delete calendars ([3d0565c](https://github.com/reetzjonas/mel/commit/3d0565c2db2078a15c9afa133cb13d5d7578679b)), closes [#6](https://github.com/reetzjonas/mel/issues/6)
+* custom recurrence rules in the event dialog ([4a38dd4](https://github.com/reetzjonas/mel/commit/4a38dd410cfd1feffbd58cfde1540424f1e342ac)), closes [#68](https://github.com/reetzjonas/mel/issues/68)
+* free/busy, visibility and categories on calendar events ([d00658e](https://github.com/reetzjonas/mel/commit/d00658ef94c660d21c7c1cfe26749ba71a723b01)), closes [#67](https://github.com/reetzjonas/mel/issues/67)
+* keep a per-sender allow list for remote images ([4eb8239](https://github.com/reetzjonas/mel/commit/4eb8239f72ad99ac74c590cf170c4c17296871f0)), closes [#41](https://github.com/reetzjonas/mel/issues/41)
+* link a mail sender to their contact, and keep the filter across opening a message ([5383a7f](https://github.com/reetzjonas/mel/commit/5383a7fe71166e7f8a268de66d0fda4a8c49c678))
+* meeting link and map link on calendar events ([63289e8](https://github.com/reetzjonas/mel/commit/63289e8342b3c1678cf27bfd8ad6f42524ed4881)), closes [#65](https://github.com/reetzjonas/mel/issues/65)
+* multi-select across Mail, Files, Contacts and Notes ([#93](https://github.com/reetzjonas/mel/issues/93) phase 1) ([c78007b](https://github.com/reetzjonas/mel/commit/c78007bfb744df1160f0dbd537ea94245c269d08))
+* redesign calendar event editor ([460fb27](https://github.com/reetzjonas/mel/commit/460fb271167d460098a21fe475e0593f11c71aed)), closes [#95](https://github.com/reetzjonas/mel/issues/95)
+* resizable panels across Contacts, Notes, Files and Calendar ([#93](https://github.com/reetzjonas/mel/issues/93) phase 3) ([0d3f50b](https://github.com/reetzjonas/mel/commit/0d3f50b2a76d16c91694dfdb5ee6ad5b681f876b))
+* shared search box across Mail, Contacts, Files, Notes and Calendar ([#93](https://github.com/reetzjonas/mel/issues/93) phase 2) ([a6782f8](https://github.com/reetzjonas/mel/commit/a6782f8424d8d94f4f46c9c3ec7486e9628ccc68))
+* show a contact's own photo as their sender avatar in mail ([28281c6](https://github.com/reetzjonas/mel/commit/28281c693369a13a25819f5d038c46cd0563167f))
+* store public keys on contact cards ([c970ba5](https://github.com/reetzjonas/mel/commit/c970ba5ae4eea78512e2a7dca8b4015b3ff2c264)), closes [#63](https://github.com/reetzjonas/mel/issues/63)
+* support FileNode folder roles ([0032920](https://github.com/reetzjonas/mel/commit/0032920319950249fb235a26906c35a2187cb513))
+* sync theme, language and a few other settings via JMAP FileNode ([#20](https://github.com/reetzjonas/mel/issues/20)) ([1f083a5](https://github.com/reetzjonas/mel/commit/1f083a5af7b1bd4cca1e634fe6c4180a94e93814))
+
+
+### Bug Fixes
+
+* don't let settings sync's reconcile clobber a field mid-push ([9560f5f](https://github.com/reetzjonas/mel/commit/9560f5f82c942a24ac8ff77ce0c691251d3a0598))
+* make the manifest's icons and screenshots ones Chrome can use ([f017aa3](https://github.com/reetzjonas/mel/commit/f017aa3619752620afa3990288c41e71a28f6b8b))
+* prevent mail list horizontal overflow ([1b4a9c0](https://github.com/reetzjonas/mel/commit/1b4a9c0388c483a9dfb2e37caf5642f87bda38dc))
+* read the calendar drag from a ref so a pointerup can't see stale state ([8e89f72](https://github.com/reetzjonas/mel/commit/8e89f723b3bb2b32cfad4f08a37995bb8590b443)), closes [#94](https://github.com/reetzjonas/mel/issues/94)
+* restore the save draft button in compose ([a180bd9](https://github.com/reetzjonas/mel/commit/a180bd99ad4e897ce38a8426e45aaff7fdadd6ad))
+
 ## 0.1.0 (2026-09-17)
 
 
