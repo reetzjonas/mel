@@ -7,7 +7,7 @@
 import { useEffect, useRef } from 'react'
 import { useAccounts } from '../mail/hooks'
 import { t, type MsgKey } from '../../lib/i18n'
-import { Icon } from '../../ui/Icon'
+import { DialogHeader } from '../../ui/DialogHeader'
 import { overlayPanelClass, scrimClass } from '../../ui/styles'
 import { useMobileViewport, useModal } from '../../ui/useModal'
 import { OutboxQueue } from './OutboxQueue'
@@ -155,18 +155,12 @@ export function SettingsDialog({
         className={`animate-rise flex h-full w-full flex-col sm:h-[min(85vh,38rem)] sm:max-w-4xl ${overlayPanelClass} rounded-none sm:rounded-panel`}
         style={mobileViewport ? { height: `${mobileViewport.height}px` } : undefined}
       >
-        <header className="flex shrink-0 items-center gap-3 px-4 pt-4 pb-2 sm:px-5">
-          <h1 className="text-lg font-semibold">{t('settings.title')}</h1>
-          <button
-            type="button"
-            ref={closeRef}
-            aria-label={t('settings.close')}
-            onClick={onClose}
-            className="ml-auto rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-          >
-            <Icon name="close" />
-          </button>
-        </header>
+        <DialogHeader
+          title={t('settings.title')}
+          closeLabel={t('settings.close')}
+          closeRef={closeRef}
+          onClose={onClose}
+        />
 
         {/*
          * The tabs become a rail down the side once there is room for one. A

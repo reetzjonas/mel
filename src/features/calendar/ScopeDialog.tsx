@@ -36,6 +36,7 @@ export function ScopeDialog({
         tabIndex={-1}
         role="dialog"
         aria-modal
+        aria-label={t(kind === 'delete' ? 'cal.delete' : 'cal.editEvent')}
         className={`${modalPanelClass} sm:max-w-sm max-sm:rounded-t-panel`}
         style={mobileViewport ? { maxHeight: `${mobileViewport.height - 16}px` } : undefined}
       >

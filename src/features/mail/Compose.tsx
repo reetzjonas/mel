@@ -17,9 +17,9 @@ import {
   stageAttachment,
 } from '../../services/send'
 import { syncAccount } from '../../sync/engine'
+import { DialogHeader } from '../../ui/DialogHeader'
 import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
-import { primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { useMobileViewport, useModal } from '../../ui/useModal'
 import { ComposeToolbar } from './ComposeToolbar'
 import { useCanSend } from './hooks'
@@ -133,7 +133,6 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const draftId = useRef<string | null>(init.draftId ?? null)
   /** The same fact, as state: a ref cannot make the delete button appear. */
   const [hasDraft, setHasDraft] = useState(Boolean(init.draftId))
-  const [saving, setSaving] = useState(false)
   /*
    * Saves run one after another. Each one *replaces* the draft (create plus
    * destroy in one Email/set), so two overlapping calls would each replace the
@@ -231,8 +230,8 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
 
   /**
    * Writes the current fields into the draft this window owns — the one thing
-   * both the 2.5 s autosave and the Save button do, so they cannot drift into
-   * saving different halves of the form.
+   * the 2.5 s autosave writes, so every automatic save captures the same
+   * fields.
    *
    * Text fields only: the real send builds its own message including the
    * attachments, which are staged locally until then.
@@ -309,23 +308,6 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     }
   }
 
-  /**
-   * Save on demand. The autosave only fires 2.5 s after the last change, which
-   * is invisible from outside — closing the window inside that window dropped
-   * the edit with nothing to show for it, and there was no way to make sure.
-   */
-  async function saveNow() {
-    if (!navigator.onLine) {
-      setError(t('compose.saveOffline'))
-      return
-    }
-    setSaving(true)
-    setError(null)
-    const ok = await storeDraft()
-    setSaving(false)
-    if (!ok) setError(t('compose.saveFailed'))
-  }
-
   /** Throws the stored draft away and closes — the counterpart to sending it. */
   async function deleteDraft() {
     const id = draftId.current
@@ -400,21 +382,22 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         className="animate-rise flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
         style={mobileViewport ? { height: `${mobileViewport.height}px` } : undefined}
       >
-        <header className="flex items-center justify-between border-b border-line px-4 py-2.5">
-          <span className="text-sm font-semibold">
-            {init.draftId ? t('compose.editDraft') : t('compose.new')}
-          </span>
-          <Tooltip label={t('compose.discard')}>
+        <DialogHeader
+          title={init.draftId ? t('compose.editDraft') : t('compose.new')}
+          closeLabel={t('compose.discard')}
+          onClose={closeCompose}
+          action={
             <button
               type="button"
-              onClick={closeCompose}
-              aria-label={t('compose.discard')}
-              className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              onClick={() => void send()}
+              disabled={busy || !canSend}
+              title={canSend ? undefined : t('caps.unsupported.submission')}
+              className="text-sm font-semibold text-ink-muted hover:text-accent disabled:text-ink-subtle"
             >
-              <Icon name="close" size={16} />
+              {t('compose.send')}
             </button>
-          </Tooltip>
-        </header>
+          }
+        />
 
         {/*
          * Recipient/subject/toolbar are fixed chrome, not part of the scroll
@@ -545,36 +528,9 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         {error && <p className="px-4 py-1 text-sm text-danger">{error}</p>}
 
         <footer className="flex items-center gap-2 border-t border-line px-4 py-2.5">
-          {/*
-           * Reachable without the submission capability only by reopening a
-           * draft — every way of starting a new message is already gone by
-           * then. Disabled rather than hidden, because the reason belongs
-           * next to the button someone came here to press.
-           */}
-          <button
-            type="button"
-            onClick={() => void send()}
-            disabled={busy || !canSend}
-            title={canSend ? undefined : t('caps.unsupported.submission')}
-            className={`flex items-center gap-2 ${primaryButtonClass}`}
-          >
-            <Icon name="send" size={14} />
-            {t('compose.send')}
-          </button>
           {!canSend && (
             <span className="text-xs text-ink-muted">{t('caps.unsupported.submission')}</span>
           )}
-          {/* Secondary, next to Send: the same act the autosave performs, on
-              demand. Disabled while one is running rather than queueing a
-              second identical write behind it. */}
-          <button
-            type="button"
-            onClick={() => void saveNow()}
-            disabled={saving || busy}
-            className={secondaryButtonClass}
-          >
-            {t('compose.saveDraft')}
-          </button>
           <Tooltip label={t('compose.attach')}>
             <button
               type="button"

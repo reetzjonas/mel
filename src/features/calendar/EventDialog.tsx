@@ -10,6 +10,7 @@ import type {
 import { REMINDER_PRESETS, reminderOf, withReminder } from '../../lib/alerts'
 import { t, type MsgKey } from '../../lib/i18n'
 import { requestNotificationPermission } from '../../services/notifications'
+import { DialogHeader } from '../../ui/DialogHeader'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { useMobileViewport, useModal } from '../../ui/useModal'
@@ -184,6 +185,20 @@ export function EventDialog({
     setEndDate(Temporal.PlainDate.from(endDate).add({ days: shift }).toString())
   }
 
+  function changeStartTime(next: string) {
+    const duration = durationBetween(`${date}T${time}:00`, `${endDate}T${endTime}:00`, false)
+    setTime(next)
+    if (!duration) return
+    // Start-date edits already retain the duration. Do the same for the time,
+    // so changing a new event from its default morning slot cannot leave Save
+    // disabled because its untouched end time is now in the past.
+    const end = Temporal.PlainDateTime.from(`${date}T${next}:00`).add(
+      Temporal.Duration.from(duration),
+    )
+    setEndDate(end.toPlainDate().toString())
+    setEndTime(end.toPlainTime().toString({ smallestUnit: 'minute' }))
+  }
+
   const start = allDay ? `${date}T00:00:00` : `${date}T${time}:00`
   const end = allDay ? `${endDate}T00:00:00` : `${endDate}T${endTime}:00`
   const invalidEnd = !durationBetween(start, end, allDay)
@@ -199,7 +214,7 @@ export function EventDialog({
         role="dialog"
         aria-modal="true"
         aria-label={initial.id ? t('cal.editEvent') : t('cal.newEvent')}
-        className="animate-rise flex max-h-[92dvh] w-full flex-col overflow-hidden bg-raised sm:max-w-lg sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
+        className="animate-rise flex max-h-[92dvh] w-full flex-col overflow-hidden bg-raised max-sm:rounded-t-panel sm:max-w-lg sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
         style={mobileViewport ? { maxHeight: `${mobileViewport.height - 16}px` } : undefined}
       >
         {children}
@@ -214,84 +229,82 @@ export function EventDialog({
       ? initial.start.slice(0, 10)
       : `${initial.start.slice(0, 10)} ${initial.start.slice(11, 16)}`
     return shell(
-      <div className="space-y-3 p-5">
-        <h2 className="text-base font-semibold">{t('cal.invitation')}</h2>
-        <p className="text-lg font-medium">{initial.title}</p>
-        <dl className="space-y-1 text-sm">
-          <div className="flex gap-2">
-            <dt className="w-20 shrink-0 text-ink-muted">{t('cal.when')}</dt>
-            <dd>{when}</dd>
+      <>
+        <DialogHeader title={t('cal.invitation')} closeLabel={t('cal.close')} onClose={onClose} />
+        <div className="space-y-3 overflow-y-auto p-5">
+          <p className="text-lg font-medium">{initial.title}</p>
+          <dl className="space-y-1 text-sm">
+            <div className="flex gap-2">
+              <dt className="w-20 shrink-0 text-ink-muted">{t('cal.when')}</dt>
+              <dd>{when}</dd>
+            </div>
+            {initial.location && (
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-ink-muted">{t('cal.location')}</dt>
+                <dd>{initial.location}</dd>
+              </div>
+            )}
+            {organizer && (
+              <div className="flex gap-2">
+                <dt className="w-20 shrink-0 text-ink-muted">{t('cal.organizer')}</dt>
+                <dd>{organizer.name || organizer.email}</dd>
+              </div>
+            )}
+          </dl>
+          {initial.description && (
+            <p className="text-sm whitespace-pre-wrap text-ink-muted">{initial.description}</p>
+          )}
+          <div className="space-y-1">
+            <span className="text-xs text-ink-muted">{t('cal.attendees')}</span>
+            <ul className="space-y-0.5">
+              {initial.participants
+                .filter((p) => !p.isOrganizer)
+                .map((p) => (
+                  <li key={p.id} className="flex items-center gap-2 px-2 py-1 text-sm">
+                    <span className="min-w-0 flex-1 truncate">{p.name || p.email}</span>
+                    <ParticipantStatusBadge status={p.status} />
+                  </li>
+                ))}
+            </ul>
           </div>
-          {initial.location && (
-            <div className="flex gap-2">
-              <dt className="w-20 shrink-0 text-ink-muted">{t('cal.location')}</dt>
-              <dd>{initial.location}</dd>
-            </div>
-          )}
-          {organizer && (
-            <div className="flex gap-2">
-              <dt className="w-20 shrink-0 text-ink-muted">{t('cal.organizer')}</dt>
-              <dd>{organizer.name || organizer.email}</dd>
-            </div>
-          )}
-        </dl>
-        {initial.description && (
-          <p className="text-sm whitespace-pre-wrap text-ink-muted">{initial.description}</p>
-        )}
-        <div className="space-y-1">
-          <span className="text-xs text-ink-muted">{t('cal.attendees')}</span>
-          <ul className="space-y-0.5">
-            {initial.participants
-              .filter((p) => !p.isOrganizer)
-              .map((p) => (
-                <li key={p.id} className="flex items-center gap-2 px-2 py-1 text-sm">
-                  <span className="min-w-0 flex-1 truncate">{p.name || p.email}</span>
-                  <ParticipantStatusBadge status={p.status} />
-                </li>
+          <div>
+            <span className="text-xs text-ink-muted">{t('cal.yourReply')}</span>
+            <div className="mt-1 flex flex-wrap gap-2">
+              {RSVP_CHOICES.map(([status, label]) => (
+                <button
+                  key={status}
+                  type="button"
+                  aria-pressed={me.status === status}
+                  onClick={() => onRsvp(status)}
+                  className={me.status === status ? primaryButtonClass : secondaryButtonClass}
+                >
+                  {t(label)}
+                </button>
               ))}
-          </ul>
-        </div>
-        <div>
-          <span className="text-xs text-ink-muted">{t('cal.yourReply')}</span>
-          <div className="mt-1 flex flex-wrap gap-2">
-            {RSVP_CHOICES.map(([status, label]) => (
-              <button
-                key={status}
-                type="button"
-                aria-pressed={me.status === status}
-                onClick={() => onRsvp(status)}
-                className={me.status === status ? primaryButtonClass : secondaryButtonClass}
-              >
-                {t(label)}
-              </button>
-            ))}
+            </div>
           </div>
         </div>
-        <button type="button" onClick={onClose} className={secondaryButtonClass}>
-          {t('cal.close')}
-        </button>
-      </div>,
+      </>,
     )
   }
 
   return shell(
     <>
-      <header className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3 sm:px-5">
-        <button type="button" onClick={onClose} className="text-sm text-ink-muted hover:text-ink">
-          {t('cal.cancel')}
-        </button>
-        <h2 className="text-sm font-semibold">
-          {initial.id ? t('cal.editEvent') : t('cal.newEvent')}
-        </h2>
-        <button
-          type="button"
-          onClick={save}
-          disabled={!title.trim() || invalidEnd}
-          className="text-sm font-semibold text-ink-muted hover:text-accent disabled:text-ink-subtle"
-        >
-          {participants.length > 0 ? t('cal.saveAndInvite') : t('cal.save')}
-        </button>
-      </header>
+      <DialogHeader
+        title={initial.id ? t('cal.editEvent') : t('cal.newEvent')}
+        closeLabel={t('cal.cancel')}
+        onClose={onClose}
+        action={
+          <button
+            type="button"
+            onClick={save}
+            disabled={!title.trim() || invalidEnd}
+            className="text-sm font-semibold text-ink-muted hover:text-accent disabled:text-ink-subtle"
+          >
+            {participants.length > 0 ? t('cal.saveAndInvite') : t('cal.save')}
+          </button>
+        }
+      />
       <div className="space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
         <div className="space-y-2">
           <input
@@ -346,7 +359,7 @@ export function EventDialog({
                   className={inputClass}
                   type="time"
                   value={time}
-                  onChange={(e) => setTime(e.target.value)}
+                  onChange={(e) => changeStartTime(e.target.value)}
                 />
               </label>
             )}
