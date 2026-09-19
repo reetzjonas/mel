@@ -448,12 +448,22 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
             trailing={
               <span className="flex shrink-0 gap-2 text-xs text-ink-muted">
                 {!showCc && (
-                  <button type="button" className="hover:text-ink" onClick={() => setShowCc(true)}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="hover:text-ink"
+                    onClick={() => setShowCc(true)}
+                  >
                     {t('compose.cc')}
                   </button>
                 )}
                 {!showBcc && (
-                  <button type="button" className="hover:text-ink" onClick={() => setShowBcc(true)}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="hover:text-ink"
+                    onClick={() => setShowBcc(true)}
+                  >
                     {t('compose.bcc')}
                   </button>
                 )}

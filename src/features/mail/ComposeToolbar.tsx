@@ -24,6 +24,9 @@ function ToolbarButton({
         type="button"
         aria-label={label}
         aria-pressed={active}
+        // The editor is the keyboard surface; reaching each formatting command
+        // with Tab would put nine stops between the message fields and body.
+        tabIndex={-1}
         disabled={disabled}
         onMouseDown={(e) => e.preventDefault()} // keep the editor selection while clicking
         onClick={onClick}
