@@ -122,6 +122,15 @@ export interface VacationSettings {
   text: string
 }
 
+/** One change to the calendar list: exactly one of `create`, `update`, `destroy`. */
+export interface CalendarEdit {
+  create?: { name: string; color: string | null }
+  update?: { id: string; name?: string; color?: string | null }
+  destroy?: string
+  /** Remove the calendar's events along with it; without this a non-empty one is refused. */
+  destroyWithEvents?: boolean
+}
+
 export interface CalendarProvider {
   syncCalendars(sinceState?: string): Promise<SyncPage<import('../domain/calendar').Calendar>>
   syncEvents(sinceState?: string): Promise<SyncPage<import('../domain/calendar').CalendarEvent>>
@@ -136,6 +145,7 @@ export interface CalendarProvider {
     status: import('../domain/calendar').ParticipationStatus,
   ): Promise<SetFailure | null>
   destroyEvents(ids: string[]): Promise<SetFailure | null>
+  editCalendar(edit: CalendarEdit): Promise<{ id: string | null; failure: SetFailure | null }>
 }
 
 export interface ContactsProvider {

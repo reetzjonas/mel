@@ -428,6 +428,62 @@ describe('free/busy, privacy and categories', () => {
   })
 })
 
+describe('editing the calendar list', () => {
+  const sentSet = (sent: Array<Record<string, unknown>>) => sent[0]!
+
+  it('creates a subscribed calendar with its name and colour', async () => {
+    const { provider, sent } = capturing({ created: { c0: { id: 'new' } } })
+    const r = await provider.editCalendar({ create: { name: 'Work', color: '#ff0000' } })
+    expect(r).toEqual({ id: 'new', failure: null })
+    expect(sentSet(sent)['create']).toEqual({
+      c0: { name: 'Work', color: '#ff0000', isSubscribed: true },
+    })
+    expect(sentSet(sent)['destroy']).toBeUndefined()
+  })
+
+  it('reports why a create was refused', async () => {
+    const { provider } = capturing({ notCreated: { c0: { type: 'forbidden' } } })
+    const r = await provider.editCalendar({ create: { name: 'x', color: null } })
+    expect(r.id).toBeNull()
+    expect(r.failure).toMatchObject({ type: 'forbidden' })
+  })
+
+  it('renames and recolours by patch, without sending the id inside it', async () => {
+    const { provider, sent } = capturing({ updated: { c1: null } })
+    const r = await provider.editCalendar({ update: { id: 'c1', name: 'Home', color: null } })
+    expect(r).toEqual({ id: 'c1', failure: null })
+    const patch = (sentSet(sent)['update'] as Record<string, Record<string, unknown>>)['c1']!
+    expect(patch['name']).toBe('Home')
+    expect(patch['color']).toBeNull()
+    expect(patch['id']).toBeUndefined()
+  })
+
+  it('refuses to delete a calendar with events unless told to take them along', async () => {
+    const { provider, sent } = capturing({
+      notDestroyed: { c1: { type: 'calendarHasEvent', description: 'Calendar is not empty.' } },
+    })
+    const r = await provider.editCalendar({ destroy: 'c1' })
+    expect(sentSet(sent)['destroy']).toEqual(['c1'])
+    expect(sentSet(sent)['onDestroyRemoveEvents']).toBe(false)
+    expect(r.failure).toMatchObject({ type: 'calendarHasEvent' })
+  })
+
+  it('deletes the events with the calendar when asked', async () => {
+    const { provider, sent } = capturing({ destroyed: ['c1'] })
+    const r = await provider.editCalendar({ destroy: 'c1', destroyWithEvents: true })
+    expect(sentSet(sent)['onDestroyRemoveEvents']).toBe(true)
+    expect(r.failure).toBeNull()
+  })
+
+  it('does not mention onDestroyRemoveEvents for a create or an update', async () => {
+    const { provider, sent } = capturing({ created: { c0: { id: 'n' } } })
+    await provider.editCalendar({ create: { name: 'x', color: null } })
+    expect(
+      'onDestroyRemoveEvents' in sentSet(sent) && sentSet(sent)['onDestroyRemoveEvents'],
+    ).toBeFalsy()
+  })
+})
+
 describe('links (attachments)', () => {
   const enclosure = { rel: 'enclosure', href: 'https://x/a.pdf', title: 'a.pdf', custom: 1 }
 

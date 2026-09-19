@@ -7,6 +7,7 @@ const caps = (over: Partial<AccountCapabilities> = {}): AccountCapabilities => (
   submission: true,
   contacts: true,
   calendars: true,
+  calendarCreate: true,
   sieve: false,
   vacation: true,
   files: false,
@@ -28,6 +29,13 @@ describe('capabilityRows', () => {
   it('explains the gate only when something is actually hidden', () => {
     expect(row(caps({ calendars: false }), 'calendars').gate).toBe('caps.gate.calendars')
     expect(row(caps({ calendars: true }), 'calendars').gate).toBeUndefined()
+  })
+
+  it('says the "+" for a new calendar is gone when the server forbids creating one', () => {
+    expect(row(caps({ calendarCreate: false }), 'calendarCreate').gate).toBe(
+      'caps.gate.calendarCreate',
+    )
+    expect(row(caps({ calendarCreate: true }), 'calendarCreate').gate).toBeUndefined()
   })
 
   it('reports the live-update transport as a value, not a yes/no', () => {

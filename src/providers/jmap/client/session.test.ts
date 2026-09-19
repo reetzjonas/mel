@@ -286,6 +286,25 @@ describe('capabilitiesFor', () => {
     expect(capabilitiesFor(withFiles, 'a1').files).toBe(true)
   })
 
+  it('allows creating calendars unless the account says it may not', () => {
+    const withCalendars = (caps: Record<string, unknown>) =>
+      session({ accounts: { a1: { accountCapabilities: caps } } as never })
+    // The flag is only ever a refusal: a server that omits it is asked anyway.
+    expect(capabilitiesFor(withCalendars({ [Cap.calendars]: {} }), 'a1').calendarCreate).toBe(true)
+    expect(
+      capabilitiesFor(withCalendars({ [Cap.calendars]: { mayCreateCalendar: true } }), 'a1')
+        .calendarCreate,
+    ).toBe(true)
+    expect(
+      capabilitiesFor(withCalendars({ [Cap.calendars]: { mayCreateCalendar: false } }), 'a1')
+        .calendarCreate,
+    ).toBe(false)
+  })
+
+  it('cannot create calendars where there are no calendars', () => {
+    expect(capabilitiesFor(session(), 'a1').calendarCreate).toBe(false)
+  })
+
   it('says no to everything for an account the session does not list', () => {
     expect(capabilitiesFor(session(), 'nope')).toMatchObject({ mail: false, calendars: false })
   })

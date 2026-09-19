@@ -7,6 +7,8 @@ import type {
   Occurrence,
   ParticipationStatus,
 } from '../../domain/calendar'
+import { CalendarDialog } from '../../features/calendar/CalendarDialog'
+import { CALENDAR_SWATCHES, FALLBACK_COLORS } from '../../features/calendar/calendarColors'
 import { EventDialog } from '../../features/calendar/EventDialog'
 import { ScopeDialog } from '../../features/calendar/ScopeDialog'
 import { TimeGrid } from '../../features/calendar/TimeGrid'
@@ -65,9 +67,6 @@ type ViewMode = 'month' | 'week' | 'day'
 const UPCOMING_WINDOW_DAYS = 180
 /** Rows shown at once — a sidebar list, not a full search results page. */
 const UPCOMING_LIMIT = 8
-
-// Fixed, deterministic palette for calendars the server didn't color.
-const FALLBACK_COLORS = ['#2d5bd1', '#0e9488', '#c2560f', '#7c3aed', '#b91c62', '#4d7c0f']
 
 function monthGrid(anchor: Date): Date[] {
   // 6 weeks starting on the Monday on/before the 1st.
@@ -144,21 +143,37 @@ function CalendarToggle({
   color,
   hidden,
   onToggle,
+  onEdit,
 }: {
   name: string
   color: string
   hidden: boolean
   onToggle: () => void
+  /** Absent for a calendar that cannot be edited (the derived birthdays one). */
+  onEdit?: () => void
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-2.5 rounded-control px-2.5 py-[7px] text-[13px] transition-colors hover:bg-surface-2">
-      <input type="checkbox" checked={!hidden} onChange={onToggle} className="sr-only" />
-      <span
-        className="h-2.5 w-2.5 shrink-0 rounded-full"
-        style={{ backgroundColor: color, opacity: hidden ? 0.25 : 1 }}
-      />
-      <span className={`truncate ${hidden ? 'text-ink-muted line-through' : ''}`}>{name}</span>
-    </label>
+    <div className="group flex items-center rounded-control pr-1.5 transition-colors hover:bg-surface-2">
+      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-[7px] pl-2.5 text-[13px]">
+        <input type="checkbox" checked={!hidden} onChange={onToggle} className="sr-only" />
+        <span
+          className="h-2.5 w-2.5 shrink-0 rounded-full"
+          style={{ backgroundColor: color, opacity: hidden ? 0.25 : 1 }}
+        />
+        <span className={`truncate ${hidden ? 'text-ink-muted line-through' : ''}`}>{name}</span>
+      </label>
+      {onEdit && (
+        // A fixed box that only fades in, so a hovered row is no taller than the rest.
+        <button
+          type="button"
+          aria-label={`${t('cal.calendar.editLabel')}: ${name}`}
+          onClick={onEdit}
+          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-control text-ink-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
+        >
+          <Icon name="draft" size={12} />
+        </button>
+      )}
+    </div>
   )
 }
 
@@ -226,6 +241,8 @@ function CalendarApp() {
   const [view, setView] = useState<ViewMode>('month')
   const [calSearch, setCalSearch] = useState('')
   const [dialog, setDialog] = useState<DialogState | null>(null)
+  /** The calendar-list dialog: a calendar to edit, 'new' for a fresh one. */
+  const [calendarDialog, setCalendarDialog] = useState<Calendar | 'new' | null>(null)
   const [scope, setScope] = useState<ScopeQuestion | null>(null)
   const sidebarPanel = usePanelWidth('calendar-sidebar', SIDEBAR_LIMITS)
   const sidebarRef = useRef<HTMLElement | null>(null)
@@ -587,9 +604,21 @@ function CalendarApp() {
         style={{ [PANEL_WIDTH_VAR]: `${sidebarPanel.width}px` } as React.CSSProperties}
         className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto py-3 lg:flex lg:w-[var(--mel-panel-w)]"
       >
-        <span className="mb-1.5 px-2.5 text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
-          {t('cal.calendars')}
-        </span>
+        <div className="mb-1.5 flex items-center justify-between pr-1.5 pl-2.5">
+          <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+            {t('cal.calendars')}
+          </span>
+          {account.capabilities.calendarCreate !== false && (
+            <button
+              type="button"
+              aria-label={t('cal.calendar.new')}
+              onClick={() => setCalendarDialog('new')}
+              className="flex h-5 w-5 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            >
+              <Icon name="plus" size={13} />
+            </button>
+          )}
+        </div>
         {(calendars ?? []).map((c, i) => (
           <CalendarToggle
             key={c.id}
@@ -597,6 +626,7 @@ function CalendarApp() {
             color={c.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]!}
             hidden={hidden.has(c.id)}
             onToggle={() => toggleCalendar(c.id)}
+            onEdit={c.mayWrite ? () => setCalendarDialog(c) : undefined}
           />
         ))}
         {/* The contacts' birthdays, as a calendar that exists only here. Offered
@@ -842,6 +872,15 @@ function CalendarApp() {
             })}
         </div>
       </div>
+
+      {calendarDialog && (
+        <CalendarDialog
+          accountId={account.id}
+          calendar={calendarDialog === 'new' ? null : calendarDialog}
+          defaultColor={CALENDAR_SWATCHES[(calendars?.length ?? 0) % CALENDAR_SWATCHES.length]!}
+          onClose={() => setCalendarDialog(null)}
+        />
+      )}
 
       {dialog && (
         <EventDialog

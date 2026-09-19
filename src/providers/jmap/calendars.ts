@@ -344,6 +344,28 @@ export function createJmapCalendars(transport: Transport, accountId: string): Ca
       return err ? toFailure(err) : null
     },
 
+    async editCalendar(edit) {
+      const b = batch()
+      const s = b.call<SetResponse<{ id: string }>>('Calendar/set', {
+        accountId,
+        // Subscribed, or Stalwart creates it hidden from the account's own list.
+        create: edit.create ? { c0: { ...edit.create, isSubscribed: true } } : undefined,
+        update: edit.update ? { [edit.update.id]: { ...edit.update, id: undefined } } : undefined,
+        destroy: edit.destroy ? [edit.destroy] : undefined,
+        onDestroyRemoveEvents: edit.destroy ? (edit.destroyWithEvents ?? false) : undefined,
+      })
+      await b.send()
+      if (edit.create) {
+        const created = s.result.created?.['c0']
+        return created
+          ? { id: created.id, failure: null }
+          : { id: null, failure: toFailure(s.result.notCreated?.['c0']) }
+      }
+      const key = edit.update?.id ?? edit.destroy ?? ''
+      const err = s.result.notUpdated?.[key] ?? s.result.notDestroyed?.[key]
+      return { id: key, failure: err ? toFailure(err) : null }
+    },
+
     async destroyEvents(ids) {
       const b = batch()
       const s = b.call<SetResponse<unknown>>('CalendarEvent/set', {

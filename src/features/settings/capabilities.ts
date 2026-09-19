@@ -52,6 +52,12 @@ export function capabilityRows(caps: AccountCapabilities): CapabilityRow[] {
       gate: caps.calendars ? undefined : 'caps.gate.calendars',
     },
     {
+      id: 'calendarCreate',
+      label: 'caps.calendarCreate',
+      state: caps.calendarCreate ? 'yes' : 'no',
+      gate: caps.calendarCreate ? undefined : 'caps.gate.calendarCreate',
+    },
+    {
       id: 'vacation',
       label: 'caps.vacation',
       state: caps.vacation ? 'yes' : 'no',

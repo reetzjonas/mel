@@ -90,3 +90,23 @@
   "free/busy, visibility and categories…"). Nothing reads them yet: mel neither
   hides a `private` event from a sharee nor treats a `free` one as non-blocking,
   because it has no free/busy view — they are stored and edited, that is all.
+- **Managing calendars** (issue #6, `services/calendars.ts`,
+  `CalendarDialog.tsx`; server-first like folders, no outbox). Probed against
+  Stalwart 0.16:
+  - A calendar created without `isSubscribed: true` comes back **unsubscribed**,
+    so `editCalendar` always sends it.
+  - `isDefault` is **read-only** (`invalidProperties` on create/update). The
+    first calendar an account has becomes the default by itself.
+  - **Stalwart lets you destroy the default calendar**, and then the account has
+    none — no event can be created until another exists. The dialog therefore
+    disables Delete on `isDefault`; the server would not stop it.
+  - Destroying a non-empty calendar fails with `calendarHasEvent` unless
+    `onDestroyRemoveEvents: true`, in which case its events go with it. The
+    dialog asks first, then asks again with the events named.
+  - Creation is gated by `mayCreateCalendar` in the account capability, read as
+    `capabilities.calendarCreate` — an explicit `false` hides the "+" button,
+    a missing flag does not (the server is asked and refuses if it must). A
+    stored account from before the flag existed has it `undefined`, which the
+    UI treats as allowed.
+  - The sidebar (and so this whole feature) is desktop-only, like the
+    visibility toggles: below `lg` there is no sidebar.

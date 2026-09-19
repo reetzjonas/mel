@@ -171,6 +171,11 @@ export function capabilitiesFor(
     submission: has(Cap.submission),
     contacts: has(Cap.contacts),
     calendars: has(Cap.calendars),
+    // Only an explicit false forbids it: a server that omits the flag is asked, and refuses if it must.
+    calendarCreate:
+      has(Cap.calendars) &&
+      (acc?.accountCapabilities[Cap.calendars] as { mayCreateCalendar?: boolean } | undefined)
+        ?.mayCreateCalendar !== false,
     sieve: has(Cap.sieve),
     vacation: has(Cap.vacation),
     files: has(Cap.filenode),

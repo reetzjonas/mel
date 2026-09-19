@@ -18,29 +18,36 @@ function randomNextMonthDate(maxDay: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-/** What the server itself holds for an event, read behind the app's back. */
-async function serverEvent(title: string) {
+/** One JMAP call straight to the server, behind the app's back. */
+async function serverCall(name: string, args: Record<string, unknown>) {
   const base = 'http://localhost:8080'
   const auth =
     'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
-  const call = async (name: string, args: Record<string, unknown>) => {
-    const res = await fetch(`${base}/jmap/`, {
-      method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:calendars'],
-        methodCalls: [[name, args, 'c']],
-      }),
-    })
-    return (await res.json()).methodResponses[0][1] as Record<string, unknown>
-  }
   const session = await (
     await fetch(`${base}/.well-known/jmap`, { headers: { Authorization: auth } })
   ).json()
   const accountId = Object.keys(session.accounts)[0]!
-  const got = await call('CalendarEvent/get', { accountId, ids: null })
-  const list = got['list'] as Array<Record<string, unknown>>
-  return list.find((e) => e['title'] === title)
+  const res = await fetch(`${base}/jmap/`, {
+    method: 'POST',
+    headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:calendars'],
+      methodCalls: [[name, { accountId, ...args }, 'c']],
+    }),
+  })
+  return (await res.json()).methodResponses[0][1] as Record<string, unknown>
+}
+
+/** What the server itself holds for an event. */
+async function serverEvent(title: string) {
+  const got = await serverCall('CalendarEvent/get', { ids: null })
+  return (got['list'] as Array<Record<string, unknown>>).find((e) => e['title'] === title)
+}
+
+/** What the server itself holds for a calendar. */
+async function serverCalendar(name: string) {
+  const got = await serverCall('Calendar/get', { ids: null })
+  return (got['list'] as Array<Record<string, unknown>>).find((c) => c['name'] === name)
 }
 
 test('a meeting link and a map link are actionable, and clearing them reaches the server', async ({
@@ -268,6 +275,71 @@ test('a file from Files is attached by reference and opens from the event', asyn
     .getByRole('button', { name: 'Delete', exact: true })
     .click()
   await expect(page.getByRole('button', { name, exact: true })).toHaveCount(0, { timeout: 15_000 })
+})
+
+test('create, rename and delete a calendar from the sidebar', async ({ page }) => {
+  const name = `Cal-${Date.now() % 100000}`
+  const renamed = `${name}-renamed`
+  const title = `InCal-${Date.now() % 100000}`
+  const sidebar = page.getByTestId('calendar-sidebar')
+
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+
+  await page.getByRole('button', { name: 'New calendar' }).click()
+  const dialog = page.getByRole('dialog', { name: 'New calendar' })
+  await dialog.getByRole('textbox', { name: 'Name' }).fill(name)
+  await dialog.getByRole('radio', { name: '#0e9488' }).check({ force: true })
+  await dialog.getByRole('button', { name: 'Save' }).click()
+  await expect(sidebar.getByText(name, { exact: true })).toBeVisible({ timeout: 15_000 })
+  expect(await serverCalendar(name)).toMatchObject({ color: '#0e9488' })
+
+  // An event filed into it, so that deleting the calendar has something to ask about.
+  await page.getByRole('button', { name: 'New event' }).click()
+  await page.getByPlaceholder('Title').fill(title)
+  await page.getByRole('combobox', { name: 'Calendar' }).selectOption({ label: name })
+  await page.getByRole('button', { name: 'Save', exact: true }).click()
+  await expect
+    .poll(async () => (await serverEvent(title))?.['title'], { timeout: 15_000 })
+    .toBe(title)
+
+  await sidebar.getByRole('button', { name: `Edit calendar: ${name}` }).click({ force: true })
+  const edit = page.getByRole('dialog', { name: 'Edit calendar' })
+  await edit.getByRole('textbox', { name: 'Name' }).fill(renamed)
+  await edit.getByRole('button', { name: 'Save' }).click()
+  await expect(sidebar.getByText(renamed, { exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect.poll(async () => Boolean(await serverCalendar(renamed))).toBe(true)
+
+  // Not empty: the server refuses, and the person is asked before the events go too.
+  await sidebar.getByRole('button', { name: `Edit calendar: ${renamed}` }).click({ force: true })
+  await page
+    .getByRole('dialog', { name: 'Edit calendar' })
+    .getByRole('button', { name: 'Delete calendar' })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Delete calendar' })
+    .getByRole('button', { name: 'Delete calendar' })
+    .click()
+  const second = page.getByRole('dialog', { name: 'Delete calendar' })
+  await expect(second).toContainText('still has events')
+  await second.getByRole('button', { name: 'Delete calendar' }).click()
+
+  await expect(sidebar.getByText(renamed, { exact: true })).toHaveCount(0, { timeout: 15_000 })
+  expect(await serverCalendar(renamed)).toBeUndefined()
+  expect(await serverEvent(title)).toBeUndefined()
+})
+
+test('the default calendar cannot be deleted', async ({ page }) => {
+  await login(page)
+  await page.getByRole('link', { name: 'Calendar' }).first().click()
+  const sidebar = page.getByTestId('calendar-sidebar')
+  await sidebar
+    .getByRole('button', { name: /^Edit calendar: / })
+    .first()
+    .click({ force: true })
+  const edit = page.getByRole('dialog', { name: 'Edit calendar' })
+  await expect(edit.getByRole('button', { name: 'Delete calendar' })).toBeDisabled()
+  await expect(edit.getByText('default calendar cannot be deleted')).toBeVisible()
 })
 
 test('a custom recurrence (every 2 days, 3 times) shows exactly three occurrences', async ({

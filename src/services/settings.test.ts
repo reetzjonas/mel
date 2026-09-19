@@ -153,6 +153,7 @@ describe('scheduleSettingsSync', () => {
             submission: true,
             contacts: true,
             calendars: true,
+            calendarCreate: true,
             sieve: false,
             vacation: false,
             files: filesCapability,

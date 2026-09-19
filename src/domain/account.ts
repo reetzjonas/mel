@@ -19,6 +19,8 @@ export interface AccountCapabilities {
   submission: boolean
   contacts: boolean
   calendars: boolean
+  /** The server lets this account create calendars (`mayCreateCalendar`, true unless it says no). */
+  calendarCreate: boolean
   sieve: boolean
   vacation: boolean
   /** Server-side file storage (JMAP FileNode). */
