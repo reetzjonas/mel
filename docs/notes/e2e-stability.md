@@ -58,9 +58,9 @@ put down to CPU load. That was **wrong** — there were real causes, all fixed:
    database picks it up, and it needs a restart to reach the session object. The
    app still honours whatever a real server advertises.
 
-Also: `workers: 2`, and `mobile` sits behind `desktop` via `dependencies` — every spec
-drives the same account, and parallel files were archiving each other's mail. Green
-full runs ever since. **If something flickers again, check these classes first
+Also: `workers: 1`, and `mobile` sits behind `desktop` via `dependencies` — every spec
+drives the same account, so serial execution prevents parallel files from archiving
+each other's mail or changing the same calendar layout. **If something flickers again, check these classes first
 (account state, shared state, server limits) rather than assuming system load.**
 
 ## The reply-threading flake was a real bug (2026-09-11, fixed)

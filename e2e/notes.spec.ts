@@ -25,6 +25,45 @@ async function picture(page: Page): Promise<Buffer> {
   return Buffer.from(base64, 'base64')
 }
 
+/** Wait for the autosave's server acknowledgement instead of a guessed delay. */
+function waitForNoteWrite(page: Page) {
+  return page.waitForResponse(
+    (response) =>
+      /\/jmap\/?$/.test(response.url()) &&
+      response.request().postData()?.includes('FileNode/set') === true &&
+      response.ok(),
+    { timeout: 20_000 },
+  )
+}
+
+/** A round trip is complete only after the note action has left the outbox. */
+async function waitForOutboxToDrain(page: Page) {
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            new Promise<number>((resolve, reject) => {
+              const open = indexedDB.open('mel')
+              open.onerror = () => reject(open.error)
+              open.onsuccess = () => {
+                const tx = open.result.transaction('outbox', 'readonly')
+                const rows = tx.objectStore('outbox').getAll()
+                rows.onerror = () => reject(rows.error)
+                rows.onsuccess = () =>
+                  resolve(
+                    (rows.result as Array<{ kind: string }>).filter(
+                      (row) => row.kind === 'note.save',
+                    ).length,
+                  )
+              }
+            }),
+        ),
+      { timeout: 20_000 },
+    )
+    .toBe(0)
+}
+
 test('write a note, tick an item off, and find it again after a reload', async ({ page }) => {
   test.setTimeout(120_000)
   const title = `Einkauf-${Date.now() % 100000}`
@@ -36,6 +75,7 @@ test('write a note, tick an item off, and find it again after a reload', async (
 
   await page.getByRole('textbox', { name: 'Title' }).fill(title)
   const body = page.getByRole('textbox', { name: 'Note', exact: true })
+  const initialWrite = waitForNoteWrite(page)
   await body.click()
   // Typed, not filled: the editor is a document, and Enter on a list line
   // continues the list the way the markdown keymap does it.
@@ -46,7 +86,7 @@ test('write a note, tick an item off, and find it again after a reload', async (
    * server through the outbox, and a fresh page has nothing to go on but what
    * came back from it.
    */
-  await page.waitForTimeout(3000)
+  await initialWrite
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await expect(page.getByRole('link', { name: title })).toBeVisible({ timeout: 20_000 })
@@ -57,9 +97,10 @@ test('write a note, tick an item off, and find it again after a reload', async (
   const milch = page.getByRole('checkbox', { name: 'Milch' })
   await expect(milch).toBeVisible({ timeout: 20_000 })
   await expect(milch).not.toBeChecked()
+  const checkedWrite = waitForNoteWrite(page)
   await milch.click()
   await expect(milch).toBeChecked({ timeout: 10_000 })
-  await page.waitForTimeout(3000)
+  await checkedWrite
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await page.getByRole('link', { name: title }).click()
@@ -79,6 +120,7 @@ test('a picture in a note is a file beside it, and survives a reload', async ({ 
   await login(page)
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await page.getByRole('button', { name: 'New note' }).click()
+  const initialWrite = waitForNoteWrite(page)
   await page.getByRole('textbox', { name: 'Title' }).fill(title)
 
   await page.locator('input[type="file"]').setInputFiles({
@@ -88,7 +130,10 @@ test('a picture in a note is a file beside it, and survives a reload', async ({ 
   })
   // Drawn under the line that refers to it, from the copy staged locally.
   await expect(page.getByRole('img', { name: 'zettel.png' })).toBeVisible({ timeout: 10_000 })
-  await page.waitForTimeout(3000)
+  await initialWrite
+  // Uploading the image and rewriting note.md are separate FileNode actions.
+  // The latter is what makes the image discoverable after a fresh sync.
+  await waitForOutboxToDrain(page)
 
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
@@ -155,12 +200,13 @@ test('a note written offline is waiting on the server once the connection is bac
   await page.keyboard.type('kein Netz, trotzdem geschrieben')
   await expect(page.getByRole('link', { name: title })).toBeVisible()
 
+  const reconnectedWrite = waitForNoteWrite(page)
   await context.setOffline(false)
   await page.evaluate(() => window.dispatchEvent(new Event('online')))
 
   // A reload has nothing local left to draw it from but what the sync brought
   // back, so finding it here is finding it on the server.
-  await page.waitForTimeout(4000)
+  await reconnectedWrite
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await expect(page.getByRole('link', { name: title })).toBeVisible({ timeout: 20_000 })
@@ -182,6 +228,7 @@ test('the toolbar writes the markdown, and the file has it', async ({ page }) =>
   await page.getByRole('textbox', { name: 'Title' }).fill(title)
 
   const body = page.getByRole('textbox', { name: 'Note', exact: true })
+  const initialWrite = waitForNoteWrite(page)
   await body.click()
   await page.keyboard.type('Wochenplan')
   await page.getByRole('button', { name: 'Heading' }).click()
@@ -198,7 +245,7 @@ test('the toolbar writes the markdown, and the file has it', async ({ page }) =>
   await expect(body).toContainText('**Brot**')
   await page.getByRole('textbox', { name: 'Title' }).click()
   await expect(body).not.toContainText('**')
-  await page.waitForTimeout(3000)
+  await initialWrite
 
   /*
    * And what is in the file, read through the Files app: the markers the
@@ -239,11 +286,12 @@ test('select several notes, pin and delete them together', async ({ page }) => {
     // outgoing note instead of the new, still-empty one.
     const titleBox = page.getByRole('textbox', { name: 'Title' })
     await expect(titleBox).toHaveValue('')
+    const saved = waitForNoteWrite(page)
     await titleBox.fill(title)
     // Autosave debounces (AUTOSAVE_MS); navigating away before it fires
     // cancels the pending write, the same reason the other notes specs wait
     // here before moving on.
-    await page.waitForTimeout(3000)
+    await saved
   }
   await expect(page.getByRole('link', { name: titleA })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('link', { name: titleB })).toBeVisible({ timeout: 15_000 })
@@ -284,8 +332,9 @@ test('the search box narrows the list to matching titles, and the clear button r
     await page.getByRole('button', { name: 'New note' }).click()
     const titleBox = page.getByRole('textbox', { name: 'Title' })
     await expect(titleBox).toHaveValue('')
+    const saved = waitForNoteWrite(page)
     await titleBox.fill(title)
-    await page.waitForTimeout(3000)
+    await saved
   }
   await expect(page.getByRole('link', { name: titleA })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByRole('link', { name: titleB })).toBeVisible({ timeout: 15_000 })

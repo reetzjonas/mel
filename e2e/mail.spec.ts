@@ -114,21 +114,25 @@ test('remote images are blocked by the frame policy, and load once released', as
   await page.goto('/mail')
 
   const render = async (html: string) => {
-    await page.evaluate((d) => {
-      document.querySelectorAll('#img-policy-probe').forEach((n) => n.remove())
-      const f = document.createElement('iframe')
-      f.id = 'img-policy-probe'
-      f.srcdoc = d
-      document.body.appendChild(f)
-    }, html)
-    await page.waitForTimeout(1000)
+    await page.evaluate(
+      (d) =>
+        new Promise<void>((resolve) => {
+          document.querySelectorAll('#img-policy-probe').forEach((n) => n.remove())
+          const f = document.createElement('iframe')
+          f.id = 'img-policy-probe'
+          f.addEventListener('load', () => resolve(), { once: true })
+          f.srcdoc = d
+          document.body.appendChild(f)
+        }),
+      html,
+    )
   }
 
   await render(doc('data: cid:'))
   expect(hits).toHaveLength(0)
 
   await render(doc('http: https: data: cid:'))
-  expect(hits.length).toBeGreaterThan(0)
+  await expect.poll(() => hits.length).toBeGreaterThan(0)
 })
 
 test('the folder list is reachable on mobile, where the sidebar is off-screen', async ({

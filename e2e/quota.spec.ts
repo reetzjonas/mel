@@ -44,12 +44,17 @@ async function storageNearlyFull(page: Page, fraction: number) {
 
 const warning = (page: Page) => page.getByRole('button', { name: /Storage almost full/ })
 
-/*
- * The header defers its first read past the startup burst (FIRST_READ_MS in
- * features/settings/quota.ts), so every assertion here has to outlast that —
- * and the negative one has to wait it out, or it would pass on the read simply
- * not having happened yet.
- */
+/** Resolves only once the deferred header quota read has reached the server. */
+function waitForQuotaRead(page: Page) {
+  return page.waitForResponse(
+    (response) =>
+      /\/jmap\/?$/.test(response.url()) &&
+      response.request().postData()?.includes('Quota/get') === true &&
+      response.ok(),
+    { timeout: 15_000 },
+  )
+}
+
 const AFTER_FIRST_READ = 12_000
 
 /*
@@ -72,11 +77,12 @@ test('settings names the storage figure', async ({ page }) => {
 
 test('a nearly empty account is not announced in the header', async ({ page, isMobile }) => {
   test.skip(Boolean(isMobile), 'the warning lives in the shell header, which is desktop chrome')
+  const quotaRead = waitForQuotaRead(page)
   await login(page)
 
   // The point of the whole design: the chrome every screen carries stays quiet
   // while the number is not worth acting on.
-  await page.waitForTimeout(7_000)
+  await quotaRead
   await expect(warning(page)).toBeHidden()
 })
 

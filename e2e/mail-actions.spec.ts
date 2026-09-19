@@ -207,8 +207,9 @@ test('compose, send, and receive on the other account', async ({ page, browser }
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.getByText('Sending in 10 s')).toBeVisible()
 
-  // Wait out the undo window plus delivery.
-  await page.waitForTimeout(13_000)
+  // Sending starts when the undo snackbar goes away; delivery is covered by
+  // the recipient's subject assertion below.
+  await expect(page.getByText('Sending in 10 s')).toBeHidden({ timeout: 20_000 })
 
   const bobCtx = await browser.newContext()
   const bobPage = await bobCtx.newPage()
@@ -511,7 +512,7 @@ test('opening a message offers a link to the sender’s contact, only once one e
 })
 
 /** Files an inbox message into Junk over JMAP, returning its id. */
-async function moveToJunk(subject?: string): Promise<string> {
+async function moveToJunk(subject: string): Promise<string> {
   const auth =
     'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
   const call = async (methodCalls: unknown[]) => {
@@ -535,7 +536,7 @@ async function moveToJunk(subject?: string): Promise<string> {
         'Email/query',
         {
           accountId: 'c',
-          filter: { inMailbox: inbox.id, ...(subject ? { subject } : {}) },
+          filter: { inMailbox: inbox.id, subject },
           limit: 1,
         },
         'c0',
@@ -553,7 +554,9 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
   page,
 }) => {
   test.setTimeout(60_000)
-  await moveToJunk()
+  // Do not move whichever seeded message happens to be first: other mail
+  // checks name their fixture by subject and this test restores it only later.
+  await moveToJunk('HTML-Test')
 
   await login(page, ...ALICE)
   await expect(page.getByRole('link', { name: /^Inbox( \d+)?$/ })).toBeVisible({
@@ -566,7 +569,9 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
   await page.reload()
 
   await page.getByRole('link', { name: /^Junk Mail( \d+)?$/ }).click()
-  const row = page.locator('[data-testid="virtuoso-item-list"] [role="button"]').first()
+  const row = page.locator('[data-testid="virtuoso-item-list"] [role="button"]', {
+    hasText: 'HTML-Test',
+  })
   await expect(row).toBeVisible({ timeout: 15_000 })
   await row.click()
 

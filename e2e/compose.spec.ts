@@ -58,7 +58,9 @@ test('formatting toolbar output — bold, italic, a list and a link — survives
 
   await page.getByRole('button', { name: 'Send' }).click()
   await expect(page.getByText('Sending in 10 s')).toBeVisible()
-  await page.waitForTimeout(13_000)
+  // The snackbar disappears when the undo window expires and sending begins.
+  // Waiting for that state avoids guessing how long the browser timer needs.
+  await expect(page.getByText('Sending in 10 s')).toBeHidden({ timeout: 20_000 })
 
   const bobCtx = await browser.newContext()
   const bobPage = await bobCtx.newPage()

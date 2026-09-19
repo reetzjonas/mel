@@ -21,7 +21,7 @@ async function closeSettings(page: Page) {
 /** The 10s undo window plus delivery; the send itself only starts after it. */
 async function waitForSend(page: Page) {
   await expect(page.getByText('Sending in 10 s')).toBeVisible()
-  await page.waitForTimeout(13_000)
+  await expect(page.getByText('Sending in 10 s')).toBeHidden({ timeout: 20_000 })
 }
 
 /*

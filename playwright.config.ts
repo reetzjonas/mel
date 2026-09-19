@@ -14,12 +14,11 @@ export default defineConfig({
   // All specs share one Stalwart account; start every run from the seeded
   // baseline so leftovers can't accumulate into slow syncs and timeouts.
   globalSetup: './e2e/global-setup.ts',
-  // Spec files run in parallel by default, but they all mutate one shared
-  // mailbox — e.g. the archive test moves the top message out of the inbox
-  // while another file is asserting on it. Two workers keeps some speed
-  // without letting that many mutations overlap, and stops eight Chromium
-  // instances from starving the dev server into timeout territory.
-  workers: 2,
+  // Specs share one pair of accounts and deliberately mutate their mail,
+  // calendars, files and settings. Running one at a time is slower, but makes
+  // a test's server-side state its own instead of letting another spec change
+  // it between an action and its assertion.
+  workers: 1,
   /*
    * A failure has to leave evidence behind. This used to say `on-first-retry`
    * with `retries` at its default of 0, so the trace it asked for could never
