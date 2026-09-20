@@ -175,7 +175,11 @@ test('a narrow window shows icons, not checkboxes, until selecting is turned on'
   await page.setViewportSize({ width: 500, height: 800 })
   await expect(box).toHaveCSS('opacity', '0')
 
-  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await page.getByRole('button', { name: 'More file actions' }).click()
+  await page
+    .getByRole('menu', { name: 'More file actions' })
+    .getByRole('menuitemcheckbox', { name: 'Select' })
+    .click()
   await expect(box).toHaveCSS('opacity', '1')
 
   await page.setViewportSize({ width: 1280, height: 720 })
@@ -350,7 +354,16 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
 
   // Preview reads the blob back off the server.
   await page.getByRole('button', { name: 'note.txt', exact: true }).click()
+  await expect(page).toHaveURL(/[?&]preview=/)
   await expect(page.getByText('hello from mel')).toBeVisible({ timeout: 10_000 })
+
+  // Browser Back and the visible Back control mean the same thing on compact
+  // master/detail layouts: return to this folder, not leave Files entirely.
+  await page.goBack()
+  await expect(page).not.toHaveURL(/[?&]preview=/)
+  await expect(page.getByText('hello from mel')).toHaveCount(0)
+  await page.getByRole('button', { name: 'note.txt', exact: true }).click()
+  await expect(page).toHaveURL(/[?&]preview=/)
 
   // Full view is the same content over the whole window — a PDF is unreadable
   // at panel width. Escape closes it and leaves the pane behind, rather than
@@ -370,12 +383,14 @@ test('create a folder, upload into it, preview, rename and delete', async ({ pag
   await expect(exec).not.toBeChecked()
   await exec.check()
   await page.reload()
-  await page.getByRole('button', { name: 'note.txt', exact: true }).click()
+  // The URL is enough to restore the open detail after a reload.
+  await expect(page).toHaveURL(/[?&]preview=/)
   await expect(page.getByRole('checkbox', { name: 'Executable' })).toBeChecked({ timeout: 15_000 })
 
   // Below lg the preview replaces the listing, so the row actions are only
   // reachable again once it is closed.
   await page.getByRole('button', { name: 'Back' }).click()
+  await expect(page).not.toHaveURL(/[?&]preview=/)
 
   await page
     .getByRole('button', { name: /^Rename / })
@@ -472,7 +487,8 @@ test('the preview panel can be resized, and the width survives a reload', async 
   expect(after.width).toBeGreaterThan(before.width + 60)
 
   await page.reload()
-  await page.getByRole('button', { name, exact: true }).click()
+  // Both the selected file and the panel width survive the reload.
+  await expect(page).toHaveURL(/[?&]preview=/)
   await expect(page.getByText('hello')).toBeVisible({ timeout: 10_000 })
   const reloaded = (await preview.boundingBox())!
   expect(Math.abs(reloaded.width - after.width)).toBeLessThan(4)

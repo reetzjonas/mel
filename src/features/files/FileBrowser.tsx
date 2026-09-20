@@ -1,4 +1,4 @@
-import { Link, useNavigate } from '@tanstack/react-router'
+import { Link, useNavigate, useSearch } from '@tanstack/react-router'
 import { useMemo, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { FileNode } from '../../domain/file'
@@ -94,9 +94,9 @@ export function FileBrowser({
   const allNodes = useAllNodes(accountId)
   const trash = allNodes?.find((node) => node.role === 'trash' && node.nodeType === 'directory')
   const navigate = useNavigate()
+  const { preview: previewId } = useSearch({ from: '/files' })
   const { showSnackbar } = useUi()
   const [dialog, setDialog] = useState<Dialog | null>(null)
-  const [preview, setPreview] = useState<FileNode | null>(null)
   const previewPanel = usePanelWidth('files-preview', PREVIEW_LIMITS)
   const previewRef = useRef<HTMLElement | null>(null)
   /*
@@ -214,7 +214,7 @@ export function FileBrowser({
       confirmLabel: moved ? t('files.moveToTrash') : t('files.delete'),
       onConfirm: () => {
         clear()
-        if (preview && ids.includes(preview.id)) setPreview(null)
+        if (previewId && ids.includes(previewId)) closePreview()
         void remove(ids)
       },
     })
@@ -232,7 +232,7 @@ export function FileBrowser({
           : t('files.delete.confirm'),
       confirmLabel: moved ? t('files.moveToTrash') : t('files.delete'),
       onConfirm: () => {
-        if (preview?.id === node.id) setPreview(null)
+        if (previewId === node.id) closePreview()
         void remove([node.id])
       },
     })
@@ -247,7 +247,23 @@ export function FileBrowser({
    * and a snapshot taken on click would go on showing the old value after the
    * write came back.
    */
-  const previewLive = preview ? children?.find((n) => n.id === preview.id) : undefined
+  const preview = previewId ? children?.find((node) => node.id === previewId) : undefined
+
+  const openPreview = (node: FileNode) => {
+    const search = (previous: { preview?: string }) => ({ ...previous, preview: node.id })
+    if (folderId) void navigate({ to: '/files/$folderId', params: { folderId }, search })
+    else void navigate({ to: '/files', search })
+  }
+
+  // Replace rather than push: opening a preview creates the history entry, so
+  // browser Back and this visible Back control both return to the same list
+  // without making a second Back reopen the file that was just closed.
+  const closePreview = () => {
+    const search = (previous: { preview?: string }) => ({ ...previous, preview: undefined })
+    if (folderId)
+      void navigate({ to: '/files/$folderId', params: { folderId }, search, replace: true })
+    else void navigate({ to: '/files', search, replace: true })
+  }
 
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
@@ -418,8 +434,12 @@ export function FileBrowser({
                   onToggle={(extend) => toggle(node.id, extend)}
                   onOpen={() => {
                     if (node.nodeType === 'directory')
-                      void navigate({ to: '/files/$folderId', params: { folderId: node.id } })
-                    else setPreview(node)
+                      void navigate({
+                        to: '/files/$folderId',
+                        params: { folderId: node.id },
+                        search: (previous) => ({ ...previous, preview: undefined }),
+                      })
+                    else openPreview(node)
                   }}
                   onRename={() => setDialog({ kind: 'rename', node })}
                   onDelete={() => removeOne(node)}
@@ -486,8 +506,8 @@ export function FileBrowser({
             <FilePreview
               key={preview.id}
               accountId={accountId}
-              node={previewLive ?? preview}
-              onClose={() => setPreview(null)}
+              node={preview}
+              onClose={closePreview}
             />
           </aside>
         </>
@@ -674,6 +694,7 @@ function Breadcrumb({
     <nav className="flex min-w-0 items-center gap-1 text-sm">
       <Link
         to="/files"
+        search={(previous) => ({ ...previous, preview: undefined })}
         {...crumbProps(null, 'root')}
         className="shrink-0 rounded-control px-1.5 py-1 font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
       >
@@ -688,6 +709,7 @@ function Breadcrumb({
             <Link
               to="/files/$folderId"
               params={{ folderId: node.id }}
+              search={(previous) => ({ ...previous, preview: undefined })}
               {...crumbProps(node.id, node.id)}
               className="truncate rounded-control px-1.5 py-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
             >

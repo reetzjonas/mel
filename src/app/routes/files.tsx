@@ -3,6 +3,10 @@ import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { useAccounts } from '../../features/mail/hooks'
 
 export const Route = createFileRoute('/files')({
+  validateSearch: (search: Record<string, unknown>): { preview?: string } => ({
+    preview:
+      typeof search['preview'] === 'string' && search['preview'] ? search['preview'] : undefined,
+  }),
   component: FilesLayout,
 })
 
