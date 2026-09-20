@@ -468,8 +468,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
                 {!showCc && (
                   <button
                     type="button"
-                    tabIndex={-1}
-                    className="hover:text-ink"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-ink"
                     onClick={() => setShowCc(true)}
                   >
                     {t('compose.cc')}
@@ -478,8 +477,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
                 {!showBcc && (
                   <button
                     type="button"
-                    tabIndex={-1}
-                    className="hover:text-ink"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center hover:text-ink"
                     onClick={() => setShowBcc(true)}
                   >
                     {t('compose.bcc')}

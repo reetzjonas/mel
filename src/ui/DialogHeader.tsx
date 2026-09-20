@@ -15,17 +15,17 @@ export function DialogHeader({
   action?: ReactNode
 }) {
   return (
-    <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-line px-4 py-3 sm:px-5">
+    <header className="grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-line px-4 sm:px-5">
       <button
         type="button"
         ref={closeRef}
         onClick={onClose}
-        className="min-w-0 text-left text-sm text-ink-muted hover:text-ink"
+        className="flex min-h-11 min-w-11 items-center text-left text-sm text-ink-muted hover:text-ink"
       >
         {closeLabel}
       </button>
       <h2 className="min-w-0 text-center text-sm leading-5 font-semibold">{title}</h2>
-      <div className="min-w-0">
+      <div className="flex min-h-11 min-w-11 items-stretch justify-end [&>button]:min-h-11 [&>button]:min-w-11">
         {action ?? (
           <span aria-hidden className="invisible text-sm">
             {closeLabel}

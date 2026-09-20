@@ -266,8 +266,12 @@ export function EventDialog({
         role="dialog"
         aria-modal="true"
         aria-label={initial.id ? t('cal.editEvent') : t('cal.newEvent')}
-        className="animate-rise flex max-h-[92dvh] w-full flex-col overflow-hidden bg-raised max-sm:rounded-t-panel sm:max-w-lg sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
-        style={mobileViewport ? { maxHeight: `${mobileViewport.height - 16}px` } : undefined}
+        className="animate-rise flex h-full max-h-full w-full flex-col overflow-hidden bg-raised sm:h-auto sm:max-h-[92dvh] sm:max-w-lg sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
+        style={
+          mobileViewport
+            ? { height: `${mobileViewport.height}px`, maxHeight: `${mobileViewport.height}px` }
+            : undefined
+        }
       >
         {children}
       </div>

@@ -88,7 +88,19 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   await expect(page).toHaveURL(/\/calendar$/)
   await expectNoPageOverflow()
   if (compact) {
-    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible()
+    await page.getByRole('button', { name: 'New event' }).click()
+    const eventDialog = page.getByRole('dialog', { name: 'New event' })
+    await expect(eventDialog).toBeVisible()
+    await expect(eventDialog).toHaveCSS('width', '320px')
+    await expect(eventDialog).toHaveCSS('height', '720px')
+    for (const name of ['Cancel', 'Save']) {
+      const box = await eventDialog.getByRole('button', { name }).boundingBox()
+      // Mobile emulation can return a fractional box just below the 44 CSS px
+      // minimum because of device-scale rounding.
+      expect(box?.width).toBeGreaterThanOrEqual(43.5)
+      expect(box?.height).toBeGreaterThanOrEqual(43.5)
+    }
+    await eventDialog.getByRole('button', { name: 'Cancel' }).click()
     await page.getByRole('button', { name: 'Calendars', exact: true }).click()
     await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
     await page.getByRole('button', { name: 'Close calendars' }).click()
@@ -105,6 +117,19 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     if (compact) {
       const primary = { Files: 'Upload', Notes: 'New note', Mail: 'New message' }[name]
       await expect(page.getByRole('button', { name: primary, exact: true })).toBeVisible()
+      if (name === 'Mail') {
+        await page.getByRole('button', { name: 'New message', exact: true }).click()
+        const compose = page.getByRole('dialog', { name: 'New message' })
+        await expect(compose).toBeVisible()
+        await expect(compose).toHaveCSS('width', '320px')
+        await expect(compose).toHaveCSS('height', '720px')
+        for (const action of ['Discard', 'Send', 'Cc', 'Bcc']) {
+          const box = await compose.getByRole('button', { name: action, exact: true }).boundingBox()
+          expect(box?.width).toBeGreaterThanOrEqual(43.5)
+          expect(box?.height).toBeGreaterThanOrEqual(43.5)
+        }
+        await compose.getByRole('button', { name: 'Discard' }).click()
+      }
     }
     if (compact && name === 'Files') {
       await page.getByRole('button', { name: 'More file actions' }).click()
