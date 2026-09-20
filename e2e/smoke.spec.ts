@@ -150,6 +150,17 @@ test('all app surfaces fit the responsive width matrix in both themes', async ({
       await page.getByRole('button', { name: 'Settings', exact: true }).click()
       await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
       await expectNoHorizontalOverflow(page)
+      const settingsTabs = page.getByRole('tablist', { name: 'Settings' })
+      await expect(settingsTabs).toHaveAttribute(
+        'aria-orientation',
+        width < 640 ? 'horizontal' : 'vertical',
+      )
+      await settingsTabs.getByRole('tab', { name: 'General' }).focus()
+      await page.keyboard.press(width < 640 ? 'ArrowRight' : 'ArrowDown')
+      await expect(settingsTabs.getByRole('tab', { name: 'Appearance' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      )
       await page.getByRole('button', { name: 'Close settings' }).click()
     }
   }

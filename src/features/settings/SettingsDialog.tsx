@@ -4,7 +4,7 @@
  * (`?settings=<tab>`), so the back button closes the dialog and the sync bar
  * can still link straight at the capability list.
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useAccounts } from '../mail/hooks'
 import { t, type MsgKey } from '../../lib/i18n'
 import { DialogHeader } from '../../ui/DialogHeader'
@@ -72,7 +72,36 @@ export function SettingsDialog({
   const panelRef = useRef<HTMLDivElement>(null)
   const active = tabs.includes(tab) ? tab : (tabs[0] ?? 'general')
   const mobileViewport = useMobileViewport()
+  const [verticalTabs, setVerticalTabs] = useState(
+    () => window.matchMedia('(min-width: 640px)').matches,
+  )
   useModal({ panel: dialogRef, initialFocus: closeRef, onClose })
+
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 640px)')
+    const update = () => setVerticalTabs(query.matches)
+    update()
+    query.addEventListener('change', update)
+    return () => query.removeEventListener('change', update)
+  }, [])
+
+  const moveTab = (event: KeyboardEvent<HTMLDivElement>) => {
+    const previous = verticalTabs ? 'ArrowUp' : 'ArrowLeft'
+    const next = verticalTabs ? 'ArrowDown' : 'ArrowRight'
+    if (![previous, next, 'Home', 'End'].includes(event.key)) return
+    event.preventDefault()
+    const current = Math.max(0, tabs.indexOf(active))
+    const index =
+      event.key === 'Home'
+        ? 0
+        : event.key === 'End'
+          ? tabs.length - 1
+          : (current + (event.key === next ? 1 : -1) + tabs.length) % tabs.length
+    const target = tabs[index]
+    if (!target) return
+    onTab(target)
+    requestAnimationFrame(() => document.getElementById(`settings-tab-${target}`)?.focus())
+  }
 
   // A deep link to a tab that this account cannot show (or signing out while
   // standing on one) leaves the URL lying; correct it rather than silently
@@ -173,7 +202,8 @@ export function SettingsDialog({
           <div
             role="tablist"
             aria-label={t('settings.title')}
-            aria-orientation="vertical"
+            aria-orientation={verticalTabs ? 'vertical' : 'horizontal'}
+            onKeyDown={moveTab}
             className="flex shrink-0 gap-1 overflow-x-auto px-4 pb-2 sm:w-48 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:px-3 sm:pb-3"
           >
             {tabs.map((id) => (
@@ -184,6 +214,7 @@ export function SettingsDialog({
                 id={`settings-tab-${id}`}
                 aria-selected={id === active}
                 aria-controls={`settings-panel-${id}`}
+                tabIndex={id === active ? 0 : -1}
                 onClick={() => onTab(id)}
                 className={
                   id === active
