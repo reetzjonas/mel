@@ -66,6 +66,7 @@ export function ComposeToolbar({ editor }: { editor: Editor | null }) {
     <>
       <div
         className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line py-1.5"
+        data-horizontal-scroll="editor"
         role="toolbar"
       >
         <ToolbarButton

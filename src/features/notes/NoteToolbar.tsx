@@ -56,7 +56,10 @@ export function NoteToolbar({ view }: { view: EditorView | null }) {
   }
 
   return (
-    <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-1">
+    <div
+      className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-1"
+      data-horizontal-scroll="editor"
+    >
       <ToolbarButton
         icon="heading"
         label={t('notes.format.heading')}

@@ -1,5 +1,45 @@
 import { expect, test } from '@playwright/test'
 
+async function login(page: import('@playwright/test').Page) {
+  await page.goto('/mail')
+  await page.getByPlaceholder('you@example.com').fill('alice@localhost')
+  await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
+  await page.getByRole('button', { name: 'Connect' }).click()
+  await expect(
+    page.getByRole('navigation', { name: 'Applications' }).getByRole('link'),
+  ).toHaveCount(5, { timeout: 15_000 })
+}
+
+async function expectNoHorizontalOverflow(page: import('@playwright/test').Page) {
+  const result = await page.evaluate(() => {
+    const pageOverflows =
+      document.documentElement.scrollWidth > document.documentElement.clientWidth
+    const scrollers = [...document.querySelectorAll<HTMLElement>('*')]
+      .filter((element) => {
+        const overflow = getComputedStyle(element).overflowX
+        return (
+          (overflow === 'auto' || overflow === 'scroll') &&
+          element.clientWidth > 0 &&
+          element.scrollWidth > element.clientWidth + 1 &&
+          // Settings tabs and editor formatting commands deliberately scroll;
+          // task surfaces must not.
+          element.getAttribute('role') !== 'tablist' &&
+          !element.closest('[data-horizontal-scroll="editor"]')
+        )
+      })
+      .map((element) => ({
+        tag: element.tagName,
+        role: element.getAttribute('role'),
+        className: element.className.toString(),
+        clientWidth: element.clientWidth,
+        scrollWidth: element.scrollWidth,
+      }))
+    return { pageOverflows, scrollers }
+  })
+  expect(result.pageOverflows).toBe(false)
+  expect(result.scrollers).toEqual([])
+}
+
 test('app shell renders and redirects to /mail (login form without account)', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveURL(/\/mail$/)
@@ -73,6 +113,44 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
       await expect(menu.getByRole('menuitemcheckbox', { name: 'Show hidden files' })).toBeVisible()
       await page.keyboard.press('Escape')
       await expect(menu).toBeHidden()
+    }
+  }
+})
+
+test('all app surfaces fit the responsive width matrix in both themes', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'One browser can exercise every CSS viewport')
+  await login(page)
+
+  const widths = [320, 375, 768, 1024, 1440, 1920]
+  const apps = [
+    ['Mail', /\/mail(?:\/.*)?$/],
+    ['Calendar', /\/calendar$/],
+    ['Contacts', /\/contacts$/],
+    ['Files', /\/files(?:\/.*)?$/],
+    ['Notes', /\/notes$/],
+  ] as const
+
+  for (const theme of ['light', 'dark'] as const) {
+    await page.evaluate((preference) => {
+      localStorage.setItem('mel:theme', preference)
+      window.dispatchEvent(new Event('mel:theme-preference'))
+    }, theme)
+    await expect(page.locator('html')).toHaveAttribute('data-theme', theme)
+
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: width >= 1024 ? 900 : 720 })
+      for (const [name, path] of apps) {
+        await page.getByRole('link', { name, exact: true }).first().click()
+        await expect(page).toHaveURL(path)
+        await expectNoHorizontalOverflow(page)
+      }
+
+      await page.getByRole('button', { name: 'Settings', exact: true }).click()
+      await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
+      await expectNoHorizontalOverflow(page)
+      await page.getByRole('button', { name: 'Close settings' }).click()
     }
   }
 })
