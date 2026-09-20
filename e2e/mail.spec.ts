@@ -63,8 +63,15 @@ test('the compact reading pane prioritizes common actions', async ({ page, isMob
 
   await page.getByRole('button', { name: 'More message actions' }).click()
   const menu = page.getByRole('menu', { name: 'More message actions' })
-  for (const action of ['Flag', 'Mark unread', 'Reply all', 'Forward', 'Message details']) {
-    await expect(menu.getByText(action, { exact: true })).toBeVisible()
+  // "Remove flag" when an earlier spec left the seeded message flagged.
+  for (const action of [
+    /^(Flag|Remove flag)$/,
+    'Mark unread',
+    'Reply all',
+    'Forward',
+    'Message details',
+  ]) {
+    await expect(menu.getByText(action, { exact: typeof action === 'string' })).toBeVisible()
   }
   await page.keyboard.press('Escape')
   await expect(menu).toBeHidden()
@@ -216,12 +223,25 @@ test('focusing the active folder stays within the mail viewport', async ({ page,
   await expect(inbox).toHaveCSS('outline-style', 'none')
 })
 
-test('message details: headers, delivery path, copy and export', async ({ page, context }) => {
+test('message details: headers, delivery path, copy and export', async ({
+  page,
+  context,
+  isMobile,
+}) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write'])
   await login(page)
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
   await page.getByText('Willkommen bei mel').click()
-  await page.getByRole('button', { name: 'Message details' }).click()
+  if (isMobile) {
+    // The compact action bar keeps the common actions and puts the rest in a menu.
+    await page.getByRole('button', { name: 'More message actions' }).click()
+    await page
+      .getByRole('menu', { name: 'More message actions' })
+      .getByRole('menuitem', { name: 'Message details' })
+      .click()
+  } else {
+    await page.getByRole('button', { name: 'Message details' }).click()
+  }
 
   const dialog = page.getByRole('dialog')
   // The headers are fetched from the server when the dialog opens; everything

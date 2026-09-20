@@ -1200,6 +1200,9 @@ test('a reminder is stored on the event, survives a reload, and is shown when it
   // A fresh load reads it back from the local copy; that the server keeps it
   // is the provider test's business (and was checked against Stalwart by hand).
   await page.reload()
+  // The week view rather than the month: a day cell there stops at three chips,
+  // and leftovers from other specs today would hide this one.
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
   const chip = page
     .locator('[data-testid="calendar-grid"]')
     .getByRole('button', { name: new RegExp(title) })
@@ -1213,6 +1216,7 @@ test('a reminder is stored on the event, survives a reload, and is shown when it
   await page.getByRole('button', { name: 'Save', exact: true }).click()
   await page.waitForTimeout(1500)
   await page.reload()
+  await page.getByRole('button', { name: 'Week', exact: true }).click()
   await expect(chip).toBeVisible({ timeout: 20_000 })
   await chip.click()
   await page.getByRole('button', { name: 'More details' }).click()

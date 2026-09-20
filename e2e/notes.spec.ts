@@ -43,6 +43,73 @@ function waitForNoteWrite(page: Page) {
   )
 }
 
+/**
+ * What the server holds in every note file, read behind the app's back.
+ *
+ * Waiting for "a write" from inside the page proved unreliable: on a fresh
+ * server a save is several requests (the Notes folder, the note's folder, the
+ * file), settings sync writes its own file through the same call, and the
+ * editor saves 800 ms after a change, so neither a matching request nor an
+ * empty outbox says that *this* text has arrived. Reloading before it has lost
+ * edits. The server is the one place that can say so.
+ */
+const BASE = 'http://localhost:8080'
+const AUTH =
+  'Basic ' + Buffer.from('alice@localhost:korrekt-pferd-batterie-alice').toString('base64')
+
+async function serverNoteTexts(): Promise<string[]> {
+  const jmap = async (calls: unknown[]) =>
+    (
+      await (
+        await fetch(`${BASE}/jmap/`, {
+          method: 'POST',
+          headers: { Authorization: AUTH, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:filenode'],
+            methodCalls: calls,
+          }),
+        })
+      ).json()
+    ).methodResponses as Array<[string, { list?: Array<Record<string, string>> }, string]>
+  const session = await (
+    await fetch(`${BASE}/.well-known/jmap`, { headers: { Authorization: AUTH } })
+  ).json()
+  const accountId = Object.keys(session.accounts)[0]!
+  const [, got] = await jmap([
+    ['FileNode/query', { accountId }, 'q'],
+    [
+      'FileNode/get',
+      {
+        accountId,
+        '#ids': { resultOf: 'q', name: 'FileNode/query', path: '/ids' },
+        properties: ['id', 'name', 'blobId'],
+      },
+      'g',
+    ],
+  ])
+  const notes = (got[1].list ?? []).filter((n) => n['name'] === 'note.md' && n['blobId'])
+  return Promise.all(
+    notes.map(async (n) => {
+      const url = (session.downloadUrl as string)
+        .replace('{accountId}', accountId)
+        .replace('{blobId}', n['blobId']!)
+        .replace('{name}', 'note.md')
+        .replace('{type}', 'text/markdown')
+      return (await fetch(url, { headers: { Authorization: AUTH } })).text()
+    }),
+  )
+}
+
+/** Wait until a note with this title holds the text on the server. */
+async function expectOnServer(title: string, text: string) {
+  await expect
+    .poll(
+      async () => (await serverNoteTexts()).some((t) => t.includes(title) && t.includes(text)),
+      { timeout: 20_000, message: `"${text}" of note ${title} on the server` },
+    )
+    .toBe(true)
+}
+
 /** A round trip is complete only after the note action has left the outbox. */
 async function waitForOutboxToDrain(page: Page) {
   await expect
@@ -102,7 +169,6 @@ test('write a note, tick an item off, and find it again after a reload', async (
 
   await page.getByRole('textbox', { name: 'Title' }).fill(title)
   const body = page.getByRole('textbox', { name: 'Note', exact: true })
-  const initialWrite = waitForNoteWrite(page)
   await body.click()
   // Typed, not filled: the editor is a document, and Enter on a list line
   // continues the list the way the markdown keymap does it.
@@ -113,7 +179,7 @@ test('write a note, tick an item off, and find it again after a reload', async (
    * server through the outbox, and a fresh page has nothing to go on but what
    * came back from it.
    */
-  await initialWrite
+  await expectOnServer(title, 'Brot')
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await expect(page.getByRole('link', { name: title })).toBeVisible({ timeout: 20_000 })
@@ -124,10 +190,9 @@ test('write a note, tick an item off, and find it again after a reload', async (
   const milch = page.getByRole('checkbox', { name: 'Milch' })
   await expect(milch).toBeVisible({ timeout: 20_000 })
   await expect(milch).not.toBeChecked()
-  const checkedWrite = waitForNoteWrite(page)
   await milch.click()
   await expect(milch).toBeChecked({ timeout: 10_000 })
-  await checkedWrite
+  await expectOnServer(title, '- [x] Milch')
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await page.getByRole('link', { name: title }).click()
