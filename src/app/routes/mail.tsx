@@ -15,7 +15,7 @@ import { useMailShortcuts } from '../../features/mail/shortcuts'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
 import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
-import { Icon } from '../../ui/Icon'
+import { MobileFab } from '../../ui/MobileFab'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { useUi } from '../store'
 
@@ -120,14 +120,12 @@ function MailLayout() {
 
       {/* Mobile compose FAB */}
       {canSend && !inDetail && !compose && (
-        <button
-          type="button"
-          aria-label={t('compose.new')}
+        <MobileFab
+          icon="compose"
+          label={t('compose.new')}
           onClick={() => openCompose({})}
-          className="animate-rise fixed right-4 bottom-20 z-30 flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-accent-ink shadow-overlay transition-transform duration-150 active:scale-95 lg:hidden"
-        >
-          <Icon name="compose" size={22} />
-        </button>
+          until="lg"
+        />
       )}
     </div>
   )

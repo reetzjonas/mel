@@ -14,6 +14,7 @@ import { Avatar } from '../../ui/Avatar'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon } from '../../ui/Icon'
+import { MobileFab } from '../../ui/MobileFab'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { ListSkeleton } from '../../ui/Skeleton'
@@ -113,7 +114,7 @@ function ContactsLayout() {
                   type="button"
                   aria-label={t('contacts.new')}
                   onClick={() => void navigate({ to: '/contacts/new' })}
-                  className={primaryIconButtonClass}
+                  className={`${primaryIconButtonClass} max-sm:hidden`}
                 >
                   <Icon name="compose" size={15} />
                 </button>
@@ -152,6 +153,13 @@ function ContactsLayout() {
           </div>
         </div>
       </div>
+      {!inDetail && !selecting && checked.size === 0 && (
+        <MobileFab
+          icon="compose"
+          label={t('contacts.new')}
+          onClick={() => void navigate({ to: '/contacts/new' })}
+        />
+      )}
       {confirmingDelete && (
         <ConfirmDialog
           title={t('contacts.delete')}

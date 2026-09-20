@@ -502,6 +502,7 @@ const en = {
   'files.symlink.explain':
     'This is a link to another place in your files. mel shows where it points, but does not follow it.',
   'files.select': 'Select',
+  'files.moreActions': 'More file actions',
   'files.showHidden': 'Show hidden files',
   'files.hideHidden': 'Hide hidden files',
   'files.move': 'Move to…',
@@ -1313,6 +1314,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'files.preview.expand': 'Große Ansicht',
   'files.preview.collapse': 'Große Ansicht schließen',
   'files.select': 'Auswählen',
+  'files.moreActions': 'Weitere Dateiaktionen',
   'files.showHidden': 'Versteckte Dateien anzeigen',
   'files.hideHidden': 'Versteckte Dateien ausblenden',
   'files.move': 'Verschieben nach…',

@@ -45,6 +45,7 @@ import { useContacts } from '../../features/contacts/hooks'
 import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
+import { MobileFab } from '../../ui/MobileFab'
 import { DialogHeader } from '../../ui/DialogHeader'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
@@ -806,7 +807,7 @@ function CalendarApp() {
             disabled={!defaultCalendarId}
             title={defaultCalendarId ? undefined : t('cal.loading')}
             onClick={() => openNew(view === 'month' ? new Date() : anchor)}
-            className={`flex items-center gap-2 !py-1.5 ${primaryButtonClass}`}
+            className={`hidden items-center gap-2 !py-1.5 sm:flex ${primaryButtonClass}`}
           >
             <Icon name="compose" size={14} />
             <span className="hidden sm:inline">{t('cal.newEvent')}</span>
@@ -957,6 +958,14 @@ function CalendarApp() {
             })}
         </div>
       </div>
+
+      {defaultCalendarId && !dialog && !calendarDialog && !scope && !showNotifications && (
+        <MobileFab
+          icon="compose"
+          label={t('cal.newEvent')}
+          onClick={() => openNew(view === 'month' ? new Date() : anchor)}
+        />
+      )}
 
       {showNotifications && (
         <NotificationsDialog

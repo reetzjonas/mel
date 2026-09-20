@@ -19,6 +19,8 @@ import { EmptyState } from '../../ui/EmptyState'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Icon } from '../../ui/Icon'
 import { NameDialog } from '../../ui/NameDialog'
+import { MobileFab } from '../../ui/MobileFab'
+import { OverflowMenu } from '../../ui/OverflowMenu'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
@@ -138,6 +140,13 @@ export function FileBrowser({
     const picked = [...(list ?? [])]
     if (picked.length) void run(() => uploadFiles(accountId, folderId, picked))
   }
+
+  const toggleHidden = () =>
+    setShowHidden((on) => {
+      const next = !on
+      localStorage.setItem(SHOW_HIDDEN_KEY, next ? '1' : '0')
+      return next
+    })
 
   /** A dragged row that is itself checked stands in for the whole selection. */
   const dragPayload = (node: FileNode) => (checked.has(node.id) ? [...checked] : [node.id])
@@ -310,17 +319,35 @@ export function FileBrowser({
               clearLabel={t('search.clear')}
               className="order-3 w-full sm:order-none sm:max-w-[140px] sm:shrink-0"
             />
-            <div className="order-4 -mx-0.5 flex w-[calc(100%+0.25rem)] items-center gap-1.5 overflow-x-auto px-0.5 pb-0.5 sm:order-none sm:ml-auto sm:w-auto sm:overflow-visible sm:p-0">
+            <div className="order-2 ml-auto flex items-center gap-1.5 sm:hidden">
+              <OverflowMenu
+                label={t('files.moreActions')}
+                actions={[
+                  {
+                    label: showHidden ? t('files.hideHidden') : t('files.showHidden'),
+                    onSelect: toggleHidden,
+                    pressed: showHidden,
+                  },
+                  {
+                    label: t('files.select'),
+                    icon: 'check',
+                    onSelect: () => setSelecting(!selecting),
+                    pressed: selecting,
+                  },
+                  {
+                    label: t('files.newFolder'),
+                    icon: 'folderPlus',
+                    disabled: busy,
+                    onSelect: () => setDialog({ kind: 'newFolder' }),
+                  },
+                ]}
+              />
+            </div>
+            <div className="order-4 hidden items-center gap-1.5 sm:order-none sm:ml-auto sm:flex">
               <button
                 type="button"
                 aria-pressed={showHidden}
-                onClick={() =>
-                  setShowHidden((on) => {
-                    const next = !on
-                    localStorage.setItem(SHOW_HIDDEN_KEY, next ? '1' : '0')
-                    return next
-                  })
-                }
+                onClick={toggleHidden}
                 className={`${secondaryButtonClass} ${showHidden ? 'bg-surface-2 text-ink' : ''}`}
               >
                 {showHidden ? t('files.hideHidden') : t('files.showHidden')}
@@ -349,19 +376,19 @@ export function FileBrowser({
               >
                 {busy ? t('files.uploading') : t('files.upload')}
               </button>
-              <input
-                ref={picker}
-                type="file"
-                multiple
-                className="hidden"
-                aria-label={t('files.upload')}
-                onChange={(e) => {
-                  upload(e.target.files)
-                  // Same file twice in a row still has to fire a change event.
-                  e.target.value = ''
-                }}
-              />
             </div>
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              className="hidden"
+              aria-label={t('files.upload')}
+              onChange={(e) => {
+                upload(e.target.files)
+                // Same file twice in a row still has to fire a change event.
+                e.target.value = ''
+              }}
+            />
           </div>
         )}
 
@@ -430,6 +457,15 @@ export function FileBrowser({
           )}
         </div>
       </section>
+
+      {!preview && !dialog && !selecting && checked.size === 0 && (
+        <MobileFab
+          icon="upload"
+          label={t('files.upload')}
+          disabled={busy}
+          onClick={() => picker.current?.click()}
+        />
+      )}
 
       {preview && (
         <>

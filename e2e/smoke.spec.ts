@@ -36,10 +36,12 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   await page.getByRole('link', { name: 'Contacts' }).first().click({ timeout: 15_000 })
   await expect(page).toHaveURL(/\/contacts$/)
   await expectNoPageOverflow()
+  if (compact) await expect(page.getByRole('button', { name: 'New contact' })).toBeVisible()
   await page.getByRole('link', { name: 'Calendar' }).first().click()
   await expect(page).toHaveURL(/\/calendar$/)
   await expectNoPageOverflow()
   if (compact) {
+    await expect(page.getByRole('button', { name: 'New event' })).toBeVisible()
     await page.getByRole('button', { name: 'Calendars', exact: true }).click()
     await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
     await page.getByRole('button', { name: 'Close calendars' }).click()
@@ -53,5 +55,17 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await page.getByRole('link', { name, exact: true }).first().click()
     await expect(page).toHaveURL(new RegExp(`${path}(?:/.*)?$`))
     await expectNoPageOverflow()
+    if (compact) {
+      const primary = { Files: 'Upload', Notes: 'New note', Mail: 'New message' }[name]
+      await expect(page.getByRole('button', { name: primary, exact: true })).toBeVisible()
+    }
+    if (compact && name === 'Files') {
+      await page.getByRole('button', { name: 'More file actions' }).click()
+      const menu = page.getByRole('menu', { name: 'More file actions' })
+      await expect(menu.getByRole('menuitem', { name: 'New folder' })).toBeVisible()
+      await expect(menu.getByRole('menuitemcheckbox', { name: 'Show hidden files' })).toBeVisible()
+      await page.keyboard.press('Escape')
+      await expect(menu).toBeHidden()
+    }
   }
 })

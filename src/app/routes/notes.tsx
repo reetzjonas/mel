@@ -11,6 +11,7 @@ import { deleteNote, emptyNote, saveNote } from '../../services/notes'
 import { EmptyState } from '../../ui/EmptyState'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Icon } from '../../ui/Icon'
+import { MobileFab } from '../../ui/MobileFab'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
@@ -136,7 +137,7 @@ function NotesLayout() {
                   type="button"
                   aria-label={t('notes.new')}
                   onClick={() => void create()}
-                  className={primaryIconButtonClass}
+                  className={`${primaryIconButtonClass} max-sm:hidden`}
                 >
                   <Icon name="compose" size={15} />
                 </button>
@@ -178,6 +179,9 @@ function NotesLayout() {
           </div>
         </div>
       </div>
+      {!inDetail && !selecting && checked.size === 0 && !busy && (
+        <MobileFab icon="compose" label={t('notes.new')} onClick={() => void create()} />
+      )}
       {confirmingDelete && (
         <ConfirmDialog
           title={t('notes.delete')}
