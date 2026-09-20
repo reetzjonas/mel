@@ -544,11 +544,14 @@ describe('one sync at a time', () => {
     await db.syncState.where('accountId').equals(ACCOUNT).delete()
   })
 
-  it('joins a second caller onto the pass already running', async () => {
+  it('gives callers who arrive during a pass one shared pass after it', async () => {
     /*
-     * Push, the poll timer and a manual refresh can all fire at once. Two
-     * passes over the same account would duplicate every request and race each
-     * other's writes, which is what the request storm on first login was.
+     * Push, the poll timer and a manual refresh can all fire at once. A pass
+     * per caller would duplicate every request and race each other's writes,
+     * which is what the request storm on first login was — so a burst is two
+     * passes at most. Two, not one: the pass already running has read some
+     * collections before whatever the latecomers are here for, and would hand
+     * them the state from before it.
      */
     let started = 0
     let release: () => void = () => {}
@@ -556,7 +559,7 @@ describe('one sync at a time', () => {
     contacts = {
       syncAddressBooks: async () => {
         started += 1
-        await gate
+        if (started === 1) await gate
         return page()
       },
       syncContacts: () => Promise.resolve(page()),
@@ -565,14 +568,41 @@ describe('one sync at a time', () => {
     const { syncAccount, syncSettled } = await import('./engine')
     const first = syncAccount(ACCOUNT)
     const second = syncAccount(ACCOUNT)
+    const third = syncAccount(ACCOUNT)
 
-    expect(second).toBe(first)
+    expect(second).not.toBe(first)
+    expect(third).toBe(second)
     release()
-    await Promise.all([first, second])
-    expect(started).toBe(1)
+    await Promise.all([first, second, third])
+    expect(started).toBe(2)
 
     // And once it is over, there is nothing left to wait for.
     await expect(syncSettled(ACCOUNT)).resolves.toBeUndefined()
+  })
+
+  it('lets sign-out wait for the follow-up pass as well as the running one', async () => {
+    let release: () => void = () => {}
+    const gate = new Promise<void>((r) => (release = r))
+    let started = 0
+    contacts = {
+      syncAddressBooks: async () => {
+        started += 1
+        if (started === 1) await gate
+        return page()
+      },
+      syncContacts: () => Promise.resolve(page()),
+    }
+
+    const { syncAccount, syncSettled } = await import('./engine')
+    void syncAccount(ACCOUNT)
+    void syncAccount(ACCOUNT)
+    let settled = false
+    void syncSettled(ACCOUNT).then(() => (settled = true))
+    release()
+    await vi.waitFor(() => expect(settled).toBe(true))
+
+    // Not while the second pass was still to come.
+    expect(started).toBe(2)
   })
 
   it('lets a caller wait out a pass that fails, rather than adopting its error', async () => {

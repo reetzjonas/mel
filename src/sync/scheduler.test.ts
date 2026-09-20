@@ -173,23 +173,17 @@ describe('live updates over the push pipe', () => {
     })
   }
 
-  it('catches up once the stream is open, behind the sync already running', async () => {
+  it('catches up once the stream is open', async () => {
     /*
      * Polling is off while pushing and the stream only announces what changes
      * after it opened, so a change made while the first sync was still under
-     * way was never picked up. Joining that sync would hand back the state
-     * that missed it: the catch-up has to start after it.
+     * way was never picked up. (That the catch-up runs after that sync rather
+     * than joining it is the engine's business.)
      */
-    let finishFirst: () => void = () => {}
-    syncAccount.mockImplementationOnce(
-      () => new Promise<void>((resolve) => (finishFirst = resolve)),
-    )
     startScheduler(ACC)
     await vi.waitFor(() => expect(sse).not.toBeNull())
+    await vi.waitFor(() => expect(syncAccount).toHaveBeenCalledTimes(1))
     await sse!.onopen!({ ok: true, status: 200 })
-
-    expect(syncAccount).toHaveBeenCalledTimes(1)
-    finishFirst()
 
     await vi.waitFor(() => expect(syncAccount).toHaveBeenCalledTimes(2))
   })

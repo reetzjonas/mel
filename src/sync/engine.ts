@@ -331,19 +331,44 @@ function syncFiles(accountId: string, files: FilesProvider) {
 }
 
 const running = new Map<string, Promise<void>>()
+/** The one pass waiting behind the one running, shared by everyone who asked meanwhile. */
+const followUp = new Map<string, Promise<void>>()
 
-/**
- * Sync one account (mailboxes + email headers). Coalesces concurrent calls;
- * multi-tab safety via Web Locks (only one tab syncs an account at a time).
- */
-/** Resolves once any in-flight sync for this account has stopped writing. */
+/** Resolves once any sync for this account, running or waiting, has stopped writing. */
 export function syncSettled(accountId: string): Promise<void> {
-  return running.get(accountId)?.catch(() => {}) ?? Promise.resolve()
+  const pending = followUp.get(accountId) ?? running.get(accountId)
+  return pending?.catch(() => {}) ?? Promise.resolve()
 }
 
+/**
+ * Sync one account (mailboxes + email headers). Multi-tab safety via Web
+ * Locks (only one tab syncs an account at a time).
+ *
+ * Concurrent calls are coalesced, but not onto the pass already running: that
+ * pass has read some collections already, so a caller who is here because
+ * something just changed — a folder it created, a push notification — would be
+ * handed the state from before the change, and with polling off while pushing
+ * nothing would ever fetch it. Everyone who asks while a pass runs shares
+ * *one* pass that starts after it ends, so a burst is still two passes at
+ * most, never one per caller.
+ */
 export function syncAccount(accountId: string): Promise<void> {
+  // A follow-up that has not started yet starts after this call too.
+  const waiting = followUp.get(accountId)
+  if (waiting) return waiting
   const active = running.get(accountId)
-  if (active) return active
+  if (!active) return startSync(accountId)
+  const next = active
+    .catch(() => {})
+    .then(() => {
+      followUp.delete(accountId)
+      return startSync(accountId)
+    })
+  followUp.set(accountId, next)
+  return next
+}
+
+function startSync(accountId: string): Promise<void> {
   const run = (async () => {
     await navigator.locks.request(`mel-sync-${accountId}`, async () => {
       const conn = await connectionFor(accountId)
