@@ -1115,18 +1115,23 @@ test('the sidebar search narrows the upcoming list, and clicking a hit jumps the
   // The upcoming list looks ahead regardless of the grid's own month, so the
   // new event shows there without navigating the grid at all. Scoped to the
   // sidebar: the created date can fall inside the grid's own visible month
-  // too, and its chip there matches the same name.
+  // too, and its chip there matches the same name. Found through the search
+  // box, because the list stops at eight rows and events other specs have left
+  // behind can fill them before this one's date comes up.
+  const search = page.getByPlaceholder('Search upcoming events')
   const hit = page
     .locator('[data-testid="calendar-sidebar"]')
     .getByRole('button', { name: new RegExp(title) })
+  await search.fill(title)
   await expect(hit).toBeVisible({ timeout: 10_000 })
 
-  await page.getByPlaceholder('Search upcoming events').fill('nothing-matches-this')
+  await search.fill('nothing-matches-this')
   await expect(hit).toHaveCount(0)
   await expect(page.getByText('No matches')).toBeVisible()
 
   await page.getByRole('button', { name: 'Clear search' }).click()
-  await expect(page.getByPlaceholder('Search upcoming events')).toHaveValue('')
+  await expect(search).toHaveValue('')
+  await search.fill(title)
   await expect(hit).toBeVisible()
 
   await hit.click()
