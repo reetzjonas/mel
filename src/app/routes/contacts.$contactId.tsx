@@ -13,7 +13,9 @@ import { t } from '../../lib/i18n'
 import { saveBlob } from '../../lib/saveBlob'
 import { deleteContact, updateContact } from '../../services/contacts'
 import { Avatar } from '../../ui/Avatar'
+import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Icon } from '../../ui/Icon'
+import { OverflowMenu } from '../../ui/OverflowMenu'
 import { primaryButtonClass } from '../../ui/styles'
 
 export const Route = createFileRoute('/contacts/$contactId')({
@@ -171,6 +173,7 @@ function ContactDetail() {
   const { openCompose, showSnackbar } = useUi()
   const canSend = useCanSend()
   const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
 
   if (!account || contact === undefined) return null
   if (contact === null) {
@@ -195,17 +198,42 @@ function ContactDetail() {
   }
 
   const name = displayName(contact)
+  const remove = () => {
+    setConfirmingDelete(false)
+    void deleteContact(account.id, contact.id).then(() => {
+      showSnackbar({ message: t('contacts.deleted') })
+      void navigate({ to: '/contacts' })
+    })
+  }
 
   return (
     <article className="mx-auto max-w-lg space-y-4 p-4">
-      <div className="-mt-2 mb-1 lg:hidden">
+      <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-1 flex items-center border-b border-line bg-surface/90 px-2 py-1 backdrop-blur-sm lg:hidden">
         <Link
           to="/contacts"
-          className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <Icon name="back" size={15} />
           {t('mail.back')}
         </Link>
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="ml-auto min-h-11 rounded-control px-3 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        >
+          {t('contacts.edit')}
+        </button>
+        <OverflowMenu
+          label={t('contacts.moreActions')}
+          actions={[
+            {
+              icon: 'trash',
+              label: t('contacts.delete'),
+              danger: true,
+              onSelect: () => setConfirmingDelete(true),
+            },
+          ]}
+        />
       </div>
       <header className="flex items-center gap-4">
         <Avatar
@@ -225,7 +253,7 @@ function ContactDetail() {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="min-h-11 rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2 sm:min-h-0"
+          className="hidden rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2 lg:block"
         >
           {t('contacts.edit')}
         </button>
@@ -344,16 +372,21 @@ function ContactDetail() {
 
       <button
         type="button"
-        className="min-h-11 rounded-control px-2 text-sm text-danger hover:bg-danger-wash hover:underline sm:min-h-0"
-        onClick={() => {
-          void deleteContact(account.id, contact.id).then(() => {
-            showSnackbar({ message: t('contacts.deleted') })
-            void navigate({ to: '/contacts' })
-          })
-        }}
+        className="hidden rounded-control px-2 text-sm text-danger hover:bg-danger-wash hover:underline lg:block"
+        onClick={() => setConfirmingDelete(true)}
       >
         {t('contacts.delete')}
       </button>
+      {confirmingDelete && (
+        <ConfirmDialog
+          title={t('contacts.delete')}
+          message={t('contacts.delete.confirm')}
+          cancelLabel={t('contacts.cancel')}
+          confirmLabel={t('contacts.delete')}
+          onClose={() => setConfirmingDelete(false)}
+          onConfirm={remove}
+        />
+      )}
     </article>
   )
 }

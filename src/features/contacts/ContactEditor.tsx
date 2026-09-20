@@ -48,9 +48,9 @@ function ListField({
         </button>
       </div>
       {values.map((v, i) => (
-        <div key={i} className="flex gap-1.5">
+        <div key={i} className="flex min-w-0 gap-1.5">
           <input
-            className={inputClass}
+            className={`${inputClass} min-w-0`}
             type={type}
             {...(inputMode ? { inputMode } : {})}
             autoComplete={NO_AUTOFILL}
@@ -101,9 +101,9 @@ function ServiceField({
         </button>
       </div>
       {values.map((v, i) => (
-        <div key={i} className="flex gap-1.5">
+        <div key={i} className="flex min-w-0 gap-1.5">
           <input
-            className={`${inputClass} w-1/3`}
+            className={`${inputClass} min-w-0 !w-1/3`}
             autoComplete={NO_AUTOFILL}
             aria-label={t('contacts.service')}
             placeholder={t('contacts.servicePlaceholder')}
@@ -111,7 +111,7 @@ function ServiceField({
             onChange={(e) => patch(i, { service: e.target.value })}
           />
           <input
-            className={inputClass}
+            className={`${inputClass} min-w-0 flex-1`}
             autoComplete={NO_AUTOFILL}
             aria-label={t('contacts.handle')}
             value={v.user}
@@ -219,7 +219,7 @@ function KeyField({
               setFailed(false)
             }}
           />
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               // secondaryButtonClass has no disabled state of its own, and a
@@ -293,10 +293,10 @@ function PhotoField({
   const input = useRef<HTMLInputElement>(null)
   const [failed, setFailed] = useState(false)
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 items-center gap-3">
       <Avatar name={name} email={name} size={56} src={photo} />
-      <div className="space-y-1">
-        <div className="flex gap-2">
+      <div className="min-w-0 space-y-1">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className={secondaryButtonClass}
@@ -348,7 +348,7 @@ export function ContactEditor({
 
   return (
     <form
-      className="mx-auto max-w-lg space-y-4 p-4"
+      className="mx-auto min-w-0 max-w-lg space-y-4 p-4"
       onSubmit={(e) => {
         e.preventDefault()
         onSave(c)
@@ -360,8 +360,8 @@ export function ContactEditor({
         onChange={(photo) => set({ photo })}
       />
 
-      <div className="grid grid-cols-2 gap-3">
-        <label className="space-y-1">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <label className="min-w-0 space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.given')}</span>
           <input
             className={inputClass}
@@ -370,7 +370,7 @@ export function ContactEditor({
             onChange={(e) => set({ given: e.target.value })}
           />
         </label>
-        <label className="space-y-1">
+        <label className="min-w-0 space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.surname')}</span>
           <input
             className={inputClass}
@@ -379,7 +379,7 @@ export function ContactEditor({
             onChange={(e) => set({ surname: e.target.value })}
           />
         </label>
-        <label className="space-y-1">
+        <label className="min-w-0 space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.organization')}</span>
           <input
             className={inputClass}
@@ -388,7 +388,7 @@ export function ContactEditor({
             onChange={(e) => set({ organization: e.target.value })}
           />
         </label>
-        <label className="space-y-1">
+        <label className="min-w-0 space-y-1">
           <span className="text-xs font-medium text-ink-muted">{t('contacts.jobTitle')}</span>
           <input
             className={inputClass}
@@ -490,7 +490,7 @@ export function ContactEditor({
         />
       </label>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button type="submit" className={primaryButtonClass}>
           {t('contacts.save')}
         </button>

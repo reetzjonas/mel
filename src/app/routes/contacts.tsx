@@ -1,4 +1,11 @@
-import { Link, Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
+import {
+  Link,
+  Outlet,
+  createFileRoute,
+  useNavigate,
+  useParams,
+  useRouterState,
+} from '@tanstack/react-router'
 import { useMemo, useRef, useState } from 'react'
 import { Virtuoso } from 'react-virtuoso'
 import { useUi } from '../../app/store'
@@ -33,6 +40,7 @@ function ContactsLayout() {
   const account = accounts?.[0]
   const contacts = useContacts(account?.id)
   const params = useParams({ strict: false }) as { contactId?: string }
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const navigate = useNavigate()
   const { showSnackbar } = useUi()
   const [filter, setFilter] = useState('')
@@ -74,7 +82,9 @@ function ContactsLayout() {
   if (!account?.capabilities.contacts)
     return <CapabilityNotice reason="caps.unsupported.contacts" />
 
-  const inDetail = Boolean(params.contactId)
+  // `/contacts/new` is a static child, so it contributes no `contactId` param.
+  // It is still a detail screen and must replace the list on compact layouts.
+  const inDetail = Boolean(params.contactId) || pathname === '/contacts/new'
 
   return (
     <>
@@ -191,7 +201,7 @@ function ContactRows({
 }) {
   return (
     <Virtuoso
-      className="px-1.5 pb-1.5"
+      className="overflow-x-hidden pb-1.5"
       data={contacts}
       computeItemKey={(_, c) => c.id}
       itemContent={(i, c) => {
@@ -217,7 +227,7 @@ function ContactRows({
                 e.preventDefault()
                 selection.toggle(c.id, e.shiftKey)
               }}
-              className="flex items-center gap-3 rounded-control px-2.5 py-2 transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash"
+              className="mx-1.5 flex items-center gap-3 rounded-control px-2.5 py-2 transition-colors duration-100 hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash"
             >
               {/* The avatar doubles as the checkbox, the way Mail's row does —
                   see ThreadList.tsx — reacting only when the pointer is on the

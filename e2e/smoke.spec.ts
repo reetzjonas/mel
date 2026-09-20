@@ -36,7 +36,14 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   await page.getByRole('link', { name: 'Contacts' }).first().click({ timeout: 15_000 })
   await expect(page).toHaveURL(/\/contacts$/)
   await expectNoPageOverflow()
-  if (compact) await expect(page.getByRole('button', { name: 'New contact' })).toBeVisible()
+  if (compact) {
+    await page.getByRole('button', { name: 'New contact' }).click()
+    await expect(page).toHaveURL(/\/contacts\/new$/)
+    await expect(page.getByLabel('First name')).toBeVisible()
+    await expectNoPageOverflow()
+    await page.getByRole('button', { name: 'Cancel' }).click()
+    await expect(page).toHaveURL(/\/contacts$/)
+  }
   await page.getByRole('link', { name: 'Calendar' }).first().click()
   await expect(page).toHaveURL(/\/calendar$/)
   await expectNoPageOverflow()

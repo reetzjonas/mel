@@ -11,6 +11,14 @@ async function login(page: Page) {
   })
 }
 
+async function deleteOpenContact(page: Page) {
+  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await page
+    .getByRole('dialog', { name: 'Delete contact' })
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
+}
+
 test('create a contact, see details, use it in compose autocomplete', async ({ page }) => {
   const surname = `Testling${Date.now() % 100000}`
   const email = `erika.${surname.toLowerCase()}@example.org`
@@ -43,8 +51,24 @@ test('create a contact, see details, use it in compose autocomplete', async ({ p
   // the one this test just created and looks for.
   await page.getByRole('button', { name: 'Discard' }).click()
   await page.getByRole('link', { name: 'Contacts' }).first().click()
+  await page.setViewportSize({ width: 320, height: 800 })
+  const listScroller = page.locator('[data-testid="virtuoso-scroller"]')
+  await expect(listScroller).toBeVisible()
+  expect(await listScroller.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await listScroller.evaluate((element) => element.clientWidth),
+  )
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await expect(page.getByRole('link', { name: 'Back', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'More contact actions' }).click()
+  await page
+    .getByRole('menu', { name: 'More contact actions' })
+    .getByRole('menuitem', { name: 'Delete contact' })
+    .click()
+  await page
+    .getByRole('dialog', { name: 'Delete contact' })
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
   await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toHaveCount(0)
 })
 
@@ -69,7 +93,7 @@ test('contact "send email" opens compose prefilled', async ({ page }) => {
   await page.getByRole('button', { name: 'Discard' }).click()
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await deleteOpenContact(page)
 })
 
 test('email, phone and address on a contact are each actionable', async ({ page }) => {
@@ -107,7 +131,7 @@ test('email, phone and address on a contact are each actionable', async ({ page 
   await page.getByRole('button', { name: 'Discard' }).click()
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await deleteOpenContact(page)
 })
 
 test('handles, tags, and removing a field the server already stored', async ({ page }) => {
@@ -145,7 +169,7 @@ test('handles, tags, and removing a field the server already stored', async ({ p
   // Clean up.
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await deleteOpenContact(page)
 })
 
 // A 1x1 PNG, so the picker has a real image to decode without a fixture file.
@@ -190,7 +214,7 @@ test('a contact photo is scaled, stored and shown', async ({ page }) => {
   // Clean up.
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await deleteOpenContact(page)
 })
 
 test('a birthday reaches the card and shows up in the calendar', async ({ page }) => {
@@ -224,7 +248,7 @@ test('a birthday reaches the card and shows up in the calendar', async ({ page }
   await expect(page.getByRole('heading', { name: `Erika ${surname}` })).toBeVisible()
 
   // Clean up.
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await deleteOpenContact(page)
 })
 
 /*
@@ -286,7 +310,7 @@ test('a public key on a contact survives the server and comes back out', async (
   await page.reload()
   await expect(page.getByText('PGP public key')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Delete contact' }).click()
+  await deleteOpenContact(page)
 })
 
 test('select several contacts and delete them together', async ({ page }) => {
