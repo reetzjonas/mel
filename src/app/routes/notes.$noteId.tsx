@@ -26,6 +26,7 @@ function NoteDetail() {
       accountId={account.id}
       note={note}
       onDeleted={() => void navigate({ to: '/notes' })}
+      onBack={() => void navigate({ to: '/notes' })}
     />
   )
 }

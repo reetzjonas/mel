@@ -606,7 +606,7 @@ export function ReadingPane({
 
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
-      <div className="@container flex items-center gap-1 px-2 py-1.5">
+      <div className="@container flex shrink-0 items-center gap-1 overflow-x-auto px-2 py-1.5">
         <Tooltip label={t('mail.back')}>
           <Link
             to="/mail/$mailboxId"
@@ -617,7 +617,7 @@ export function ReadingPane({
             <Icon name="back" size={16} />
           </Link>
         </Tooltip>
-        <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+        <span className="flex shrink-0 items-center rounded-control bg-surface-2/60 p-0.5">
           {inJunk && (
             <ActionButton
               icon="inbox"
@@ -714,7 +714,7 @@ export function ReadingPane({
          * Rendered as nothing rather than an empty pill when neither applies.
          */}
         {(isDraft || canSend) && (
-          <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+          <span className="flex shrink-0 items-center rounded-control bg-surface-2/60 p-0.5">
             {isDraft ? (
               // Disabled rather than silently doing nothing while the body is
               // still loading: opening the editor without it would drop the

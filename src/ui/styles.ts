@@ -7,10 +7,10 @@ export const inputClass =
   'w-full rounded-control border border-line bg-canvas px-3 py-2 text-sm outline-none transition-[border-color,box-shadow] focus:border-accent focus:ring-2 focus:ring-accent/25'
 
 export const primaryButtonClass =
-  'rounded-control bg-accent px-4 py-2 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100'
+  'min-h-11 rounded-control bg-accent px-4 py-2 text-sm font-medium text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 sm:min-h-0'
 
 export const secondaryButtonClass =
-  'rounded-control border border-line px-4 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink'
+  'min-h-11 rounded-control border border-line px-4 py-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0'
 
 /**
  * A circular, icon-only accent button — the "new X" action (compose, new
@@ -18,7 +18,7 @@ export const secondaryButtonClass =
  * before it lived here.
  */
 export const primaryIconButtonClass =
-  'rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95'
+  'min-h-11 min-w-11 rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95 sm:min-h-0 sm:min-w-0'
 
 /**
  * A circular, icon-only neutral button — theme toggle, sign out, settings,
@@ -26,7 +26,7 @@ export const primaryIconButtonClass =
  * control that isn't the primary action on its screen.
  */
 export const secondaryIconButtonClass =
-  'rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink'
+  'min-h-11 min-w-11 rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0'
 
 /** The wrapper around a row of mutually exclusive options (Calendar's Month/Week/Day). */
 export const segmentedControlClass = 'flex items-center gap-0.5 rounded-control bg-surface-2 p-0.5'

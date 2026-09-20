@@ -295,20 +295,22 @@ export function FileBrowser({
             />
           </SelectionToolbar>
         ) : (
-          <div className="flex items-center gap-2 border-b border-line px-2.5 py-2">
-            <Breadcrumb
-              trail={trail}
-              onDropNodes={(parentId) => void move(draggingRef.current, parentId)}
-              dragging={draggingRef}
-            />
+          <div className="flex flex-wrap items-center gap-2 border-b border-line px-2.5 py-2 sm:flex-nowrap">
+            <div className="min-w-0 flex-1">
+              <Breadcrumb
+                trail={trail}
+                onDropNodes={(parentId) => void move(draggingRef.current, parentId)}
+                dragging={draggingRef}
+              />
+            </div>
             <SearchInput
               value={filter}
               onChange={setFilter}
               placeholder={t('files.search')}
               clearLabel={t('search.clear')}
-              className="max-w-[140px] shrink-0"
+              className="order-3 w-full sm:order-none sm:max-w-[140px] sm:shrink-0"
             />
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="order-4 -mx-0.5 flex w-[calc(100%+0.25rem)] items-center gap-1.5 overflow-x-auto px-0.5 pb-0.5 sm:order-none sm:ml-auto sm:w-auto sm:overflow-visible sm:p-0">
               <button
                 type="button"
                 aria-pressed={showHidden}

@@ -28,7 +28,7 @@ function ToolbarButton({
         // without it the click takes the focus and "bold" has nothing to act on.
         onMouseDown={(e) => e.preventDefault()}
         onClick={onClick}
-        className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+        className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
       >
         <Icon name={icon} size={15} />
       </button>
@@ -56,7 +56,7 @@ export function NoteToolbar({ view }: { view: EditorView | null }) {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1">
+    <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line px-2 py-1">
       <ToolbarButton
         icon="heading"
         label={t('notes.format.heading')}

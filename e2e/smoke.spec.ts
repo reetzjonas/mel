@@ -15,8 +15,33 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   await page.getByRole('textbox', { name: 'Password' }).fill('korrekt-pferd-batterie-alice')
   await page.getByRole('button', { name: 'Connect' }).click()
 
+  const compact = (page.viewportSize()?.width ?? 0) < 640
+  if (compact) await page.setViewportSize({ width: 320, height: 720 })
+  const expectNoPageOverflow = async () =>
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      ),
+    ).toBe(false)
+
+  const appNavigation = page.getByRole('navigation', { name: 'Applications' })
+  await expect(appNavigation.getByRole('link')).toHaveCount(5, { timeout: 15_000 })
+  // Settings is a utility in the compact app header, not a sixth destination
+  // squeezed into the phone's bottom application bar.
+  if (compact) {
+    await expect(appNavigation.getByRole('button', { name: 'Settings' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Settings', exact: true })).toBeVisible()
+  }
+
   await page.getByRole('link', { name: 'Contacts' }).first().click({ timeout: 15_000 })
   await expect(page).toHaveURL(/\/contacts$/)
+  await expectNoPageOverflow()
   await page.getByRole('link', { name: 'Calendar' }).first().click()
   await expect(page).toHaveURL(/\/calendar$/)
+  await expectNoPageOverflow()
+  if (compact) {
+    await page.getByRole('button', { name: 'Calendars', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
+    await page.getByRole('button', { name: 'Close calendars' }).click()
+  }
 })

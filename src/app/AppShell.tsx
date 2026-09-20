@@ -1,4 +1,4 @@
-import { Link, Outlet, useNavigate } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useState } from 'react'
 import { Compose } from '../features/mail/Compose'
@@ -44,12 +44,12 @@ function AppSwitcherLink({
       to={to}
       className={
         stacked
-          ? 'flex flex-col items-center gap-0.5 rounded-control px-3 py-1 text-[11px] font-medium text-ink-muted transition-colors duration-150 hover:text-ink [&.active]:text-accent'
+          ? 'flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-control px-1 py-1.5 text-[11px] font-medium text-ink-muted transition-colors duration-150 hover:text-ink [&.active]:text-accent'
           : 'flex items-center gap-1.5 rounded-control px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink [&.active]:bg-accent [&.active]:text-accent-ink [&.active]:shadow-raised'
       }
     >
       <Icon name={icon} size={stacked ? 18 : 15} />
-      {label}
+      <span className={stacked ? 'max-w-full truncate' : undefined}>{label}</span>
     </Link>
   )
 }
@@ -117,6 +117,7 @@ export function AppShell() {
    */
   const accountId = account?.id
   const locked = Boolean(lockedIds?.length)
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   useEffect(() => {
     if (accountId && !locked) startScheduler(accountId)
   }, [accountId, locked])
@@ -132,6 +133,7 @@ export function AppShell() {
   if (lockedIds.length > 0) return <UnlockGate accountIds={lockedIds} />
 
   const apps = visibleApps(account)
+  const activeApp = apps.find((app) => pathname === app.to || pathname.startsWith(`${app.to}/`))
   return (
     <div className="flex h-full flex-col bg-canvas">
       <header className="glass sticky top-0 z-30 hidden h-13 shrink-0 items-center gap-5 px-4 sm:flex">
@@ -141,7 +143,7 @@ export function AppShell() {
           </span>
           mel
         </span>
-        <nav className="flex gap-1">
+        <nav aria-label={t('app.navigation')} className="flex gap-1">
           {apps.map((a) => (
             <AppSwitcherLink key={a.to} to={a.to} icon={a.icon} label={t(a.key)} />
           ))}
@@ -164,6 +166,23 @@ export function AppShell() {
           </Tooltip>
         </div>
       </header>
+      <header className="glass z-30 flex h-12 shrink-0 items-center gap-2 border-b border-line px-3 sm:hidden">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink shadow-raised">
+          <Logo size={18} />
+        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+          {activeApp ? t(activeApp.key) : 'mel'}
+        </span>
+        {account && <StorageWarning accountId={account.id} enabled={account.capabilities.quota} />}
+        <button
+          type="button"
+          aria-label={t('settings.title')}
+          onClick={() => settings.open('general')}
+          className={`${secondaryIconButtonClass} ${settings.tab ? '!text-accent' : ''}`}
+        >
+          <Icon name="settings" />
+        </button>
+      </header>
       {account && confirmingSignOut && (
         <ConfirmDialog
           title={t('settings.signOut')}
@@ -181,24 +200,13 @@ export function AppShell() {
         <Outlet />
       </main>
       {/* Mobile: bottom navigation as app switcher */}
-      <nav className="glass flex shrink-0 justify-around py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] sm:hidden">
+      <nav
+        aria-label={t('app.navigation')}
+        className="glass flex shrink-0 justify-around py-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] sm:hidden"
+      >
         {apps.map((a) => (
           <AppSwitcherLink key={a.to} to={a.to} icon={a.icon} label={t(a.key)} stacked />
         ))}
-        {/* Bottom bar is touch-only, where a hover tooltip never appears.
-            Same stacked shape as the app links, so Settings reads as one of
-            the row rather than a differently-styled extra. */}
-        <button
-          type="button"
-          aria-label={t('settings.title')}
-          onClick={() => settings.open('general')}
-          className={`flex flex-col items-center gap-0.5 rounded-control px-3 py-1 text-[11px] font-medium transition-colors duration-150 ${
-            settings.tab ? 'text-accent' : 'text-ink-muted hover:text-ink'
-          }`}
-        >
-          <Icon name="settings" size={18} />
-          {t('settings.title')}
-        </button>
       </nav>
 
       {/* Keyed on what is being written: opening a draft while a compose

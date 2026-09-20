@@ -30,10 +30,12 @@ export function NoteEditor({
   accountId,
   note,
   onDeleted,
+  onBack,
 }: {
   accountId: string
   note: Note
   onDeleted: () => void
+  onBack: () => void
 }) {
   const [title, setTitle] = useState(note.title)
   const [body, setBody] = useState(note.body)
@@ -91,6 +93,14 @@ export function NoteEditor({
     <>
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
+          <button
+            type="button"
+            aria-label={t('mail.back')}
+            onClick={onBack}
+            className="-ml-1 flex min-h-11 min-w-11 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink lg:hidden"
+          >
+            <Icon name="back" size={16} />
+          </button>
           <input
             /* No focus ring on either box: both fill their half of the pane, so
              a ring is a line around the whole panel, and the caret already

@@ -45,9 +45,13 @@ import { useContacts } from '../../features/contacts/hooks'
 import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
+import { DialogHeader } from '../../ui/DialogHeader'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
+import { useModal } from '../../ui/useModal'
 import {
+  modalPanelClass,
+  modalScrimClass,
   primaryButtonClass,
   secondaryButtonClass,
   secondaryIconButtonClass,
@@ -235,6 +239,39 @@ const UpcomingList = memo(function UpcomingList({
   )
 })
 
+function CalendarSidebarSheet({
+  children,
+  onClose,
+}: {
+  children: React.ReactNode
+  onClose: () => void
+}) {
+  const panelRef = useRef<HTMLDivElement>(null)
+  const closeRef = useRef<HTMLButtonElement>(null)
+  useModal({ panel: panelRef, initialFocus: closeRef, onClose })
+
+  return (
+    <div className={`${modalScrimClass} lg:hidden`}>
+      <div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={t('cal.calendars')}
+        className={`${modalPanelClass} max-h-[85dvh] rounded-t-panel`}
+      >
+        <DialogHeader
+          title={t('cal.calendars')}
+          closeLabel={t('cal.calendars.close')}
+          closeRef={closeRef}
+          onClose={onClose}
+        />
+        <div className="min-h-0 overflow-y-auto px-3 pb-4">{children}</div>
+      </div>
+    </div>
+  )
+}
+
 function CalendarApp() {
   const accounts = useAccounts()
   const account = accounts?.[0]
@@ -250,6 +287,7 @@ function CalendarApp() {
   /** The calendar-list dialog: a calendar to edit, 'new' for a fresh one. */
   const notifications = useEventNotifications(account?.id)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showSidebar, setShowSidebar] = useState(false)
   const [calendarDialog, setCalendarDialog] = useState<Calendar | 'new' | null>(null)
   const [scope, setScope] = useState<ScopeQuestion | null>(null)
   const sidebarPanel = usePanelWidth('calendar-sidebar', SIDEBAR_LIMITS)
@@ -604,6 +642,64 @@ function CalendarApp() {
         ? dayTitleFmt.format(anchor)
         : `${weekRangeFmt.format(grid[0]!)} – ${weekRangeFmt.format(grid[6]!)}`
 
+  const sidebarContents = () => (
+    <>
+      <div className="mb-1.5 flex items-center justify-between pr-1.5 pl-2.5">
+        <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+          {t('cal.calendars')}
+        </span>
+        {account.capabilities.calendarCreate !== false && (
+          <button
+            type="button"
+            aria-label={t('cal.calendar.new')}
+            onClick={() => setCalendarDialog('new')}
+            className="flex h-8 w-8 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink lg:h-5 lg:w-5"
+          >
+            <Icon name="plus" size={13} />
+          </button>
+        )}
+      </div>
+      {(calendars ?? []).map((c, i) => (
+        <CalendarToggle
+          key={c.id}
+          name={c.name}
+          color={c.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]!}
+          hidden={hidden.has(c.id)}
+          onToggle={() => toggleCalendar(c.id)}
+          onEdit={c.mayWrite ? () => setCalendarDialog(c) : undefined}
+        />
+      ))}
+      {birthdays.length > 0 && (
+        <CalendarToggle
+          name={t('cal.birthdays')}
+          color={BIRTHDAY_COLOR}
+          hidden={hidden.has(BIRTHDAY_CALENDAR_ID)}
+          onToggle={() => toggleCalendar(BIRTHDAY_CALENDAR_ID)}
+        />
+      )}
+
+      <div className="mt-3 flex flex-col gap-2 border-t border-line px-2.5 pt-3">
+        <SearchInput
+          value={calSearch}
+          onChange={setCalSearch}
+          placeholder={t('cal.searchPlaceholder')}
+          clearLabel={t('search.clear')}
+        />
+        <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
+          {t('cal.upcoming')}
+        </span>
+        <UpcomingList
+          rows={shownUpcoming}
+          emptyLabel={calSearch ? t('cal.searchNoResults') : t('cal.upcomingEmpty')}
+          onPick={(start) => {
+            setAnchor(start)
+            setShowSidebar(false)
+          }}
+        />
+      </div>
+    </>
+  )
+
   return (
     <div className="flex h-full gap-0 bg-canvas sm:gap-3 sm:p-3">
       <aside
@@ -612,60 +708,14 @@ function CalendarApp() {
         style={{ [PANEL_WIDTH_VAR]: `${sidebarPanel.width}px` } as React.CSSProperties}
         className="hidden w-52 shrink-0 flex-col gap-0.5 overflow-y-auto py-3 lg:flex lg:w-[var(--mel-panel-w)]"
       >
-        <div className="mb-1.5 flex items-center justify-between pr-1.5 pl-2.5">
-          <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
-            {t('cal.calendars')}
-          </span>
-          {account.capabilities.calendarCreate !== false && (
-            <button
-              type="button"
-              aria-label={t('cal.calendar.new')}
-              onClick={() => setCalendarDialog('new')}
-              className="flex h-5 w-5 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
-            >
-              <Icon name="plus" size={13} />
-            </button>
-          )}
-        </div>
-        {(calendars ?? []).map((c, i) => (
-          <CalendarToggle
-            key={c.id}
-            name={c.name}
-            color={c.color ?? FALLBACK_COLORS[i % FALLBACK_COLORS.length]!}
-            hidden={hidden.has(c.id)}
-            onToggle={() => toggleCalendar(c.id)}
-            onEdit={c.mayWrite ? () => setCalendarDialog(c) : undefined}
-          />
-        ))}
-        {/* The contacts' birthdays, as a calendar that exists only here. Offered
-            only when there are some: a switch for an empty collection is a
-            question nobody asked. */}
-        {birthdays.length > 0 && (
-          <CalendarToggle
-            name={t('cal.birthdays')}
-            color={BIRTHDAY_COLOR}
-            hidden={hidden.has(BIRTHDAY_CALENDAR_ID)}
-            onToggle={() => toggleCalendar(BIRTHDAY_CALENDAR_ID)}
-          />
-        )}
-
-        <div className="mt-3 flex flex-col gap-2 border-t border-line px-2.5 pt-3">
-          <SearchInput
-            value={calSearch}
-            onChange={setCalSearch}
-            placeholder={t('cal.searchPlaceholder')}
-            clearLabel={t('search.clear')}
-          />
-          <span className="text-[11px] font-semibold tracking-[0.06em] text-ink-subtle uppercase">
-            {t('cal.upcoming')}
-          </span>
-          <UpcomingList
-            rows={shownUpcoming}
-            emptyLabel={calSearch ? t('cal.searchNoResults') : t('cal.upcomingEmpty')}
-            onPick={setAnchor}
-          />
-        </div>
+        {sidebarContents()}
       </aside>
+
+      {showSidebar && (
+        <CalendarSidebarSheet onClose={() => setShowSidebar(false)}>
+          {sidebarContents()}
+        </CalendarSidebarSheet>
+      )}
 
       <ResizeHandle
         limits={SIDEBAR_LIMITS}
@@ -706,13 +756,15 @@ function CalendarApp() {
           </button>
           <h1 className="text-base font-semibold capitalize">{heading}</h1>
 
-          <div className={`ml-2 hidden sm:flex ${segmentedControlClass}`}>
+          <div
+            className={`order-last flex w-full ${segmentedControlClass} sm:order-none sm:ml-2 sm:w-auto`}
+          >
             {(['month', 'week', 'day'] as const).map((v) => (
               <button
                 key={v}
                 type="button"
                 onClick={() => setView(v)}
-                className={segmentedOptionClass(view === v)}
+                className={`flex-1 sm:flex-none ${segmentedOptionClass(view === v)}`}
               >
                 {t(`cal.view.${v}`)}
               </button>
@@ -721,11 +773,20 @@ function CalendarApp() {
 
           <button
             type="button"
+            aria-label={t('cal.calendars')}
+            onClick={() => setShowSidebar(true)}
+            className={`ml-auto !p-1.5 lg:hidden ${secondaryIconButtonClass}`}
+          >
+            <Icon name="calendar" size={15} />
+          </button>
+
+          <button
+            type="button"
             aria-label={`${t('cal.notif.button')}${
               notifications?.length ? ` (${notifications.length})` : ''
             }`}
             onClick={() => setShowNotifications(true)}
-            className={`relative ml-auto !p-1.5 ${secondaryIconButtonClass}`}
+            className={`relative !p-1.5 lg:ml-auto ${secondaryIconButtonClass}`}
           >
             <Icon name="bell" size={15} />
             {notifications && notifications.length > 0 && (
