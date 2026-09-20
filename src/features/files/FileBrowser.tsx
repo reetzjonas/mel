@@ -783,7 +783,7 @@ function FileRow({
       className={`group flex items-center gap-1 rounded-control pr-1 transition-colors hover:bg-surface-2 data-checked:bg-accent-wash data-selected:bg-accent-wash data-over:ring-2 data-over:ring-accent ${draggableTouchClass}`}
     >
       <span
-        className="shrink-0 py-2 pl-2"
+        className="shrink-0 sm:py-2 sm:pl-2"
         onMouseEnter={() => setDragOff(true)}
         onMouseLeave={() => setDragOff(false)}
       >
@@ -792,8 +792,9 @@ function FileRow({
             icon itself rather than anywhere in the row, which otherwise reads
             as the folder icon vanishing as the mouse passes by. Touch has no
             hover at all, so there the checkbox appears only once selecting has
-            been turned on. */}
-        <span className="relative block h-[17px] w-[17px]">
+            been turned on. On a phone the box sits in a 44px target, so ticking
+            a row is not a matter of hitting 17px. */}
+        <span className="relative flex size-11 items-center justify-center sm:block sm:size-[17px]">
           <Icon
             name={nodeIcon(node)}
             size={17}
@@ -808,15 +809,19 @@ function FileRow({
               e.stopPropagation()
               onToggle(e.shiftKey)
             }}
-            className={`absolute inset-0 flex items-center justify-center rounded-[4px] transition-opacity ${
-              checked
-                ? 'bg-accent text-accent-ink'
-                : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
-                    selecting ? 'opacity-100' : 'opacity-0 hover:opacity-100'
-                  }`
-            }`}
+            className="group/box absolute inset-0 flex items-center justify-center"
           >
-            <Icon name="check" size={13} />
+            <span
+              className={`flex size-[17px] items-center justify-center rounded-[4px] transition-opacity ${
+                checked
+                  ? 'bg-accent text-accent-ink'
+                  : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
+                      selecting ? 'opacity-100' : 'opacity-0 group-hover/box:opacity-100'
+                    }`
+              }`}
+            >
+              <Icon name="check" size={13} />
+            </span>
           </button>
         </span>
       </span>
@@ -856,7 +861,7 @@ function FileRow({
             aria-label={`${t('files.rename')} ${node.name}`}
             disabled={busy}
             onClick={onRename}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink sm:min-h-0 sm:min-w-0"
           >
             <Icon name="compose" size={14} />
           </button>
@@ -867,7 +872,7 @@ function FileRow({
             aria-label={`${t('files.delete')} ${node.name}`}
             disabled={busy}
             onClick={onDelete}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-danger"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-danger sm:min-h-0 sm:min-w-0"
           >
             <Icon name="trash" size={14} />
           </button>
