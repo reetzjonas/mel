@@ -209,6 +209,7 @@ const en = {
   'bulk.move': 'Move to folder',
   'bulk.moved': 'Moved',
   'bulk.marked': 'Updated',
+  'bulk.moreActions': 'More selection actions',
 
   'folder.new': 'New folder',
   'folder.newSub': 'New subfolder',
@@ -1015,6 +1016,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'bulk.move': 'In Ordner verschieben',
   'bulk.moved': 'Verschoben',
   'bulk.marked': 'Aktualisiert',
+  'bulk.moreActions': 'Weitere Auswahlaktionen',
 
   'folder.new': 'Neuer Ordner',
   'folder.newSub': 'Neuer Unterordner',

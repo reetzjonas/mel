@@ -377,6 +377,16 @@ test('bulk select two messages, archive them, and undo', async ({ page }) => {
 
   const toolbar = page.getByTestId('selection-toolbar')
   await expect(toolbar).toContainText('2 selected')
+  await page.setViewportSize({ width: 320, height: 720 })
+  expect(await toolbar.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await toolbar.evaluate((element) => element.clientWidth),
+  )
+  await toolbar.getByRole('button', { name: 'More selection actions' }).click()
+  const moreActions = toolbar.getByRole('menu', { name: 'More selection actions' })
+  await expect(moreActions.getByRole('menuitem', { name: 'Mark read' })).toBeVisible()
+  await expect(moreActions.getByRole('menuitem', { name: 'Mark unread' })).toBeVisible()
+  await expect(moreActions.getByRole('menuitem', { name: 'Flag' })).toBeVisible()
+  await page.keyboard.press('Escape')
 
   await toolbar.getByLabel('Archive').click()
   // The first archive on a fresh server also has to create the Archive mailbox,
@@ -598,9 +608,11 @@ test('junk blocks remote content regardless of the setting, and "not spam" resto
   await expect(row.getByRole('button', { name: 'Not spam' })).toBeVisible()
   await row.getByRole('checkbox').click()
   const toolbar = page.getByTestId('selection-toolbar')
-  await expect(toolbar.getByLabel('Not spam')).toBeVisible()
+  await toolbar.getByRole('button', { name: 'More selection actions' }).click()
+  const moreActions = toolbar.getByRole('menu', { name: 'More selection actions' })
+  await expect(moreActions.getByRole('menuitem', { name: 'Not spam' })).toBeVisible()
 
-  await toolbar.getByLabel('Not spam').click()
+  await moreActions.getByRole('menuitem', { name: 'Not spam' }).click()
   await expect(page.getByText('Moved to inbox')).toBeVisible()
 
   // Back where it started, so the run leaves nothing behind.

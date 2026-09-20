@@ -70,10 +70,10 @@ export function SelectionToolbar({
             <Icon name="close" size={15} />
           </button>
         </Tooltip>
-        <span className="text-[13px] font-medium whitespace-nowrap">
+        <span className="min-w-0 truncate text-[13px] font-medium whitespace-nowrap">
           {count} {t('bulk.selected')}
         </span>
-        <span className="ml-auto flex min-w-0 items-center overflow-x-auto">{children}</span>
+        <span className="ml-auto flex shrink-0 items-center">{children}</span>
       </div>
       {onSelectAll && (
         /*

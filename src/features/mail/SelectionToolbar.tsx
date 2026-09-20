@@ -16,6 +16,7 @@ import {
   SelectionActionButton,
   SelectionToolbar as SharedSelectionToolbar,
 } from '../../ui/SelectionToolbar'
+import { OverflowMenu, type OverflowAction } from '../../ui/OverflowMenu'
 import { usePopover } from '../../ui/usePopover'
 
 /** Ceiling for "select everything in this folder"; anything beyond is reported, not hidden. */
@@ -93,6 +94,45 @@ export function SelectionToolbar({
 
   usePopover({ panel: movePicker, onClose: () => setMoveOpen(false), enabled: moveOpen })
 
+  const moreActions: OverflowAction[] = [
+    ...(inJunk
+      ? [
+          {
+            icon: 'inbox' as const,
+            label: t('mail.notSpam'),
+            disabled: busy,
+            onSelect: () =>
+              void run(
+                () => bulkNotSpam(accountId, ids),
+                t('mail.movedToInbox'),
+                t('mail.notSpamFailed'),
+              ),
+          },
+        ]
+      : []),
+    {
+      icon: 'mail',
+      label: t('mail.markRead'),
+      disabled: busy,
+      onSelect: () =>
+        void run(() => bulkSetKeyword(accountId, ids, '$seen', true), t('bulk.marked')),
+    },
+    {
+      icon: 'mailUnread',
+      label: t('mail.markUnread'),
+      disabled: busy,
+      onSelect: () =>
+        void run(() => bulkSetKeyword(accountId, ids, '$seen', false), t('bulk.marked')),
+    },
+    {
+      icon: 'flag',
+      label: t('mail.flag'),
+      disabled: busy,
+      onSelect: () =>
+        void run(() => bulkSetKeyword(accountId, ids, '$flagged', true), t('bulk.marked')),
+    },
+  ]
+
   return (
     <SharedSelectionToolbar
       count={count}
@@ -101,44 +141,7 @@ export function SelectionToolbar({
       onSelectAll={() => void selectWholeFolder()}
       selectAllLabel={busy ? t('bulk.selectingAll') : t('bulk.selectAll')}
     >
-      {inJunk && (
-        <SelectionActionButton
-          icon="inbox"
-          label={t('mail.notSpam')}
-          disabled={busy}
-          onClick={() =>
-            void run(
-              () => bulkNotSpam(accountId, ids),
-              t('mail.movedToInbox'),
-              t('mail.notSpamFailed'),
-            )
-          }
-        />
-      )}
-      <SelectionActionButton
-        icon="mail"
-        label={t('mail.markRead')}
-        disabled={busy}
-        onClick={() =>
-          void run(() => bulkSetKeyword(accountId, ids, '$seen', true), t('bulk.marked'))
-        }
-      />
-      <SelectionActionButton
-        icon="mailUnread"
-        label={t('mail.markUnread')}
-        disabled={busy}
-        onClick={() =>
-          void run(() => bulkSetKeyword(accountId, ids, '$seen', false), t('bulk.marked'))
-        }
-      />
-      <SelectionActionButton
-        icon="flag"
-        label={t('mail.flag')}
-        disabled={busy}
-        onClick={() =>
-          void run(() => bulkSetKeyword(accountId, ids, '$flagged', true), t('bulk.marked'))
-        }
-      />
+      <OverflowMenu label={t('bulk.moreActions')} actions={moreActions} />
       <span ref={movePicker} className="relative">
         <SelectionActionButton
           icon="folder"
