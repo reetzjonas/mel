@@ -522,6 +522,10 @@ test('opening a message offers a link to the sender’s contact, only once one e
   // Clean up, and check the link goes away again with it — the live query
   // behind it has to notice a contact leaving as readily as one arriving.
   await page.getByRole('button', { name: 'Delete contact' }).click()
+  await page
+    .getByRole('dialog', { name: 'Delete contact' })
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
   await page.getByRole('link', { name: 'Mail' }).first().click()
   await openMessage()
   await expect(page.getByRole('link', { name: 'View contact' })).toHaveCount(0)

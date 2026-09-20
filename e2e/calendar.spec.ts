@@ -746,7 +746,23 @@ test('birthdays are a calendar of their own, and can be switched off', async ({ 
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Geburtstag ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
+  await page
+    .getByRole('dialog', { name: 'Delete contact' })
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
 })
+
+/**
+ * The Monday of the current week, as the date input spells it. The week grid
+ * starts on Monday, so an event placed there always has a column to its right —
+ * by default a new event lands on today, and on a Sunday there is nowhere to
+ * drag it sideways to.
+ */
+function mondayThisWeek(): string {
+  const d = new Date()
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7))
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 
 /** The day after an ISO date, as the date input spells it. */
 function nextDay(iso: string): string {
@@ -794,6 +810,7 @@ test('drag an event to another time and day, then resize it', async ({ page }) =
 
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(title)
+  await page.getByLabel('Date', { exact: true }).fill(mondayThisWeek())
   await page.getByRole('button', { name: 'Save', exact: true }).click()
 
   const block = page
@@ -886,6 +903,10 @@ test('a birthday stays put', async ({ page }) => {
   await page.getByRole('link', { name: 'Contacts' }).first().click()
   await page.getByRole('link', { name: `Geburtstag ${surname}` }).click()
   await page.getByRole('button', { name: 'Delete contact' }).click()
+  await page
+    .getByRole('dialog', { name: 'Delete contact' })
+    .getByRole('button', { name: 'Delete contact' })
+    .click()
 })
 
 test('move one occurrence of a series and leave the rest where they were', async ({ page }) => {
@@ -984,6 +1005,7 @@ test('drag a whole series onto another weekday', async ({ page }) => {
 
   await page.getByRole('button', { name: 'New event' }).click()
   await page.getByPlaceholder('Title').fill(weekly)
+  await page.getByLabel('Date', { exact: true }).fill(mondayThisWeek())
   await page.getByRole('button', { name: 'More details' }).click()
   await page.getByRole('combobox', { name: 'Repeat' }).selectOption('weekly')
   await page.getByRole('button', { name: 'Save', exact: true }).click()
