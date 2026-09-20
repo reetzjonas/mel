@@ -19,11 +19,11 @@ function NewContact() {
   return (
     <ContactEditor
       initial={emptyContact(bookId)}
-      onCancel={() => void navigate({ to: '/contacts' })}
+      onCancel={() => void navigate({ to: '/contacts', replace: true })}
       onSave={(c) => {
         const cleaned = { ...c, emails: c.emails.filter((e) => e.value.trim()) }
         void createContact(account.id, cleaned).then((id) =>
-          navigate({ to: '/contacts/$contactId', params: { contactId: id } }),
+          navigate({ to: '/contacts/$contactId', params: { contactId: id }, replace: true }),
         )
       }}
     />

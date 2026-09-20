@@ -80,8 +80,16 @@ function RecipientRow({
   )
 }
 
-export function Compose({ accountId, init }: { accountId: string; init: ComposeInit }) {
-  const { closeCompose, showSnackbar } = useUi()
+export function Compose({
+  accountId,
+  init,
+  onClose,
+}: {
+  accountId: string
+  init: ComposeInit
+  onClose: () => void
+}) {
+  const { showSnackbar } = useUi()
   const canSend = useCanSend()
   const navigate = useNavigate()
   // Whatever the app is showing behind this window; `strict: false` because
@@ -107,7 +115,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
   const panel = useRef<HTMLDivElement>(null)
   const initialFocus = useRef<HTMLElement>(null)
   const mobileViewport = useMobileViewport()
-  useModal({ panel, initialFocus, onClose: closeCompose })
+  useModal({ panel, initialFocus, onClose })
   const [editRevision, setEditRevision] = useState(0)
   const [draftSaved, setDraftSaved] = useState(false)
   /*
@@ -333,7 +341,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
     draftId.current = null
     setHasDraft(false)
     await discardDraft(accountId, id)
-    closeCompose()
+    onClose()
     showSnackbar({ message: t('compose.draftDeleted') }, 4000)
   }
 
@@ -360,7 +368,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         references: init.references,
       })
       if (draftId.current) void discardDraft(accountId, draftId.current)
-      closeCompose()
+      onClose()
       showSnackbar({
         message: t('mail.sending'),
         actionLabel: t('mail.undo'),
@@ -403,7 +411,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
         <DialogHeader
           title={init.draftId ? t('compose.editDraft') : t('compose.new')}
           closeLabel={t('compose.discard')}
-          onClose={closeCompose}
+          onClose={onClose}
           action={
             <button
               type="button"

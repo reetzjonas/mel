@@ -60,6 +60,11 @@ test('create a contact, see details, use it in compose autocomplete', async ({ p
   await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await expect(page.getByRole('link', { name: 'Back', exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: 'Back', exact: true }).click()
+  await expect(page).toHaveURL(/\/contacts$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/contacts$/)
+  await page.getByRole('link', { name: `Erika ${surname}` }).click()
   await page.getByRole('button', { name: 'More contact actions' }).click()
   await page
     .getByRole('menu', { name: 'More contact actions' })

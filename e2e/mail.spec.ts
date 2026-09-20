@@ -68,6 +68,12 @@ test('the compact reading pane prioritizes common actions', async ({ page, isMob
   }
   await page.keyboard.press('Escape')
   await expect(menu).toBeHidden()
+
+  await page.getByRole('link', { name: 'Back', exact: true }).click()
+  await expect(page).toHaveURL(/\/mail\/[^/]+$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/\/mail\/[^/]+$/)
+  await expect(page.getByRole('heading', { name: 'Willkommen bei mel' })).toHaveCount(0)
 })
 
 test('the mail list groups rows under sticky date headings', async ({ page }) => {

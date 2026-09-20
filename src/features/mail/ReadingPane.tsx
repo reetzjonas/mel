@@ -678,6 +678,7 @@ export function ReadingPane({
           <Link
             to="/mail/$mailboxId"
             params={{ mailboxId }}
+            replace
             className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 lg:hidden"
             aria-label={t('mail.back')}
           >

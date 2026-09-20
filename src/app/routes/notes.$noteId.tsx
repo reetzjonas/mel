@@ -25,8 +25,8 @@ function NoteDetail() {
     <NoteEditor
       accountId={account.id}
       note={note}
-      onDeleted={() => void navigate({ to: '/notes' })}
-      onBack={() => void navigate({ to: '/notes' })}
+      onDeleted={() => void navigate({ to: '/notes', replace: true })}
+      onBack={() => void navigate({ to: '/notes', replace: true })}
     />
   )
 }

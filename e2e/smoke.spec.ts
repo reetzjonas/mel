@@ -128,7 +128,16 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
           expect(box?.width).toBeGreaterThanOrEqual(43.5)
           expect(box?.height).toBeGreaterThanOrEqual(43.5)
         }
+        await page.goBack()
+        await expect(compose).toBeHidden()
+        await expect(page).toHaveURL(/\/mail(?:\/.*)?$/)
+
+        // The visible close action consumes the same modal history level.
+        await page.getByRole('button', { name: 'New message', exact: true }).click()
+        await expect(compose).toBeVisible()
         await compose.getByRole('button', { name: 'Discard' }).click()
+        await expect(compose).toBeHidden()
+        await expect(page).toHaveURL(/\/mail(?:\/.*)?$/)
       }
     }
     if (compact && name === 'Files') {

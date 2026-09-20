@@ -202,7 +202,7 @@ function ContactDetail() {
     setConfirmingDelete(false)
     void deleteContact(account.id, contact.id).then(() => {
       showSnackbar({ message: t('contacts.deleted') })
-      void navigate({ to: '/contacts' })
+      void navigate({ to: '/contacts', replace: true })
     })
   }
 
@@ -211,6 +211,7 @@ function ContactDetail() {
       <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-1 flex items-center border-b border-line bg-surface/90 px-2 py-1 backdrop-blur-sm lg:hidden">
         <Link
           to="/contacts"
+          replace
           className="inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <Icon name="back" size={15} />

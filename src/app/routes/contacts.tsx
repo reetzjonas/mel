@@ -73,7 +73,8 @@ function ContactsLayout() {
     try {
       await deleteContacts(account.id, ids)
       showSnackbar({ message: t('contacts.deletedSelection') })
-      if (params.contactId && ids.includes(params.contactId)) void navigate({ to: '/contacts' })
+      if (params.contactId && ids.includes(params.contactId))
+        void navigate({ to: '/contacts', replace: true })
     } finally {
       setBusy(false)
     }

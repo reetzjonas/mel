@@ -64,8 +64,11 @@ function ComposeEntry() {
   const navigate = useNavigate()
 
   useEffect(() => {
-    openCompose(initFrom(search))
-    void navigate({ to: '/mail', replace: true })
+    const init = initFrom(search)
+    // Establish the real background route first. Opening before this replace
+    // would put the composer's history entry above `/compose`, so Back could
+    // return to the handover route and reopen it.
+    void navigate({ to: '/mail', replace: true }).then(() => openCompose(init))
     // Once, for whatever the app was opened with — a re-run would reopen the
     // composer over whatever the user has since typed.
     // oxlint-disable-next-line exhaustive-deps

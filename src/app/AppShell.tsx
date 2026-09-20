@@ -1,6 +1,6 @@
-import { Link, Outlet, useNavigate, useRouterState } from '@tanstack/react-router'
+import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAppBadge } from '../features/mail/appBadge'
@@ -89,9 +89,10 @@ function SignOutButton({ onClick }: { onClick: () => void }) {
 
 export function AppShell() {
   const navigate = useNavigate()
+  const router = useRouter()
   const accounts = useAccounts()
   const account = accounts?.[0]
-  const { compose } = useUi()
+  const { compose, closeCompose } = useUi()
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
   const settings = useSettingsRoute()
   useAppBadge(account?.id)
@@ -118,6 +119,31 @@ export function AppShell() {
   const accountId = account?.id
   const locked = Boolean(lockedIds?.length)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
+  const composeHistoryEntry = useRef(false)
+
+  // A modal compose window is one navigation level above whatever is behind
+  // it. Giving it a same-URL history entry makes browser Back dismiss the
+  // modal before the underlying app can move to its previous route.
+  useEffect(() => {
+    if (!compose || composeHistoryEntry.current) return
+    composeHistoryEntry.current = true
+    router.history.push(router.history.location.href, { melCompose: true })
+  }, [compose, router])
+
+  useEffect(() => {
+    const onPopState = () => {
+      if (!composeHistoryEntry.current || !useUi.getState().compose) return
+      composeHistoryEntry.current = false
+      closeCompose()
+    }
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [closeCompose])
+
+  const dismissCompose = () => {
+    if (composeHistoryEntry.current) router.history.back()
+    else closeCompose()
+  }
   useEffect(() => {
     if (accountId && !locked) startScheduler(accountId)
   }, [accountId, locked])
@@ -213,7 +239,12 @@ export function AppShell() {
           window stands open has to start a new editor, not hand the old one a
           different `init` it never reads again. */}
       {compose && account && (
-        <Compose key={compose.draftId ?? 'new'} accountId={account.id} init={compose} />
+        <Compose
+          key={compose.draftId ?? 'new'}
+          accountId={account.id}
+          init={compose}
+          onClose={dismissCompose}
+        />
       )}
       {settings.tab && (
         <SettingsDialog

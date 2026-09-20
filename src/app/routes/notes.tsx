@@ -79,7 +79,7 @@ function NotesLayout() {
     try {
       await Promise.all(picked.map((n) => deleteNote(account.id, n)))
       if (params.noteId && picked.some((n) => n.id === params.noteId))
-        void navigate({ to: '/notes' })
+        void navigate({ to: '/notes', replace: true })
     } finally {
       setBusy(false)
     }
