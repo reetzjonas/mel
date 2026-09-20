@@ -80,6 +80,26 @@ test('write a note, tick an item off, and find it again after a reload', async (
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await page.getByRole('button', { name: 'New note' }).click()
 
+  const desktopViewport = page.viewportSize()!
+  await page.setViewportSize({ width: 320, height: 720 })
+  const editor = page.getByTestId('note-editor')
+  expect(await editor.evaluate((element) => element.scrollWidth)).toBeLessThanOrEqual(
+    await editor.evaluate((element) => element.clientWidth),
+  )
+  for (const name of ['Back', 'Pin', 'Add a picture', 'More note actions']) {
+    const box = await editor.getByRole('button', { name }).boundingBox()
+    expect(box?.width).toBeGreaterThanOrEqual(44)
+    expect(box?.height).toBeGreaterThanOrEqual(44)
+  }
+  await editor.getByRole('button', { name: 'More note actions' }).click()
+  await expect(
+    editor
+      .getByRole('menu', { name: 'More note actions' })
+      .getByRole('menuitem', { name: 'Delete note' }),
+  ).toBeVisible()
+  await page.keyboard.press('Escape')
+  await page.setViewportSize(desktopViewport)
+
   await page.getByRole('textbox', { name: 'Title' }).fill(title)
   const body = page.getByRole('textbox', { name: 'Note', exact: true })
   const initialWrite = waitForNoteWrite(page)

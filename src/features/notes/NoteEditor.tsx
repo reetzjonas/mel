@@ -5,6 +5,7 @@ import { imageNames, imageRef } from '../../lib/noteFile'
 import { deleteNote, saveNote, stageNoteImage } from '../../services/notes'
 import { Icon } from '../../ui/Icon'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { OverflowMenu } from '../../ui/OverflowMenu'
 import { inputClass, secondaryButtonClass } from '../../ui/styles'
 import { useNoteImages } from './hooks'
 
@@ -91,7 +92,7 @@ export function NoteEditor({
 
   return (
     <>
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-full min-h-0 min-w-0 flex-col" data-testid="note-editor">
         <div className="flex items-center gap-1.5 border-b border-line px-3 py-2">
           <button
             type="button"
@@ -117,7 +118,7 @@ export function NoteEditor({
             aria-label={t('notes.pin')}
             aria-pressed={note.pinned}
             onClick={() => write({ pinned: !note.pinned })}
-            className={`rounded-control p-1.5 transition-colors hover:bg-surface-2 ${
+            className={`flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 transition-colors hover:bg-surface-2 lg:min-h-0 lg:min-w-0 ${
               note.pinned ? 'text-accent' : 'text-ink-muted'
             }`}
           >
@@ -127,7 +128,7 @@ export function NoteEditor({
             type="button"
             aria-label={t('notes.addImage')}
             onClick={() => picker.current?.click()}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink lg:min-h-0 lg:min-w-0"
           >
             <Icon name="paperclip" size={15} />
           </button>
@@ -141,6 +142,19 @@ export function NoteEditor({
               e.target.value = ''
             }}
           />
+          <span className="lg:hidden">
+            <OverflowMenu
+              label={t('notes.moreActions')}
+              actions={[
+                {
+                  icon: 'trash',
+                  label: t('notes.delete'),
+                  danger: true,
+                  onSelect: () => setConfirmingDelete(true),
+                },
+              ]}
+            />
+          </span>
         </div>
 
         <Suspense fallback={<div className="min-h-0 flex-1" />}>
@@ -153,8 +167,8 @@ export function NoteEditor({
           />
         </Suspense>
 
-        <div className="flex items-center gap-2 border-t border-line p-3">
-          <label className="flex items-center gap-2 text-xs text-ink-muted">
+        <div className="flex min-w-0 flex-wrap items-center gap-2 border-t border-line p-3">
+          <label className="flex min-w-0 items-center gap-2 text-xs text-ink-muted">
             {t('notes.due')}
             <input
               type="date"
@@ -168,7 +182,7 @@ export function NoteEditor({
           <button
             type="button"
             onClick={() => setConfirmingDelete(true)}
-            className={`ml-auto ${secondaryButtonClass} !text-danger`}
+            className={`ml-auto hidden lg:block ${secondaryButtonClass} !text-danger`}
           >
             {t('notes.delete')}
           </button>
