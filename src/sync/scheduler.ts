@@ -175,6 +175,20 @@ async function startSse(accountId: string, ctl: Controller) {
         if (!res.ok) throw new Error(`SSE ${res.status}`)
         ctl.sseFailures = 0
         setStatus(accountId, { mode: 'push', intervalMs: 0 })
+        /*
+         * Catch up once now. The stream announces changes from the moment it
+         * is open and polling is off while it is, so anything that changed
+         * between the last sync and this moment — the first tick runs while
+         * the connection is still being made — would otherwise wait for the
+         * next unrelated change. Behind the tick already running rather than
+         * joined to it: a sync in flight has read some collections already,
+         * and would hand back exactly the state that missed the change. The
+         * same goes for a reconnect after the connection dropped.
+         */
+        const running = inflight.get(accountId)
+        void (running ? running.catch(() => {}) : Promise.resolve()).then(() => {
+          if (!ctl.stopped) void runTick(accountId)
+        })
       },
       onmessage: (ev) => {
         if (ev.event !== 'state' || !ev.data) return

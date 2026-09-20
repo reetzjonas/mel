@@ -165,7 +165,34 @@ describe('live updates over the push pipe', () => {
     startScheduler(ACC)
     await vi.waitFor(() => expect(sse).not.toBeNull())
     await sse!.onopen!({ ok: true, status: 200 })
+    // The catch-up sync opening the stream triggers, so a test that counts
+    // syncs afterwards is counting its own.
+    await vi.waitFor(() => {
+      expect(syncAccount).toHaveBeenCalledTimes(2)
+      expect(getSyncStatus(ACC).syncing).toBe(false)
+    })
   }
+
+  it('catches up once the stream is open, behind the sync already running', async () => {
+    /*
+     * Polling is off while pushing and the stream only announces what changes
+     * after it opened, so a change made while the first sync was still under
+     * way was never picked up. Joining that sync would hand back the state
+     * that missed it: the catch-up has to start after it.
+     */
+    let finishFirst: () => void = () => {}
+    syncAccount.mockImplementationOnce(
+      () => new Promise<void>((resolve) => (finishFirst = resolve)),
+    )
+    startScheduler(ACC)
+    await vi.waitFor(() => expect(sse).not.toBeNull())
+    await sse!.onopen!({ ok: true, status: 200 })
+
+    expect(syncAccount).toHaveBeenCalledTimes(1)
+    finishFirst()
+
+    await vi.waitFor(() => expect(syncAccount).toHaveBeenCalledTimes(2))
+  })
 
   it('asks for every type, a connection that stays open, and a keepalive', async () => {
     /*
