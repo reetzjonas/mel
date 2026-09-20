@@ -218,8 +218,8 @@ export function SettingsDialog({
                 onClick={() => onTab(id)}
                 className={
                   id === active
-                    ? 'shrink-0 rounded-control bg-accent px-3.5 py-1.5 text-[13px] font-medium text-accent-ink shadow-raised sm:w-full sm:text-left'
-                    : 'shrink-0 rounded-control px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink sm:w-full sm:text-left'
+                    ? 'min-h-11 shrink-0 rounded-control bg-accent px-3.5 py-1.5 text-[13px] font-medium text-accent-ink shadow-raised sm:min-h-0 sm:w-full sm:text-left'
+                    : 'min-h-11 shrink-0 rounded-control px-3.5 py-1.5 text-[13px] font-medium text-ink-muted transition-[color,background-color] duration-150 hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:w-full sm:text-left'
                 }
               >
                 {t(tabLabels[id])}

@@ -68,7 +68,7 @@ function RecipientRow({
       <div className="min-w-0 flex-1">
         <RecipientInput
           accountId={accountId}
-          className="w-full border-0 bg-transparent px-0 py-2 text-sm outline-none placeholder:text-ink-muted/60"
+          className="min-h-11 w-full border-0 bg-transparent px-0 py-2 text-sm outline-none placeholder:text-ink-muted/60 sm:min-h-0"
           placeholder={placeholder}
           value={value}
           onChange={onChange}
@@ -453,7 +453,7 @@ export function Compose({
                 aria-label={t('compose.from')}
                 value={identityId}
                 onChange={(e) => changed(setIdentityId)(e.target.value)}
-                className="min-w-0 flex-1 border-0 bg-transparent px-0 py-2 text-sm outline-none"
+                className="min-h-11 min-w-0 flex-1 border-0 bg-transparent px-0 py-2 text-sm outline-none sm:min-h-0"
               >
                 {identities.map((i) => (
                   <option key={i.id} value={i.id}>
@@ -514,7 +514,7 @@ export function Compose({
           )}
           <div className={fieldRowClass}>
             <input
-              className="w-full border-0 bg-transparent px-0 py-2 text-sm font-medium outline-none placeholder:text-ink-muted/60"
+              className="min-h-11 w-full border-0 bg-transparent px-0 py-2 text-sm font-medium outline-none placeholder:text-ink-muted/60 sm:min-h-0"
               placeholder={t('compose.subject')}
               value={subject}
               onChange={(e) => changed(setSubject)(e.target.value)}

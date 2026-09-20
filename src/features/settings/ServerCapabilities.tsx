@@ -21,7 +21,7 @@ export function CapabilityNotice({ reason }: { reason: MsgKey }) {
       <button
         type="button"
         onClick={() => openSettings('account', 'capabilities')}
-        className="text-sm text-accent hover:underline"
+        className="inline-flex min-h-11 min-w-11 items-center justify-center text-sm text-accent hover:underline sm:min-h-0 sm:min-w-0"
       >
         {t('caps.showDetails')}
       </button>

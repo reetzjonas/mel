@@ -41,22 +41,38 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
 }
 
 async function expectCompactTouchTargets(page: import('@playwright/test').Page) {
+  // Dialogs enter at 98% scale. Measure the settled controls rather than the
+  // deliberately smaller boxes halfway through that short transition.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((animation) =>
+          Number.isFinite(animation.effect?.getComputedTiming().endTime ?? Infinity),
+        )
+        .map((animation) => animation.finished.catch(() => undefined)),
+    ),
+  )
   const result = await page.evaluate(() => {
     const controls = [
       ...document.querySelectorAll<HTMLElement>(
-        'button, a[href], input:not([type="hidden"]), select',
+        'button, a[href], input:not([type="hidden"]), select, textarea',
       ),
     ]
     const undersized = controls
       .filter((element) => {
         const box = element.getBoundingClientRect()
         const style = getComputedStyle(element)
+        const target =
+          element instanceof HTMLInputElement && ['checkbox', 'radio'].includes(element.type)
+            ? element.closest('label')?.getBoundingClientRect()
+            : box
         return (
           box.width > 0 &&
           box.height > 0 &&
           style.display !== 'none' &&
           style.visibility !== 'hidden' &&
-          (box.width < 43.5 || box.height < 43.5)
+          (!target || target.width < 43.5 || target.height < 43.5)
         )
       })
       .map((element) => {
@@ -129,6 +145,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await expect(page).toHaveURL(/\/contacts\/new$/)
     await expect(page.getByLabel('First name')).toBeVisible()
     await expectNoPageOverflow()
+    await expectCompactTouchTargets(page)
     await page.getByRole('button', { name: 'Cancel' }).click()
     await expect(page).toHaveURL(/\/contacts$/)
   }
@@ -142,6 +159,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await expect(eventDialog).toBeVisible()
     await expect(eventDialog).toHaveCSS('width', '320px')
     await expect(eventDialog).toHaveCSS('height', '720px')
+    await expectCompactTouchTargets(page)
     for (const name of ['Cancel', 'Save']) {
       const box = await eventDialog.getByRole('button', { name }).boundingBox()
       // Mobile emulation can return a fractional box just below the 44 CSS px
@@ -194,6 +212,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
         await expect(compose).toBeVisible()
         await expect(compose).toHaveCSS('width', '320px')
         await expect(compose).toHaveCSS('height', '720px')
+        await expectCompactTouchTargets(page)
         for (const action of ['Discard', 'Send', 'Cc', 'Bcc']) {
           const box = await compose.getByRole('button', { name: action, exact: true }).boundingBox()
           expect(box?.width).toBeGreaterThanOrEqual(43.5)
@@ -255,6 +274,7 @@ test('all app surfaces fit the responsive width matrix in both themes', async ({
       await page.getByRole('button', { name: 'Settings', exact: true }).click()
       await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible()
       await expectNoHorizontalOverflow(page)
+      if (width < 640) await expectCompactTouchTargets(page)
       const settingsTabs = page.getByRole('tablist', { name: 'Settings' })
       await expect(settingsTabs).toHaveAttribute(
         'aria-orientation',

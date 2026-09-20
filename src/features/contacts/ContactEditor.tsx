@@ -4,6 +4,7 @@ import { keyFromText, keyKind, keySize, type ContactKey } from '../../domain/con
 import { formatBytes } from '../../lib/bytes'
 import { t } from '../../lib/i18n'
 import { Avatar } from '../../ui/Avatar'
+import { Icon } from '../../ui/Icon'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
 import { birthdayLabel } from './birthday'
 import { toPhotoUri } from './photo'
@@ -41,7 +42,7 @@ function ListField({
         <button
           type="button"
           aria-label={`${t('contacts.addField')}: ${label}`}
-          className="text-xs text-accent"
+          className="inline-flex min-h-11 min-w-11 items-center justify-end text-xs text-accent sm:min-h-0 sm:min-w-0"
           onClick={() => onChange([...values, { value: '', label: null }])}
         >
           + {t('contacts.addField')}
@@ -61,10 +62,11 @@ function ListField({
           />
           <button
             type="button"
-            className="px-2 text-ink-muted hover:text-danger"
+            aria-label={`${t('contacts.removeField')}: ${label}`}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-ink-muted hover:text-danger sm:min-h-0 sm:min-w-0"
             onClick={() => onChange(values.filter((_, j) => j !== i))}
           >
-            ✕
+            <Icon name="close" size={15} />
           </button>
         </div>
       ))}
@@ -94,7 +96,7 @@ function ServiceField({
         <button
           type="button"
           aria-label={`${t('contacts.addField')}: ${t('contacts.onlineServices')}`}
-          className="text-xs text-accent"
+          className="inline-flex min-h-11 min-w-11 items-center justify-end text-xs text-accent sm:min-h-0 sm:min-w-0"
           onClick={() => onChange([...values, { service: '', user: '', uri: '' }])}
         >
           + {t('contacts.addField')}
@@ -119,10 +121,11 @@ function ServiceField({
           />
           <button
             type="button"
-            className="px-2 text-ink-muted hover:text-danger"
+            aria-label={`${t('contacts.removeField')}: ${t('contacts.onlineServices')}`}
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-ink-muted hover:text-danger sm:min-h-0 sm:min-w-0"
             onClick={() => onChange(values.filter((_, j) => j !== i))}
           >
-            ✕
+            <Icon name="close" size={15} />
           </button>
         </div>
       ))}
@@ -179,7 +182,7 @@ function KeyField({
         <button
           type="button"
           aria-label={`${t('contacts.addField')}: ${t('contacts.keys')}`}
-          className="text-xs text-accent"
+          className="inline-flex min-h-11 min-w-11 items-center justify-end text-xs text-accent sm:min-h-0 sm:min-w-0"
           onClick={() => {
             setAdding(true)
             setFailed(false)
@@ -199,10 +202,10 @@ function KeyField({
           <button
             type="button"
             aria-label={`${t('contacts.key.remove')}: ${label(key)}`}
-            className="px-2 text-ink-muted hover:text-danger"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center text-ink-muted hover:text-danger sm:min-h-0 sm:min-w-0"
             onClick={() => onChange(values.filter((_, j) => j !== i))}
           >
-            ✕
+            <Icon name="close" size={15} />
           </button>
         </div>
       ))}

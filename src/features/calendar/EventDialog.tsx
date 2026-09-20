@@ -385,7 +385,7 @@ export function EventDialog({
       <div className="space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
         <div className="space-y-2">
           <input
-            className="w-full bg-transparent text-xl font-semibold outline-none placeholder:text-ink-subtle"
+            className="min-h-11 w-full bg-transparent text-xl font-semibold outline-none placeholder:text-ink-subtle sm:min-h-0"
             placeholder={t('cal.title')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -410,7 +410,7 @@ export function EventDialog({
         <section className="space-y-3 rounded-panel bg-surface-2 p-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium">{t('cal.when')}</h3>
-            <label className="flex items-center gap-2 text-sm text-ink-muted">
+            <label className="flex min-h-11 items-center gap-2 text-sm text-ink-muted sm:min-h-0">
               <input
                 type="checkbox"
                 checked={allDay}
@@ -481,7 +481,7 @@ export function EventDialog({
             type="button"
             onClick={() => setShowDetails((shown) => !shown)}
             aria-expanded={showDetails}
-            className="text-sm font-medium text-ink-muted hover:text-ink"
+            className="inline-flex min-h-11 items-center text-sm font-medium text-ink-muted hover:text-ink sm:min-h-0"
           >
             {showDetails ? t('cal.hideDetails') : t('cal.moreDetails')}
           </button>
