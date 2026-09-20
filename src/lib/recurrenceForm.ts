@@ -114,9 +114,13 @@ export function repeatError(form: RepeatForm, startDate: string): RepeatError | 
   return null
 }
 
-/** Weekly with a single day follows the start date; a chosen set does not. */
+/**
+ * A lone weekday that is just the start date's own follows the start date; a
+ * chosen set does not. Whatever the frequency: the weekday is seeded when the
+ * dialog opens, so a date changed before "weekly" is picked would otherwise
+ * leave the series repeating on the day the dialog opened with.
+ */
 export function followStartDay(form: RepeatForm, oldDate: string, newDate: string): RepeatForm {
-  if (form.frequency !== 'weekly') return form
   if (form.byDay.length !== 1 || form.byDay[0] !== dayCodeOfDate(oldDate)) return form
   return { ...form, byDay: [dayCodeOfDate(newDate)] }
 }

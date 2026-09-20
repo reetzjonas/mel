@@ -177,8 +177,8 @@ describe('followStartDay', () => {
     expect(followStartDay(form, '2026-08-03', '2026-08-05')).toBe(form)
   })
 
-  it('leaves other frequencies alone', () => {
-    const form: RepeatForm = { ...weekly, frequency: 'daily' }
-    expect(followStartDay(form, '2026-08-03', '2026-08-05')).toBe(form)
+  it('keeps the seeded weekday in step before weekly is chosen', () => {
+    const form: RepeatForm = { ...weekly, frequency: null, byDay: ['mo'] }
+    expect(followStartDay(form, '2026-08-03', '2026-08-05').byDay).toEqual(['we'])
   })
 })
