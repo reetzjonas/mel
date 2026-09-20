@@ -50,6 +50,26 @@ test('reading-pane actions spell themselves out when the pane is wide', async ({
   await expect(reply.getByText('Reply')).toBeHidden()
 })
 
+test('the compact reading pane prioritizes common actions', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'the compact action bar only exists on a phone')
+  await login(page)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+  await page.getByText('Willkommen bei mel').click()
+
+  await expect(page.getByRole('link', { name: 'Back', exact: true })).toBeVisible()
+  for (const action of ['Archive', 'Delete', 'Reply', 'More message actions']) {
+    await expect(page.getByRole('button', { name: action, exact: true })).toBeVisible()
+  }
+
+  await page.getByRole('button', { name: 'More message actions' }).click()
+  const menu = page.getByRole('menu', { name: 'More message actions' })
+  for (const action of ['Flag', 'Mark unread', 'Reply all', 'Forward', 'Message details']) {
+    await expect(menu.getByText(action, { exact: true })).toBeVisible()
+  }
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeHidden()
+})
+
 test('the mail list groups rows under sticky date headings', async ({ page }) => {
   await login(page)
   await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })

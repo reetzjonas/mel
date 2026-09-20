@@ -32,6 +32,7 @@ import { buildDraftInit, buildReply } from '../../services/send'
 import { connectionFor } from '../../sync/connections'
 import { Avatar } from '../../ui/Avatar'
 import { Icon, type IconName } from '../../ui/Icon'
+import { OverflowMenu, type OverflowAction } from '../../ui/OverflowMenu'
 import { Tooltip } from '../../ui/Tooltip'
 import { usePopover } from '../../ui/usePopover'
 import { Skeleton } from '../../ui/Skeleton'
@@ -604,9 +605,75 @@ export function ReadingPane({
         )
       : undefined
 
+  const markAsNotSpam = () => {
+    void markNotSpam(accountId, expanded.id).then((undo) => {
+      backToList()
+      showSnackbar(
+        undo
+          ? {
+              message: t('mail.movedToInbox'),
+              actionLabel: t('mail.undo'),
+              action: () => void undo(),
+            }
+          : { message: t('mail.notSpamFailed') },
+      )
+    })
+  }
+
+  const markUnread = () => {
+    void markRead(accountId, expanded.id, false)
+    backToList()
+  }
+
+  const startFilter = () => {
+    const from = expanded.from[0]?.email
+    if (!from) return
+    setFilterSeed({ from })
+    openSettings('mail', 'sieve')
+  }
+
+  const compactActions: OverflowAction[] = [
+    ...(splitScope
+      ? [
+          {
+            icon: 'archive' as const,
+            label: t('mail.archiveThread'),
+            onSelect: () => void onArchive(true),
+          },
+          {
+            icon: 'trash' as const,
+            label: t('mail.deleteThread'),
+            onSelect: () => void onDelete(true),
+            danger: true,
+          },
+        ]
+      : []),
+    {
+      icon: 'flag',
+      label: flagged ? t('mail.unflag') : t('mail.flag'),
+      pressed: flagged,
+      onSelect: () => void setFlagged(accountId, expanded.id, !flagged),
+    },
+    { icon: 'mailUnread', label: t('mail.markUnread'), onSelect: markUnread },
+    ...(canFilter && expanded.from[0]?.email
+      ? [{ icon: 'filter' as const, label: t('mail.filterLikeThis'), onSelect: startFilter }]
+      : []),
+    ...(!isDraft && canSend
+      ? [
+          {
+            icon: 'replyAll' as const,
+            label: t('mail.replyAll'),
+            onSelect: () => reply('replyAll'),
+          },
+          { icon: 'forward' as const, label: t('mail.forward'), onSelect: () => reply('forward') },
+        ]
+      : []),
+    { icon: 'info', label: t('mail.details'), onSelect: () => setMessageDetailsOpen(true) },
+  ]
+
   return (
     <article className="flex h-full min-w-0 flex-col bg-surface">
-      <div className="@container flex shrink-0 items-center gap-1 overflow-x-auto px-2 py-1.5">
+      <div className="flex shrink-0 items-center gap-1 px-2 py-1.5 lg:hidden">
         <Tooltip label={t('mail.back')}>
           <Link
             to="/mail/$mailboxId"
@@ -617,27 +684,37 @@ export function ReadingPane({
             <Icon name="back" size={16} />
           </Link>
         </Tooltip>
+        <span className="flex items-center rounded-control bg-surface-2/60 p-0.5">
+          <ActionButton
+            icon={inJunk ? 'inbox' : 'archive'}
+            label={inJunk ? t('mail.notSpam') : t('mail.archive')}
+            onClick={inJunk ? markAsNotSpam : () => void onArchive()}
+          />
+          <ActionButton icon="trash" label={t('mail.delete')} onClick={() => void onDelete()} />
+          {isDraft ? (
+            <ActionButton
+              icon="compose"
+              label={t('mail.editDraft')}
+              disabled={body === 'loading'}
+              onClick={() =>
+                openCompose(buildDraftInit(expanded, body === 'loading' ? null : body))
+              }
+            />
+          ) : (
+            canSend && (
+              <ActionButton icon="reply" label={t('mail.reply')} onClick={() => reply('reply')} />
+            )
+          )}
+        </span>
+        <span className="ml-auto">
+          <OverflowMenu label={t('mail.moreActions')} actions={compactActions} />
+        </span>
+      </div>
+
+      <div className="@container hidden shrink-0 items-center gap-1 overflow-x-auto px-2 py-1.5 lg:flex">
         <span className="flex shrink-0 items-center rounded-control bg-surface-2/60 p-0.5">
           {inJunk && (
-            <ActionButton
-              icon="inbox"
-              label={t('mail.notSpam')}
-              labelled
-              onClick={() => {
-                void markNotSpam(accountId, expanded.id).then((undo) => {
-                  backToList()
-                  showSnackbar(
-                    undo
-                      ? {
-                          message: t('mail.movedToInbox'),
-                          actionLabel: t('mail.undo'),
-                          action: () => void undo(),
-                        }
-                      : { message: t('mail.notSpamFailed') },
-                  )
-                })
-              }}
-            />
+            <ActionButton icon="inbox" label={t('mail.notSpam')} labelled onClick={markAsNotSpam} />
           )}
           {splitScope ? (
             <SplitAction
@@ -684,27 +761,13 @@ export function ReadingPane({
             active={flagged}
             onClick={() => void setFlagged(accountId, expanded.id, !flagged)}
           />
-          <ActionButton
-            icon="mailUnread"
-            label={t('mail.markUnread')}
-            onClick={() => {
-              void markRead(accountId, expanded.id, false)
-              backToList()
-            }}
-          />
+          <ActionButton icon="mailUnread" label={t('mail.markUnread')} onClick={markUnread} />
           {/* Turning "not this again" into a rule, from the message that
               prompted it. Icon-only like the two toggles above: it is a
               sentence long spelled out, and this row is already the thing
               that overflows first. */}
           {canFilter && expanded.from[0]?.email && (
-            <ActionButton
-              icon="filter"
-              label={t('mail.filterLikeThis')}
-              onClick={() => {
-                setFilterSeed({ from: expanded.from[0]!.email })
-                openSettings('mail', 'sieve')
-              }}
-            />
+            <ActionButton icon="filter" label={t('mail.filterLikeThis')} onClick={startFilter} />
           )}
         </span>
         {/*
