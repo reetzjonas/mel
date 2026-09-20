@@ -15,6 +15,7 @@ import { bulkMove } from '../../services/mailActions'
 import { syncAccount } from '../../sync/engine'
 import { Icon, type IconName } from '../../ui/Icon'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
+import { DialogHeader } from '../../ui/DialogHeader'
 import { NameDialog } from '../../ui/NameDialog'
 import { Tooltip } from '../../ui/Tooltip'
 import { useMobileViewport, useModal } from '../../ui/useModal'
@@ -90,7 +91,7 @@ function FolderMenu({
           // all times, so revealing it on hover cannot shove the unread count
           // or the folder name around. visibility:hidden also keeps it
           // unclickable and out of the accessibility tree until it is shown.
-          className="invisible inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md text-ink-muted group-hover:visible hover:bg-surface-2 hover:text-ink"
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-muted hover:bg-surface-2 hover:text-ink lg:invisible lg:h-5 lg:w-5 lg:group-hover:visible lg:focus-visible:visible"
         >
           <Icon name="more" size={13} />
         </button>
@@ -109,7 +110,7 @@ function FolderMenu({
                   setOpen(false)
                   onAction(action, ref.current)
                 }}
-                className={`block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2 ${action === 'delete' ? 'text-danger' : ''}`}
+                className={`block min-h-11 w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2 lg:min-h-0 ${action === 'delete' ? 'text-danger' : ''}`}
               >
                 {label}
               </button>
@@ -145,16 +146,24 @@ function MoveFolderDialog({
     mailboxTree(mailboxes).find((n) => n.mailbox.id === m.id)?.depth ?? 0
   const contents = (
     <>
-      <header className="shrink-0 border-b border-line px-4 py-3 sm:px-5">
-        <h2 className="text-center text-sm font-semibold">{t('folder.moveTitle')}</h2>
-      </header>
+      {mobile ? (
+        <DialogHeader
+          title={t('folder.moveTitle')}
+          closeLabel={t('folder.cancel')}
+          onClose={onClose}
+        />
+      ) : (
+        <header className="shrink-0 border-b border-line px-4 py-3 sm:px-5">
+          <h2 className="text-center text-sm font-semibold">{t('folder.moveTitle')}</h2>
+        </header>
+      )}
       <div className="max-h-72 space-y-px overflow-y-auto p-4">
         <p className="mb-2 truncate text-sm font-medium">{mailbox.name}</p>
         {mailbox.parentId !== null && (
           <button
             type="button"
             onClick={() => onPick(null)}
-            className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
+            className="block min-h-11 w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2 lg:min-h-0"
           >
             {t('folder.moveTop')}
           </button>
@@ -164,7 +173,7 @@ function MoveFolderDialog({
             key={m.id}
             type="button"
             onClick={() => onPick(m.id)}
-            className="block w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2"
+            className="block min-h-11 w-full truncate rounded-control px-2 py-1.5 text-left text-sm hover:bg-surface-2 lg:min-h-0"
             style={{ paddingLeft: `${0.5 + depthOf(m) * 0.85}rem` }}
           >
             {m.name}
@@ -359,7 +368,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
             endDrag()
             if (folder) void moveMailbox(accountId, folder.id, null).then(report)
           }}
-          className={`mb-1.5 flex min-h-[34px] items-center justify-between rounded-control pr-1 pl-2.5 ${
+          className={`mb-1.5 flex min-h-11 items-center justify-between rounded-control pr-1 pl-2.5 lg:min-h-[34px] ${
             dropTarget === TOP_DROP ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''
           }`}
         >
@@ -374,7 +383,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
                 type="button"
                 aria-label={t('folder.new')}
                 onClick={() => setDialog({ kind: 'create', parentId: null })}
-                className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink lg:min-h-0 lg:min-w-0 lg:p-1.5"
               >
                 <Icon name="folderPlus" size={14} />
               </button>
@@ -384,7 +393,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
                 type="button"
                 aria-label={t('mail.refresh')}
                 onClick={refresh}
-                className="rounded-md p-1.5 text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-md text-ink-subtle transition-colors hover:bg-surface-2 hover:text-ink lg:min-h-0 lg:min-w-0 lg:p-1.5"
               >
                 <Icon
                   name="refresh"
@@ -410,7 +419,7 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
              * appears on hover.
              */
             const ariaLabel = m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name
-            const className = `group flex min-h-[34px] items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink focus-visible:!outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ${
+            const className = `group flex min-h-11 items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink focus-visible:!outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent lg:min-h-[34px] ${
               isActive ? 'bg-accent-wash font-medium text-accent' : ''
             } ${dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''} ${
               canDrag ? draggableTouchClass : ''

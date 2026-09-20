@@ -179,7 +179,7 @@ export function FilePreview({
         {node.nodeType === 'file' && (
           <label
             title={t('files.executable.hint')}
-            className="ml-auto flex items-center gap-1.5 text-xs text-ink-muted"
+            className="ml-auto flex min-h-11 items-center gap-1.5 text-xs text-ink-muted sm:min-h-0"
           >
             <input
               type="checkbox"

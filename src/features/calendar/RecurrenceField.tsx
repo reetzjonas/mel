@@ -101,7 +101,7 @@ export function RecurrenceField({
                     type="button"
                     aria-pressed={value.byDay.includes(code)}
                     onClick={() => toggleDay(code)}
-                    className={`min-w-10 rounded-control border px-2 py-1.5 text-sm transition-colors ${
+                    className={`min-h-11 min-w-11 rounded-control border px-2 py-1.5 text-sm transition-colors sm:min-h-0 sm:min-w-10 ${
                       value.byDay.includes(code)
                         ? 'border-accent bg-accent text-accent-ink'
                         : 'border-line text-ink-muted hover:bg-canvas hover:text-ink'

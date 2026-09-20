@@ -98,7 +98,7 @@ export function RecipientInput({
                 data-active={i === active || undefined}
                 onMouseEnter={() => setActive(i)}
                 onClick={() => pick(s)}
-                className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 data-active:bg-surface-2"
+                className="flex min-h-11 w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 data-active:bg-surface-2 sm:min-h-0"
               >
                 {/*
                  * Both `min-w-0`: a flex child's default `min-width: auto`

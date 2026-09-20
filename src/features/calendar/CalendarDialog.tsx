@@ -119,7 +119,10 @@ export function CalendarDialog({
             <legend className="text-xs text-ink-muted">{t('cal.calendar.color')}</legend>
             <div className="flex flex-wrap gap-2">
               {CALENDAR_SWATCHES.map((c) => (
-                <label key={c} className="cursor-pointer">
+                <label
+                  key={c}
+                  className="flex h-11 w-11 cursor-pointer items-center justify-center sm:h-7 sm:w-7"
+                >
                   <input
                     type="radio"
                     name="calendar-color"
@@ -146,7 +149,7 @@ export function CalendarDialog({
                 type="button"
                 disabled={!canDelete || busy}
                 onClick={() => setAsking('delete')}
-                className="text-sm text-danger hover:underline disabled:text-ink-subtle disabled:no-underline"
+                className="inline-flex min-h-11 items-center text-sm text-danger hover:underline disabled:text-ink-subtle disabled:no-underline sm:min-h-0"
               >
                 {t('cal.calendar.delete')}
               </button>

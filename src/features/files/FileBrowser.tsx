@@ -861,7 +861,7 @@ function FileRow({
             aria-label={`${t('files.rename')} ${node.name}`}
             disabled={busy}
             onClick={onRename}
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink sm:min-h-0 sm:min-w-0"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-ink lg:min-h-0 lg:min-w-0"
           >
             <Icon name="compose" size={14} />
           </button>
@@ -872,7 +872,7 @@ function FileRow({
             aria-label={`${t('files.delete')} ${node.name}`}
             disabled={busy}
             onClick={onDelete}
-            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-danger sm:min-h-0 sm:min-w-0"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface hover:text-danger lg:min-h-0 lg:min-w-0"
           >
             <Icon name="trash" size={14} />
           </button>

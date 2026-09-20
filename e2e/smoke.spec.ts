@@ -185,8 +185,16 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await expect(calendarActions.getByRole('menuitem', { name: 'Calendars' })).toBeVisible()
     await expect(calendarActions.getByRole('menuitem', { name: /^Updates/ })).toBeVisible()
     await calendarActions.getByRole('menuitem', { name: 'Calendars' }).click()
-    await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
+    const calendarsDialog = page.getByRole('dialog', { name: 'Calendars' })
+    await expect(calendarsDialog).toBeVisible()
     await expectCompactTouchTargets(page)
+    await calendarsDialog.getByRole('button', { name: 'New calendar' }).click()
+    await expect(page.getByRole('dialog', { name: 'New calendar' })).toBeVisible()
+    await expectCompactTouchTargets(page)
+    await page
+      .getByRole('dialog', { name: 'New calendar' })
+      .getByRole('button', { name: 'Cancel' })
+      .click()
     await page.getByRole('button', { name: 'Close calendars' }).click()
   }
 
@@ -203,6 +211,10 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
       const primary = { Files: 'Upload', Notes: 'New note', Mail: 'New message' }[name]
       await expect(page.getByRole('button', { name: primary, exact: true })).toBeVisible()
       if (name === 'Mail') {
+        await page.getByRole('button', { name: /switch folder/ }).click()
+        await expect(page.getByRole('dialog', { name: 'Folders' })).toBeVisible()
+        await expectCompactTouchTargets(page)
+        await page.getByRole('button', { name: 'Close folder list' }).click()
         await page.getByRole('button', { name: 'Message filters' }).click()
         const filters = page.getByRole('menu', { name: 'Message filters' })
         await expect(filters.getByRole('menuitemcheckbox', { name: 'Unread only' })).toBeVisible()

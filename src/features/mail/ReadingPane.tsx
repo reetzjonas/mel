@@ -162,7 +162,7 @@ function SplitAction({
                 setOpen(false)
                 run()
               }}
-              className="block w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2"
+              className="block min-h-11 w-full px-3 py-1.5 text-left text-sm transition-colors hover:bg-surface-2 sm:min-h-0"
             >
               {text}
             </button>

@@ -547,7 +547,7 @@ export function Compose({
                     <button
                       type="button"
                       aria-label={`${t('compose.removeAttachment')}: ${a.name}`}
-                      className="flex min-h-8 min-w-8 items-center justify-center rounded-full text-ink-muted hover:bg-danger-wash hover:text-danger sm:min-h-0 sm:min-w-0"
+                      className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-ink-muted hover:bg-danger-wash hover:text-danger sm:min-h-0 sm:min-w-0"
                       onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
                     >
                       <Icon name="close" size={11} />

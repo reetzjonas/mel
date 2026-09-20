@@ -47,7 +47,7 @@ function Row({ p, onRemove }: { p: Participant; onRemove: (() => void) | null })
           type="button"
           onClick={onRemove}
           aria-label={`${t('cal.removeAttendee')} ${p.email}`}
-          className="text-ink-muted hover:text-ink"
+          className="flex min-h-11 min-w-11 items-center justify-center text-ink-muted hover:text-ink sm:min-h-0 sm:min-w-0"
         >
           <Icon name="close" className="size-4" />
         </button>
@@ -173,7 +173,7 @@ export function ParticipantsField({
               <li key={`${s.email}-${s.name}`}>
                 <button
                   type="button"
-                  className="flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2"
+                  className="flex min-h-11 w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-2 sm:min-h-0"
                   onClick={() => add(s.email, s.name)}
                 >
                   {s.name} <span className="text-ink-muted">{s.email}</span>

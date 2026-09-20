@@ -48,7 +48,7 @@ export function MailboxDrawer({ account, mailboxes }: { account: Account; mailbo
             type="button"
             aria-label={t('folder.closeList')}
             onClick={() => setOpen(false)}
-            className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
           >
             <Icon name="close" size={16} />
           </button>

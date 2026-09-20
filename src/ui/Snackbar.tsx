@@ -12,7 +12,7 @@ export function Snackbar() {
       {snackbar.action && snackbar.actionLabel && (
         <button
           type="button"
-          className="rounded-full px-3 py-1 text-xs font-semibold tracking-wide text-canvas uppercase transition-colors hover:bg-canvas/15"
+          className="min-h-11 rounded-full px-3 py-1 text-xs font-semibold tracking-wide text-canvas uppercase transition-colors hover:bg-canvas/15 sm:min-h-0"
           onClick={() => {
             snackbar.action?.()
             hideSnackbar()

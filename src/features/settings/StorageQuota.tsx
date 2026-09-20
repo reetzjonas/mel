@@ -108,7 +108,7 @@ export function StorageWarning({ accountId, enabled }: { accountId: string; enab
         type="button"
         aria-label={label}
         onClick={() => open('account', 'storage')}
-        className="flex items-center gap-1.5 rounded-control bg-danger-wash px-2 py-1.5 text-danger transition-colors hover:bg-danger hover:text-canvas"
+        className="flex min-h-11 items-center gap-1.5 rounded-control bg-danger-wash px-2 py-1.5 text-danger transition-colors hover:bg-danger hover:text-canvas sm:min-h-0"
       >
         <Icon name="warning" size={15} />
         <span className="text-xs font-medium tabular-nums">{percentLabel(fraction)}</span>
