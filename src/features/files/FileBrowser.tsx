@@ -809,15 +809,15 @@ function FileRow({
               e.stopPropagation()
               onToggle(e.shiftKey)
             }}
-            className="group/box absolute inset-0 flex items-center justify-center"
+            className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+              checked || selecting ? 'opacity-100' : 'opacity-0 hover:opacity-100'
+            }`}
           >
             <span
-              className={`flex size-[17px] items-center justify-center rounded-[4px] transition-opacity ${
+              className={`flex size-[17px] items-center justify-center rounded-[4px] ${
                 checked
                   ? 'bg-accent text-accent-ink'
-                  : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
-                      selecting ? 'opacity-100' : 'opacity-0 group-hover/box:opacity-100'
-                    }`
+                  : 'bg-surface-2 text-ink-muted ring-1 ring-line ring-inset'
               }`}
             >
               <Icon name="check" size={13} />
