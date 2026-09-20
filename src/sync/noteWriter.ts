@@ -72,6 +72,14 @@ export async function saveNoteFile(
    * ever sees.
    */
   const folderName = note.folderName || noteFolderName(note.title)
+  /*
+   * Pinned before anything is created. The name carries a random suffix, so a
+   * replay after a lost answer — the tab closed between the folder and the
+   * file — would look for a name it has never used, miss the folder the first
+   * run made, and leave it empty behind a second one. The title may well have
+   * changed by then, too.
+   */
+  if (!note.folderName && !note.folderId) await pinFolderName(accountId, noteId, folderName)
   const folderId = note.folderId ?? (await findOrCreateFolder(files, rootId, folderName))
   const children = await files.listChildren(folderId)
 
@@ -105,6 +113,14 @@ export async function saveNoteFile(
     const latest: Note = openEnvelope(current.payload)
     await db.notes.put(noteRow(accountId, { ...latest, folderId, fileId, folderName }))
   }
+}
+
+async function pinFolderName(accountId: string, noteId: string, folderName: string) {
+  const current = await db.notes.get([accountId, noteId])
+  if (!current) return
+  const latest: Note = openEnvelope(current.payload)
+  if (latest.folderName) return
+  await db.notes.put(noteRow(accountId, { ...latest, folderName }))
 }
 
 /**

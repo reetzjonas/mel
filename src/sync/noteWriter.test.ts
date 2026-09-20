@@ -107,6 +107,35 @@ describe('writing a note that has never been saved', () => {
   })
 })
 
+describe('replaying a write that was cut short', () => {
+  it('finds the folder the first run made, even if the title has moved on', async () => {
+    await db.notes.put(noteRow(ACC, note()))
+    let attempt = 0
+    const cutShort = {
+      ...(files as object),
+      // The folder is made; then the tab goes away before the file is.
+      createFile: () => {
+        attempt++
+        return Promise.reject(new Error('tab closed'))
+      },
+    } as never
+    await expect(saveNoteFile(ACC, cutShort, 'n1')).rejects.toThrow('tab closed')
+    expect(attempt).toBe(1)
+
+    const madeFolder = created.find((c) => /^einkauf-/.test(c.name))!
+    children['root'] = [node({ id: 'root-id', name: NOTES_FOLDER })]
+    children['root-id'] = [node({ id: 'mine', name: madeFolder.name, parentId: 'root-id' })]
+    // Typing went on in the meantime.
+    const stored: Note = openEnvelope((await db.notes.get([ACC, 'n1']))!.payload)
+    await db.notes.put(noteRow(ACC, { ...stored, title: 'Einkauf für Montag' }))
+    created = []
+
+    await saveNoteFile(ACC, files, 'n1')
+
+    expect(created.map((c) => c.name)).toEqual([NOTE_FILE])
+  })
+})
+
 describe('writing a note that exists', () => {
   it('replaces the file in place rather than adding another', async () => {
     children['root'] = [node({ id: 'root-id', name: NOTES_FOLDER })]

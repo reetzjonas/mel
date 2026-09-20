@@ -51,6 +51,22 @@ export function emptyNote(): Note {
  * the note looked like when the first save fired.
  */
 export async function saveNote(accountId: string, note: Note): Promise<Note> {
+  /*
+   * An editor holds the note it was rendered with, which can predate the
+   * moment the writer pinned a folder name or filled in where the note landed.
+   * A note never loses its folder, so a copy without one is a stale copy: keep
+   * what the row already knows rather than un-pinning it.
+   */
+  const stored = await db.notes.get([accountId, note.id])
+  if (stored) {
+    const known: Note = openEnvelope(stored.payload)
+    note = {
+      ...note,
+      folderId: note.folderId ?? known.folderId,
+      fileId: note.fileId ?? known.fileId,
+      folderName: note.folderName || known.folderName,
+    }
+  }
   await db.notes.put(noteRow(accountId, note))
   /*
    * An untouched note is not worth a folder on the server. Pressing "new note"
