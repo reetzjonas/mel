@@ -54,8 +54,10 @@ export function NoteCard({
       {/* The pin flag doubles as the checkbox, the way Files' node icon does —
           reacting only when the pointer is on it, so hovering the row doesn't
           blank the flag out. Reserved even for an unpinned note so the title
-          doesn't shift as the checkbox comes and goes. */}
-      <span className="relative flex h-[17px] w-[17px] shrink-0 items-center justify-center">
+          doesn't shift as the checkbox comes and goes. On a phone the button
+          is a full 44px target that reaches out over the row's padding, with
+          the 17px box drawn inside it. */}
+      <span className="relative -my-2 -ml-2 flex size-11 shrink-0 items-center justify-center sm:m-0 sm:size-[17px]">
         <Icon
           name="flag"
           size={12}
@@ -71,15 +73,19 @@ export function NoteCard({
             e.stopPropagation()
             onToggle(e.shiftKey)
           }}
-          className={`absolute inset-0 flex items-center justify-center rounded-[4px] transition-opacity ${
-            checked
-              ? 'bg-accent text-accent-ink'
-              : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
-                  selecting ? 'opacity-100' : 'opacity-0 hover:opacity-100'
-                }`
-          }`}
+          className="group absolute inset-0 flex items-center justify-center"
         >
-          <Icon name="check" size={12} />
+          <span
+            className={`flex size-[17px] items-center justify-center rounded-[4px] transition-opacity ${
+              checked
+                ? 'bg-accent text-accent-ink'
+                : `bg-surface-2 text-ink-muted ring-1 ring-line ring-inset ${
+                    selecting ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  }`
+            }`}
+          >
+            <Icon name="check" size={12} />
+          </span>
         </button>
       </span>
       <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
