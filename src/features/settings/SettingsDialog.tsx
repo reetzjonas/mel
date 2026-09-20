@@ -204,7 +204,7 @@ export function SettingsDialog({
             aria-label={t('settings.title')}
             aria-orientation={verticalTabs ? 'vertical' : 'horizontal'}
             onKeyDown={moveTab}
-            className="flex shrink-0 gap-1 overflow-x-auto px-4 pb-2 sm:w-48 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:px-3 sm:pb-3"
+            className="flex shrink-0 gap-1 overflow-x-auto px-4 pt-2 pb-2 sm:w-48 sm:flex-col sm:overflow-x-visible sm:overflow-y-auto sm:px-3 sm:pt-3 sm:pb-3"
           >
             {tabs.map((id) => (
               <button
