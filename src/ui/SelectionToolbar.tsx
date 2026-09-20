@@ -27,7 +27,7 @@ export function SelectionActionButton({
         aria-label={label}
         disabled={disabled}
         onClick={onClick}
-        className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40"
+        className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40 sm:min-h-0 sm:min-w-0"
       >
         <Icon name={icon} size={15} />
       </button>
@@ -59,13 +59,13 @@ export function SelectionToolbar({
 }) {
   return (
     <div className="px-2.5 pt-2.5 pb-1.5" data-testid="selection-toolbar">
-      <div className="flex items-center gap-1">
+      <div className="flex min-w-0 items-center gap-1">
         <Tooltip label={t('bulk.clear')}>
           <button
             type="button"
             aria-label={t('bulk.clear')}
             onClick={onClear}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
           >
             <Icon name="close" size={15} />
           </button>
@@ -73,7 +73,7 @@ export function SelectionToolbar({
         <span className="text-[13px] font-medium whitespace-nowrap">
           {count} {t('bulk.selected')}
         </span>
-        <span className="ml-auto flex items-center">{children}</span>
+        <span className="ml-auto flex min-w-0 items-center overflow-x-auto">{children}</span>
       </div>
       {onSelectAll && (
         /*

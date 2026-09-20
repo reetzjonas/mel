@@ -44,4 +44,14 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
     await page.getByRole('button', { name: 'Close calendars' }).click()
   }
+
+  for (const [name, path] of [
+    ['Files', '/files'],
+    ['Notes', '/notes'],
+    ['Mail', '/mail'],
+  ] as const) {
+    await page.getByRole('link', { name, exact: true }).first().click()
+    await expect(page).toHaveURL(new RegExp(`${path}(?:/.*)?$`))
+    await expectNoPageOverflow()
+  }
 })

@@ -198,10 +198,10 @@ function ContactDetail() {
 
   return (
     <article className="mx-auto max-w-lg space-y-4 p-4">
-      <div className="mb-2 lg:hidden">
+      <div className="-mt-2 mb-1 lg:hidden">
         <Link
           to="/contacts"
-          className="-ml-1 inline-flex items-center gap-1.5 rounded-md px-1.5 py-1 text-sm text-ink-muted hover:bg-surface-2"
+          className="-ml-2 inline-flex min-h-11 items-center gap-1.5 rounded-control px-2 text-sm text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
         >
           <Icon name="back" size={15} />
           {t('mail.back')}
@@ -225,7 +225,7 @@ function ContactDetail() {
         <button
           type="button"
           onClick={() => setEditing(true)}
-          className="rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2"
+          className="min-h-11 rounded-control border border-line px-3 py-1.5 text-sm transition-colors hover:bg-surface-2 sm:min-h-0"
         >
           {t('contacts.edit')}
         </button>
@@ -344,7 +344,7 @@ function ContactDetail() {
 
       <button
         type="button"
-        className="text-sm text-danger hover:underline"
+        className="min-h-11 rounded-control px-2 text-sm text-danger hover:bg-danger-wash hover:underline sm:min-h-0"
         onClick={() => {
           void deleteContact(account.id, contact.id).then(() => {
             showSnackbar({ message: t('contacts.deleted') })

@@ -91,7 +91,7 @@ function ActionButton({
         aria-label={label}
         onClick={onClick}
         disabled={disabled}
-        className={`flex items-center gap-1.5 rounded-md p-2 transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
+        className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center gap-1.5 rounded-md p-2 transition-colors hover:bg-surface-2 disabled:pointer-events-none disabled:opacity-40 sm:min-h-0 sm:min-w-0 ${active ? 'text-honey' : 'text-ink-muted hover:text-ink'}`}
       >
         <Icon name={icon} size={16} className="shrink-0" />
         {labelled && (
@@ -142,7 +142,7 @@ function SplitAction({
           aria-haspopup="menu"
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="-ml-1.5 rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          className="-ml-1.5 flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
         >
           <Icon name="chevronDown" size={12} />
         </button>
@@ -611,7 +611,7 @@ export function ReadingPane({
           <Link
             to="/mail/$mailboxId"
             params={{ mailboxId }}
-            className="rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 lg:hidden"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md p-2 text-ink-muted transition-colors hover:bg-surface-2 lg:hidden"
             aria-label={t('mail.back')}
           >
             <Icon name="back" size={16} />

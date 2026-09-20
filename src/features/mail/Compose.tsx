@@ -541,7 +541,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
                     <button
                       type="button"
                       aria-label={`${t('compose.removeAttachment')}: ${a.name}`}
-                      className="text-ink-muted hover:text-danger"
+                      className="flex min-h-8 min-w-8 items-center justify-center rounded-full text-ink-muted hover:bg-danger-wash hover:text-danger sm:min-h-0 sm:min-w-0"
                       onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
                     >
                       <Icon name="close" size={11} />
@@ -564,7 +564,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               type="button"
               aria-label={t('compose.attach')}
               onClick={() => fileInput.current?.click()}
-              className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+              className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
             >
               <Icon name="paperclip" size={16} />
             </button>
@@ -584,7 +584,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
                 type="button"
                 aria-label={t('compose.deleteDraft')}
                 onClick={() => void deleteDraft()}
-                className="rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-danger"
+                className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-danger sm:min-h-0 sm:min-w-0"
               >
                 <Icon name="trash" size={16} />
               </button>
@@ -603,7 +603,7 @@ export function Compose({ accountId, init }: { accountId: string; init: ComposeI
               aria-label={t('compose.saveDraft')}
               onClick={() => void saveNow()}
               disabled={saving || busy}
-              className={`${dirty || draftSaved ? '' : 'ml-auto '}rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50`}
+              className={`${dirty || draftSaved ? '' : 'ml-auto '}flex min-h-11 min-w-11 items-center justify-center rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50 sm:min-h-0 sm:min-w-0`}
             >
               <Icon name="save" size={16} />
             </button>

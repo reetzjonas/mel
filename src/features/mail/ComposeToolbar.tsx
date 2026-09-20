@@ -30,7 +30,7 @@ function ToolbarButton({
         disabled={disabled}
         onMouseDown={(e) => e.preventDefault()} // keep the editor selection while clicking
         onClick={onClick}
-        className={`rounded-control p-1.5 transition-colors disabled:pointer-events-none disabled:opacity-40 ${
+        className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1.5 transition-colors disabled:pointer-events-none disabled:opacity-40 sm:min-h-0 sm:min-w-0 ${
           active ? 'bg-accent-wash text-accent' : 'text-ink-muted hover:bg-surface-2 hover:text-ink'
         }`}
       >
@@ -65,7 +65,7 @@ export function ComposeToolbar({ editor }: { editor: Editor | null }) {
   return (
     <>
       <div
-        className="flex flex-wrap items-center gap-0.5 border-b border-line py-1.5"
+        className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-line py-1.5"
         role="toolbar"
       >
         <ToolbarButton

@@ -149,7 +149,7 @@ export function SelectionToolbar({
         {moveOpen && (
           <span
             data-testid="move-folder-picker"
-            className="animate-rise absolute top-full right-0 z-20 mt-1 flex max-h-64 w-80 flex-col overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line"
+            className="animate-rise absolute top-full right-0 z-20 mt-1 flex max-h-64 w-80 max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-control bg-raised shadow-overlay ring-1 ring-line"
           >
             <span className="shrink-0 border-b border-line px-4 py-3">
               <span className="block text-center text-sm font-semibold">{t('bulk.move')}</span>

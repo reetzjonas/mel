@@ -139,7 +139,7 @@ export function FilePreview({
             type="button"
             aria-label={t('files.preview.expand')}
             onClick={() => setExpanded(true)}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
           >
             <Icon name="expand" size={15} />
           </button>
@@ -148,9 +148,10 @@ export function FilePreview({
           type="button"
           aria-label={t('mail.back')}
           onClick={onClose}
-          className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+          className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
         >
-          <Icon name="close" size={15} />
+          <Icon name="back" size={16} className="lg:hidden" />
+          <Icon name="close" size={15} className="hidden lg:block" />
         </button>
       </div>
 
@@ -163,7 +164,7 @@ export function FilePreview({
         )}
       </div>
 
-      <div className="flex items-center gap-2 border-t border-line p-3">
+      <div className="flex flex-wrap items-center gap-2 border-t border-line p-3">
         <button type="button" onClick={() => void save()} className={secondaryButtonClass}>
           {t('files.download')}
         </button>
@@ -241,7 +242,7 @@ function ExpandedPreview({
             type="button"
             aria-label={t('files.preview.collapse')}
             onClick={onClose}
-            className="rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink"
+            className="flex min-h-11 min-w-11 items-center justify-center rounded-control p-1.5 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
           >
             <Icon name="close" size={15} />
           </button>
