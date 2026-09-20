@@ -106,7 +106,7 @@ export function NotificationsDialog({
                     disabled={busy}
                     aria-label={`${t('cal.notif.dismiss')}: ${text}`}
                     onClick={() => void dismiss([n.id])}
-                    className="shrink-0 rounded-control p-1 text-ink-muted hover:bg-surface-2 hover:text-ink"
+                    className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1 text-ink-muted hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0"
                   >
                     <Icon name="close" size={14} />
                   </button>

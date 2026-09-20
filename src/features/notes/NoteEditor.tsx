@@ -107,7 +107,7 @@ export function NoteEditor({
              a ring is a line around the whole panel, and the caret already
              says where the writing goes — the same call compose makes for the
              message body (.ProseMirror in index.css). */
-            className="min-w-0 flex-1 bg-transparent text-[15px] font-medium text-ink outline-none focus-visible:outline-none placeholder:text-ink-subtle"
+            className="min-h-11 min-w-0 flex-1 bg-transparent text-[15px] font-medium text-ink outline-none focus-visible:outline-none placeholder:text-ink-subtle lg:min-h-0"
             placeholder={t('notes.titlePlaceholder')}
             value={title}
             onChange={(e) => setTitle(e.target.value)}

@@ -178,7 +178,7 @@ export function VacationSetting({ accountId }: { accountId: string }) {
   if (!v) return <p className="text-sm text-ink-muted">{t('mail.loading')}</p>
   return (
     <div className="space-y-3">
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0">
         <input
           type="checkbox"
           checked={v.enabled}
@@ -237,7 +237,7 @@ function PushDetailsSetting({ accountId }: { accountId: string }) {
   if (on === null) return null
   return (
     <div className="space-y-1.5 border-t border-line pt-3">
-      <label className="flex items-center gap-2 text-sm">
+      <label className="flex min-h-11 items-center gap-2 text-sm sm:min-h-0">
         <input
           type="checkbox"
           checked={on}
@@ -415,11 +415,7 @@ export function EncryptionSetting({ accountId }: { accountId: string }) {
         autoComplete="new-password"
       />
       {error && <p className="text-sm text-danger">{error}</p>}
-      <button
-        type="submit"
-        disabled={busy || !pass}
-        className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-ink disabled:opacity-50"
-      >
+      <button type="submit" disabled={busy || !pass} className={primaryButtonClass}>
         {busy ? t('crypto.working') : t('crypto.enable')}
       </button>
     </form>
@@ -541,7 +537,7 @@ export function AccountSetting({ account, onDone }: { account: Account; onDone: 
       <ResyncSetting accountId={account.id} />
       <button
         type="button"
-        className="rounded-control border border-danger px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-wash"
+        className="min-h-11 rounded-control border border-danger px-3 py-2 text-sm font-medium text-danger transition-colors hover:bg-danger-wash sm:min-h-0"
         onClick={() => {
           void signOut(account.id).then(() => {
             onDone()

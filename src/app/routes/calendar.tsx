@@ -167,7 +167,7 @@ function CalendarToggle({
 }) {
   return (
     <div className="group flex items-center rounded-control pr-1.5 transition-colors hover:bg-surface-2">
-      <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-[7px] pl-2.5 text-[13px]">
+      <label className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-[7px] pl-2.5 text-[13px] lg:min-h-0">
         <input type="checkbox" checked={!hidden} onChange={onToggle} className="sr-only" />
         <span
           className="h-2.5 w-2.5 shrink-0 rounded-full"
@@ -181,7 +181,7 @@ function CalendarToggle({
           type="button"
           aria-label={`${t('cal.calendar.editLabel')}: ${name}`}
           onClick={onEdit}
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded-control text-ink-muted opacity-0 transition-opacity group-hover:opacity-100 hover:text-ink focus-visible:opacity-100"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-control text-ink-muted transition-opacity hover:text-ink lg:h-5 lg:w-5 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-visible:opacity-100"
         >
           <Icon name="draft" size={12} />
         </button>
@@ -656,7 +656,7 @@ function CalendarApp() {
             type="button"
             aria-label={t('cal.calendar.new')}
             onClick={() => setCalendarDialog('new')}
-            className="flex h-8 w-8 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink lg:h-5 lg:w-5"
+            className="flex h-11 w-11 items-center justify-center rounded-control text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink lg:h-5 lg:w-5"
           >
             <Icon name="plus" size={13} />
           </button>

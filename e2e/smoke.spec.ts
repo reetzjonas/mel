@@ -186,6 +186,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await expect(calendarActions.getByRole('menuitem', { name: /^Updates/ })).toBeVisible()
     await calendarActions.getByRole('menuitem', { name: 'Calendars' }).click()
     await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
+    await expectCompactTouchTargets(page)
     await page.getByRole('button', { name: 'Close calendars' }).click()
   }
 
@@ -238,6 +239,11 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
       await page.keyboard.press('Escape')
       await expect(menu).toBeHidden()
     }
+    if (compact && name === 'Notes') {
+      await page.getByRole('button', { name: 'New note', exact: true }).click()
+      await expect(page).toHaveURL(/\/notes\/.+$/)
+      await expectCompactTouchTargets(page)
+    }
   }
 })
 
@@ -286,6 +292,7 @@ test('all app surfaces fit the responsive width matrix in both themes', async ({
         'aria-selected',
         'true',
       )
+      if (width < 640) await expectCompactTouchTargets(page)
       await page.getByRole('button', { name: 'Close settings' }).click()
     }
   }

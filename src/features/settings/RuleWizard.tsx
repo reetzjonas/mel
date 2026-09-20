@@ -161,7 +161,7 @@ function RuleCard({
             onClick={() =>
               onChange({ ...rule, conditions: rule.conditions.filter((_, at) => at !== i) })
             }
-            className="shrink-0 rounded-control p-1.5 text-ink-muted hover:text-danger"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1.5 text-ink-muted hover:text-danger sm:min-h-0 sm:min-w-0"
           >
             <Icon name="close" size={13} />
           </button>
@@ -169,7 +169,7 @@ function RuleCard({
       ))}
       <button
         type="button"
-        className="text-xs text-accent hover:underline"
+        className="inline-flex min-h-11 items-center text-xs text-accent hover:underline sm:min-h-0"
         onClick={() =>
           onChange({
             ...rule,
@@ -226,7 +226,7 @@ function RuleCard({
             type="button"
             aria-label={t('rule.removeAction')}
             onClick={() => onChange({ ...rule, actions: rule.actions.filter((_, at) => at !== i) })}
-            className="shrink-0 rounded-control p-1.5 text-ink-muted hover:text-danger"
+            className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-1.5 text-ink-muted hover:text-danger sm:min-h-0 sm:min-w-0"
           >
             <Icon name="close" size={13} />
           </button>
@@ -234,13 +234,13 @@ function RuleCard({
       ))}
       <button
         type="button"
-        className="text-xs text-accent hover:underline"
+        className="inline-flex min-h-11 items-center text-xs text-accent hover:underline sm:min-h-0"
         onClick={() => onChange({ ...rule, actions: [...rule.actions, { kind: 'flag' }] })}
       >
         {t('rule.addAction')}
       </button>
 
-      <label className="flex items-center gap-2 pt-1 text-xs text-ink-muted">
+      <label className="flex min-h-11 items-center gap-2 pt-1 text-xs text-ink-muted sm:min-h-0">
         <input
           type="checkbox"
           checked={rule.stop}

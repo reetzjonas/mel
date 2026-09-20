@@ -56,11 +56,11 @@ function Slider({
   onChange: (v: number) => void
 }) {
   return (
-    <label className="flex items-center gap-3 text-[13px]">
+    <label className="flex min-h-11 items-center gap-3 text-[13px] sm:min-h-0">
       <span className="w-28 shrink-0 text-ink-muted">{label}</span>
       <input
         type="range"
-        className="h-1.5 min-w-0 flex-1 cursor-pointer accent-accent"
+        className="h-11 min-w-0 flex-1 cursor-pointer accent-accent sm:h-1.5"
         min={min}
         max={max}
         step={step}
