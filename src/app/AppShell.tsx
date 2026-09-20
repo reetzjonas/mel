@@ -120,6 +120,22 @@ export function AppShell() {
   const locked = Boolean(lockedIds?.length)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const composeHistoryEntry = useRef(false)
+  // Where the composer's entry was pushed, and where the route stood last while
+  // it was open. They differ once a draft save has re-pointed the reading pane
+  // at the message's new id (`followDraft`).
+  const composeBaseHref = useRef('')
+  const composeHref = useRef('')
+  // From the history's own notifications rather than the rendered route, and
+  // pushes and replaces only: by the time Back's popstate reaches the listener
+  // below, the router has already re-rendered onto the entry beneath.
+  useEffect(
+    () =>
+      router.history.subscribe(({ location, action }) => {
+        if (composeHistoryEntry.current && (action.type === 'PUSH' || action.type === 'REPLACE'))
+          composeHref.current = location.href
+      }),
+    [router],
+  )
 
   // A modal compose window is one navigation level above whatever is behind
   // it. Giving it a same-URL history entry makes browser Back dismiss the
@@ -127,6 +143,7 @@ export function AppShell() {
   useEffect(() => {
     if (!compose || composeHistoryEntry.current) return
     composeHistoryEntry.current = true
+    composeBaseHref.current = composeHref.current = router.history.location.href
     router.history.push(router.history.location.href, { melCompose: true })
   }, [compose, router])
 
@@ -135,10 +152,23 @@ export function AppShell() {
       if (!composeHistoryEntry.current || !useUi.getState().compose) return
       composeHistoryEntry.current = false
       closeCompose()
+      /*
+       * Saving a draft replaces the message under a new id and `followDraft`
+       * re-points the route at it — but only the composer's own entry, the one
+       * just popped. The entry beneath still names the destroyed message, so
+       * landing on it shows "Message not found" over a list that has the draft.
+       * Carry the route the composer ended on down onto that entry.
+       */
+      const ended = composeHref.current
+      if (ended !== composeBaseHref.current) {
+        // After the router has handled this same event and settled on the
+        // entry beneath.
+        setTimeout(() => router.history.replace(ended), 0)
+      }
     }
     window.addEventListener('popstate', onPopState)
     return () => window.removeEventListener('popstate', onPopState)
-  }, [closeCompose])
+  }, [closeCompose, router])
 
   const dismissCompose = () => {
     if (composeHistoryEntry.current) router.history.back()
