@@ -41,8 +41,8 @@ export function SearchInput({
       />
       <input
         id={id}
-        className={`w-full rounded-control bg-surface-2 py-2 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent ${
-          clearLabel ? 'pr-7' : 'pr-3'
+        className={`min-h-11 w-full rounded-control bg-surface-2 py-2 pl-8 text-[13px] outline-none transition-shadow placeholder:text-ink-subtle focus:ring-2 focus:ring-accent sm:min-h-0 ${
+          clearLabel ? 'pr-11 sm:pr-7' : 'pr-3'
         }`}
         placeholder={placeholder}
         value={value}
@@ -62,7 +62,7 @@ export function SearchInput({
             type="button"
             aria-label={clearLabel}
             onClick={() => (onSubmit ? onSubmit('') : onChange(''))}
-            className="absolute top-1/2 right-2 -translate-y-1/2 text-ink-subtle transition-colors hover:text-ink"
+            className="absolute top-1/2 right-0 flex min-h-11 min-w-11 -translate-y-1/2 items-center justify-center text-ink-subtle transition-colors hover:text-ink sm:right-2 sm:min-h-0 sm:min-w-0"
           >
             <Icon name="close" size={13} />
           </button>

@@ -18,7 +18,7 @@ export const secondaryButtonClass =
  * before it lived here.
  */
 export const primaryIconButtonClass =
-  'min-h-11 min-w-11 rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95 sm:min-h-0 sm:min-w-0'
+  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-control bg-accent p-2 text-accent-ink shadow-raised transition-[background-color,transform] duration-150 hover:bg-accent-hover active:scale-95 sm:min-h-0 sm:min-w-0'
 
 /**
  * A circular, icon-only neutral button — theme toggle, sign out, settings,
@@ -26,14 +26,14 @@ export const primaryIconButtonClass =
  * control that isn't the primary action on its screen.
  */
 export const secondaryIconButtonClass =
-  'min-h-11 min-w-11 rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0'
+  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink sm:min-h-0 sm:min-w-0'
 
 /** The wrapper around a row of mutually exclusive options (Calendar's Month/Week/Day). */
 export const segmentedControlClass = 'flex items-center gap-0.5 rounded-control bg-surface-2 p-0.5'
 
 /** One option inside `segmentedControlClass`; pass the active one on every render. */
 export function segmentedOptionClass(active: boolean): string {
-  return `rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+  return `min-h-11 rounded-md px-2.5 py-1 text-xs font-medium transition-colors sm:min-h-0 ${
     active ? 'bg-raised text-ink shadow-raised' : 'text-ink-muted hover:text-ink'
   }`
 }

@@ -40,6 +40,53 @@ async function expectNoHorizontalOverflow(page: import('@playwright/test').Page)
   expect(result.scrollers).toEqual([])
 }
 
+async function expectCompactTouchTargets(page: import('@playwright/test').Page) {
+  const result = await page.evaluate(() => {
+    const controls = [
+      ...document.querySelectorAll<HTMLElement>(
+        'button, a[href], input:not([type="hidden"]), select',
+      ),
+    ]
+    const undersized = controls
+      .filter((element) => {
+        const box = element.getBoundingClientRect()
+        const style = getComputedStyle(element)
+        return (
+          box.width > 0 &&
+          box.height > 0 &&
+          style.display !== 'none' &&
+          style.visibility !== 'hidden' &&
+          (box.width < 43.5 || box.height < 43.5)
+        )
+      })
+      .map((element) => {
+        const box = element.getBoundingClientRect()
+        return {
+          label:
+            element.getAttribute('aria-label') ?? element.textContent?.trim() ?? element.tagName,
+          width: box.width,
+          height: box.height,
+        }
+      })
+    const offCenterIcons = controls.flatMap((element) => {
+      if (!(element instanceof HTMLButtonElement)) return []
+      const icon = element.querySelector('svg')
+      const text = element.textContent?.trim() ?? ''
+      if (!icon || (text && !/^\d+\+?$/.test(text))) return []
+      const control = element.getBoundingClientRect()
+      const glyph = icon.getBoundingClientRect()
+      const x = glyph.left + glyph.width / 2 - (control.left + control.width / 2)
+      const y = glyph.top + glyph.height / 2 - (control.top + control.height / 2)
+      return Math.abs(x) > 2 || Math.abs(y) > 2
+        ? [{ label: element.getAttribute('aria-label'), x, y }]
+        : []
+    })
+    return { undersized, offCenterIcons }
+  })
+  expect(result.undersized).toEqual([])
+  expect(result.offCenterIcons).toEqual([])
+}
+
 test('app shell renders and redirects to /mail (login form without account)', async ({ page }) => {
   await page.goto('/')
   await expect(page).toHaveURL(/\/mail$/)
@@ -77,6 +124,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   await expect(page).toHaveURL(/\/contacts$/)
   await expectNoPageOverflow()
   if (compact) {
+    await expectCompactTouchTargets(page)
     await page.getByRole('button', { name: 'New contact' }).click()
     await expect(page).toHaveURL(/\/contacts\/new$/)
     await expect(page.getByLabel('First name')).toBeVisible()
@@ -88,6 +136,7 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
   await expect(page).toHaveURL(/\/calendar$/)
   await expectNoPageOverflow()
   if (compact) {
+    await expectCompactTouchTargets(page)
     await page.getByRole('button', { name: 'New event' }).click()
     const eventDialog = page.getByRole('dialog', { name: 'New event' })
     await expect(eventDialog).toBeVisible()
@@ -101,7 +150,23 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
       expect(box?.height).toBeGreaterThanOrEqual(43.5)
     }
     await eventDialog.getByRole('button', { name: 'Cancel' }).click()
-    await page.getByRole('button', { name: 'Calendars', exact: true }).click()
+    await page.getByRole('button', { name: 'Day', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Previous period' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Next period' })).toBeVisible()
+    const dayControl = await page.getByRole('button', { name: 'Day', exact: true }).boundingBox()
+    const todayControl = await page
+      .getByRole('button', { name: 'Today', exact: true })
+      .boundingBox()
+    const moreControl = await page
+      .getByRole('button', { name: 'More calendar actions' })
+      .boundingBox()
+    expect(todayControl?.y).toBeCloseTo(dayControl!.y, 0)
+    expect(moreControl?.y).toBeCloseTo(dayControl!.y, 0)
+    await page.getByRole('button', { name: 'More calendar actions' }).click()
+    const calendarActions = page.getByRole('menu', { name: 'More calendar actions' })
+    await expect(calendarActions.getByRole('menuitem', { name: 'Calendars' })).toBeVisible()
+    await expect(calendarActions.getByRole('menuitem', { name: /^Updates/ })).toBeVisible()
+    await calendarActions.getByRole('menuitem', { name: 'Calendars' }).click()
     await expect(page.getByRole('dialog', { name: 'Calendars' })).toBeVisible()
     await page.getByRole('button', { name: 'Close calendars' }).click()
   }
@@ -115,9 +180,15 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
     await expect(page).toHaveURL(new RegExp(`${path}(?:/.*)?$`))
     await expectNoPageOverflow()
     if (compact) {
+      await expectCompactTouchTargets(page)
       const primary = { Files: 'Upload', Notes: 'New note', Mail: 'New message' }[name]
       await expect(page.getByRole('button', { name: primary, exact: true })).toBeVisible()
       if (name === 'Mail') {
+        await page.getByRole('button', { name: 'Message filters' }).click()
+        const filters = page.getByRole('menu', { name: 'Message filters' })
+        await expect(filters.getByRole('menuitemcheckbox', { name: 'Unread only' })).toBeVisible()
+        await expect(filters.getByRole('menuitemcheckbox', { name: 'Flagged only' })).toBeVisible()
+        await page.keyboard.press('Escape')
         await page.getByRole('button', { name: 'New message', exact: true }).click()
         const compose = page.getByRole('dialog', { name: 'New message' })
         await expect(compose).toBeVisible()

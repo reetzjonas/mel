@@ -696,7 +696,7 @@ function Breadcrumb({
         to="/files"
         search={(previous) => ({ ...previous, preview: undefined })}
         {...crumbProps(null, 'root')}
-        className="shrink-0 rounded-control px-1.5 py-1 font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
+        className="flex min-h-11 shrink-0 items-center rounded-control px-1.5 py-1 font-medium text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink sm:min-h-0"
       >
         {t('files.root')}
       </Link>
@@ -711,7 +711,7 @@ function Breadcrumb({
               params={{ folderId: node.id }}
               search={(previous) => ({ ...previous, preview: undefined })}
               {...crumbProps(node.id, node.id)}
-              className="truncate rounded-control px-1.5 py-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink"
+              className="flex min-h-11 items-center truncate rounded-control px-1.5 py-1 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink data-over:bg-accent-wash data-over:text-ink sm:min-h-0"
             >
               {nodeLabel(node)}
             </Link>

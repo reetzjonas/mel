@@ -19,6 +19,7 @@ import { searchEmails, type SearchResult } from '../../services/search'
 import { syncAccount } from '../../sync/engine'
 import { EmptyState } from '../../ui/EmptyState'
 import { Icon, type IconName } from '../../ui/Icon'
+import { OverflowMenu } from '../../ui/OverflowMenu'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { Tooltip } from '../../ui/Tooltip'
@@ -58,7 +59,7 @@ function FilterToggle({
          * one is far too close a call to read at this size. Same treatment the
          * active app-switcher item uses.
          */
-        className={`shrink-0 rounded-control p-2 transition-colors ${
+        className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-control p-2 transition-colors sm:min-h-0 sm:min-w-0 ${
           active
             ? 'bg-accent text-accent-ink hover:bg-accent-hover'
             : 'bg-surface-2 text-ink-subtle hover:text-ink'
@@ -227,6 +228,14 @@ function MailboxView() {
           />
         ) : (
           <div className="flex items-center gap-2 px-2.5 pt-2.5 pb-1.5">
+            <SearchInput
+              id="mail-search"
+              value={input}
+              onChange={setInput}
+              placeholder={t('mail.searchPlaceholder')}
+              onSubmit={submitSearch}
+              clearLabel={t('search.clear')}
+            />
             {/*
              * Mobile entry point to the folder list, which is off-screen here.
              * It doubles as the only place that names the current folder on a
@@ -237,32 +246,47 @@ function MailboxView() {
               aria-haspopup="dialog"
               aria-label={`${mailboxName} — ${t('folder.switch')}`}
               onClick={() => setFolderDrawerOpen(true)}
-              className="flex max-w-[45%] shrink-0 items-center gap-1.5 rounded-control bg-surface-2 py-2 pr-1.5 pl-2.5 text-[13px] text-ink-muted transition-colors hover:text-ink lg:hidden"
+              className="flex min-h-11 max-w-[40%] shrink-0 items-center gap-1.5 rounded-control bg-surface-2 py-2 pr-1.5 pl-2.5 text-[13px] text-ink-muted transition-colors hover:text-ink sm:min-h-0 lg:hidden"
             >
               <Icon name="folder" size={14} className="shrink-0" />
               <span className="truncate">{mailboxName}</span>
               <Icon name="chevronDown" size={13} className="shrink-0" />
             </button>
-            <SearchInput
-              id="mail-search"
-              value={input}
-              onChange={setInput}
-              placeholder={t('mail.searchPlaceholder')}
-              onSubmit={submitSearch}
-              clearLabel={t('search.clear')}
-            />
-            <FilterToggle
-              icon="mailUnread"
-              label={t('mail.filter.unread')}
-              active={filter === 'unread'}
-              onClick={() => toggleFilter('unread')}
-            />
-            <FilterToggle
-              icon="flag"
-              label={t('mail.filter.flagged')}
-              active={filter === 'flagged'}
-              onClick={() => toggleFilter('flagged')}
-            />
+            <span className="sm:hidden">
+              <OverflowMenu
+                label={t('mail.filter.actions')}
+                actions={[
+                  {
+                    icon: 'mailUnread',
+                    label: t('mail.filter.unread'),
+                    pressed: filter === 'unread',
+                    onSelect: () => toggleFilter('unread'),
+                  },
+                  {
+                    icon: 'flag',
+                    label: t('mail.filter.flagged'),
+                    pressed: filter === 'flagged',
+                    onSelect: () => toggleFilter('flagged'),
+                  },
+                ]}
+              />
+            </span>
+            <span className="hidden sm:inline-flex">
+              <FilterToggle
+                icon="mailUnread"
+                label={t('mail.filter.unread')}
+                active={filter === 'unread'}
+                onClick={() => toggleFilter('unread')}
+              />
+            </span>
+            <span className="hidden sm:inline-flex">
+              <FilterToggle
+                icon="flag"
+                label={t('mail.filter.flagged')}
+                active={filter === 'flagged'}
+                onClick={() => toggleFilter('flagged')}
+              />
+            </span>
           </div>
         )}
         {refreshing && (

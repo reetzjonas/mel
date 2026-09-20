@@ -46,9 +46,11 @@ import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/pane
 import { createEvent, deleteEvent, rsvpEvent, updateEvent } from '../../services/calendar'
 import { Icon } from '../../ui/Icon'
 import { MobileFab } from '../../ui/MobileFab'
+import { OverflowMenu } from '../../ui/OverflowMenu'
 import { DialogHeader } from '../../ui/DialogHeader'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
+import { Tooltip } from '../../ui/Tooltip'
 import { useModal } from '../../ui/useModal'
 import {
   modalPanelClass,
@@ -731,87 +733,154 @@ function CalendarApp() {
         data-testid="calendar-grid"
         className="panel flex min-w-0 flex-1 flex-col overflow-hidden max-sm:rounded-none max-sm:shadow-none"
       >
-        <header className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2">
-          <button
-            type="button"
-            onClick={() => setAnchor(new Date())}
-            className={`!px-3 !py-1.5 ${secondaryButtonClass}`}
-          >
-            {t('cal.today')}
-          </button>
-          <button
-            type="button"
-            aria-label="previous"
-            onClick={() => step(-1)}
-            className={`!p-1.5 ${secondaryIconButtonClass}`}
-          >
-            <Icon name="back" size={15} />
-          </button>
-          <button
-            type="button"
-            aria-label="next"
-            onClick={() => step(1)}
-            className={`!p-1.5 ${secondaryIconButtonClass}`}
-          >
-            <Icon name="forward" size={15} />
-          </button>
-          <h1 className="text-base font-semibold capitalize">{heading}</h1>
-
-          <div
-            className={`order-last flex w-full ${segmentedControlClass} sm:order-none sm:ml-2 sm:w-auto`}
-          >
-            {(['month', 'week', 'day'] as const).map((v) => (
+        <header className="border-b border-line px-3 py-2">
+          {/* Compact/medium: the date is the primary navigation. The less
+              frequent collection and update actions share one menu so the
+              heading never has to compete with a row of trailing icons. */}
+          <div className="space-y-2 lg:hidden">
+            <div className="flex min-w-0 items-center gap-2">
+              <Tooltip label={t('cal.previous')}>
+                <button
+                  type="button"
+                  aria-label={t('cal.previous')}
+                  onClick={() => step(-1)}
+                  className={`!min-h-11 !min-w-11 !p-1.5 ${secondaryIconButtonClass}`}
+                >
+                  <Icon name="chevronLeft" size={15} />
+                </button>
+              </Tooltip>
+              <h1 className="min-w-0 flex-1 truncate text-center text-base font-semibold capitalize">
+                {heading}
+              </h1>
+              <Tooltip label={t('cal.next')}>
+                <button
+                  type="button"
+                  aria-label={t('cal.next')}
+                  onClick={() => step(1)}
+                  className={`!min-h-11 !min-w-11 !p-1.5 ${secondaryIconButtonClass}`}
+                >
+                  <Icon name="chevronRight" size={15} />
+                </button>
+              </Tooltip>
+            </div>
+            <div className="flex min-w-0 items-center gap-2">
+              <div className={`flex min-w-0 flex-1 ${segmentedControlClass}`}>
+                {(['month', 'week', 'day'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => setView(v)}
+                    className={`!min-h-11 min-w-0 flex-1 ${segmentedOptionClass(view === v)}`}
+                  >
+                    {t(`cal.view.${v}`)}
+                  </button>
+                ))}
+              </div>
               <button
-                key={v}
                 type="button"
-                onClick={() => setView(v)}
-                className={`flex-1 sm:flex-none ${segmentedOptionClass(view === v)}`}
+                onClick={() => setAnchor(new Date())}
+                className={`!min-h-11 !px-3 !py-1.5 ${secondaryButtonClass}`}
               >
-                {t(`cal.view.${v}`)}
+                {t('cal.today')}
               </button>
-            ))}
+              <OverflowMenu
+                label={t('cal.moreActions')}
+                actions={[
+                  {
+                    icon: 'calendar',
+                    label: t('cal.calendars'),
+                    onSelect: () => setShowSidebar(true),
+                  },
+                  {
+                    icon: 'bell',
+                    label: `${t('cal.notif.button')}${
+                      notifications?.length ? ` (${notifications.length})` : ''
+                    }`,
+                    onSelect: () => setShowNotifications(true),
+                  },
+                ]}
+              />
+            </div>
           </div>
 
-          <button
-            type="button"
-            aria-label={t('cal.calendars')}
-            onClick={() => setShowSidebar(true)}
-            className={`ml-auto !p-1.5 lg:hidden ${secondaryIconButtonClass}`}
-          >
-            <Icon name="calendar" size={15} />
-          </button>
+          {/* Expanded: keep every action directly visible. */}
+          <div className="hidden flex-wrap items-center gap-2 lg:flex">
+            <button
+              type="button"
+              onClick={() => setAnchor(new Date())}
+              className={`!px-3 !py-1.5 ${secondaryButtonClass}`}
+            >
+              {t('cal.today')}
+            </button>
+            <Tooltip label={t('cal.previous')}>
+              <button
+                type="button"
+                aria-label={t('cal.previous')}
+                onClick={() => step(-1)}
+                className={`!p-1.5 ${secondaryIconButtonClass}`}
+              >
+                <Icon name="chevronLeft" size={15} />
+              </button>
+            </Tooltip>
+            <Tooltip label={t('cal.next')}>
+              <button
+                type="button"
+                aria-label={t('cal.next')}
+                onClick={() => step(1)}
+                className={`!p-1.5 ${secondaryIconButtonClass}`}
+              >
+                <Icon name="chevronRight" size={15} />
+              </button>
+            </Tooltip>
+            <h1 className="min-w-0 truncate text-base font-semibold capitalize">{heading}</h1>
 
-          <button
-            type="button"
-            aria-label={`${t('cal.notif.button')}${
-              notifications?.length ? ` (${notifications.length})` : ''
-            }`}
-            onClick={() => setShowNotifications(true)}
-            className={`relative !p-1.5 lg:ml-auto ${secondaryIconButtonClass}`}
-          >
-            <Icon name="bell" size={15} />
-            {notifications && notifications.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-semibold text-accent-ink">
-                {notifications.length > 99 ? '99+' : notifications.length}
-              </span>
-            )}
-          </button>
+            <div className={`ml-2 flex ${segmentedControlClass}`}>
+              {(['month', 'week', 'day'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  className={segmentedOptionClass(view === v)}
+                >
+                  {t(`cal.view.${v}`)}
+                </button>
+              ))}
+            </div>
 
-          {/* Without a calendar there is nothing to create an event in, and
+            <Tooltip label={t('cal.notif.button')}>
+              <button
+                type="button"
+                aria-label={`${t('cal.notif.button')}${
+                  notifications?.length ? ` (${notifications.length})` : ''
+                }`}
+                onClick={() => setShowNotifications(true)}
+                className={`relative ml-auto !p-1.5 ${secondaryIconButtonClass}`}
+              >
+                <Icon name="bell" size={15} />
+                {notifications && notifications.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] leading-none font-semibold text-accent-ink">
+                    {notifications.length > 99 ? '99+' : notifications.length}
+                  </span>
+                )}
+              </button>
+            </Tooltip>
+
+            {/* Without a calendar there is nothing to create an event in, and
               openNew() would return silently — a button that does nothing when
               pressed. Disabled until the calendar list has actually arrived. */}
-          {/* Stays a native title rather than <Tooltip>: a disabled control
+            {/* Stays a native title rather than <Tooltip>: a disabled control
               fires no mouse events, so nothing would ever open the bubble. */}
-          <button
-            type="button"
-            disabled={!defaultCalendarId}
-            title={defaultCalendarId ? undefined : t('cal.loading')}
-            onClick={() => openNew(view === 'month' ? new Date() : anchor)}
-            className={`hidden items-center gap-2 !py-1.5 sm:flex ${primaryButtonClass}`}
-          >
-            <Icon name="compose" size={14} />
-            <span className="hidden sm:inline">{t('cal.newEvent')}</span>
-          </button>
+            <button
+              type="button"
+              disabled={!defaultCalendarId}
+              title={defaultCalendarId ? undefined : t('cal.loading')}
+              onClick={() => openNew(view === 'month' ? new Date() : anchor)}
+              className={`flex items-center gap-2 !py-1.5 ${primaryButtonClass}`}
+            >
+              <Icon name="compose" size={14} />
+              <span>{t('cal.newEvent')}</span>
+            </button>
+          </div>
         </header>
 
         {/* Desktop: month grid */}
