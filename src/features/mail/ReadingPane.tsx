@@ -5,6 +5,7 @@ import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate, formatListDate } from '../../lib/dates'
 import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
+import { inlineParts, partCid, resolveCids } from '../../lib/inlineImages'
 import { useImagePolicy } from '../../lib/imagePolicy'
 import { normalizeImageSender, setImageSender } from '../../services/imageSenders'
 import { useImageSenders } from './useImageSenders'
@@ -16,6 +17,7 @@ import {
   useThread,
   type ContactByEmail,
 } from './hooks'
+import { useInlineImageUrls } from './inlineImageUrls'
 import { MessageDetails } from './MessageDetails'
 import { UnsubscribeBar } from './UnsubscribeBar'
 import { foldThread, threadForMessage, type ThreadSlot } from './conversations'
@@ -570,13 +572,26 @@ export function ReadingPane({
    * message — a race whose loser is the document the user ends up looking at.
    * Plain text never asks the network for anything, so it does not wait.
    */
-  const framePending = body !== 'loading' && Boolean(body?.html) && !imagesKnown
+  const inlineUrls = useInlineImageUrls(accountId, body)
+  /*
+   * Inline pictures (`cid:`) are fetched before the frame is drawn, for the
+   * same reason: drawing it once without them and again with them is a
+   * second navigation of the frame for the same message.
+   */
+  const framePending =
+    body !== 'loading' && Boolean(body?.html) && (!imagesKnown || inlineUrls === null)
   const doc =
     body !== 'loading' && body && !framePending
       ? body.html
-        ? mailFrameDoc(body.html, allowRemote)
+        ? mailFrameDoc(resolveCids(body.html, inlineUrls ?? {}), allowRemote)
         : textFrameDoc(body.text ?? '', frameTheme)
       : null
+  // A picture drawn in the body is not also offered as a file below it.
+  const shownInline = body !== 'loading' && body ? inlineParts(body) : null
+  const listedAttachments =
+    body !== 'loading' && body
+      ? body.attachments.filter((a) => !shownInline?.has(partCid(a) ?? ''))
+      : []
   const sender = expanded.from[0]
   const senderContact = sender?.email ? contacts?.get(sender.email.toLowerCase()) : undefined
   // Senders, oldest first, each named once: the same shape the list row uses.
@@ -966,9 +981,9 @@ export function ReadingPane({
             />
           )}
         </div>
-        {body !== 'loading' && body && body.attachments.length > 0 && (
+        {listedAttachments.length > 0 && (
           <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
-            {body.attachments.map((a, i) =>
+            {listedAttachments.map((a, i) =>
               a.blobId ? (
                 <span
                   key={i}

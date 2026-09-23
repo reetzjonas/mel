@@ -106,6 +106,9 @@ working on that specific feature, not on every session:
   archive/delete scope): `docs/notes/conversations.md`
 - **Drafts reopened in the editor** (autosave, Save button, `followDraft`):
   `docs/notes/drafts.md`
+- **Inline images in compose** (`cid:` kept in the document, why the MIME
+  structure is spelled out for Stalwart, `data:` URLs in the reading frame):
+  `docs/notes/compose-inline-images.md`
 - **Outbox queue visible/manageable** (Settings → Queued changes):
   `docs/notes/outbox-queue.md`
 - **Login, autodiscovery, sign-out** (`discoveryCandidates`, DoH SRV lookup,

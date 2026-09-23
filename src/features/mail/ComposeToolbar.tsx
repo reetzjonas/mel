@@ -58,7 +58,13 @@ function setLink(editor: Editor, url: string) {
  * button without any content changing), so there is no state to keep in sync
  * here.
  */
-export function ComposeToolbar({ editor }: { editor: Editor | null }) {
+export function ComposeToolbar({
+  editor,
+  onInsertImage,
+}: {
+  editor: Editor | null
+  onInsertImage: () => void
+}) {
   const [linkUrl, setLinkUrl] = useState<string | null>(null)
   if (!editor) return null
 
@@ -113,6 +119,7 @@ export function ComposeToolbar({ editor }: { editor: Editor | null }) {
           onClick={() => editor.chain().focus().toggleBlockquote().run()}
         />
         <Divider />
+        <ToolbarButton icon="image" label={t('compose.insertImage')} onClick={onInsertImage} />
         {editor.isActive('link') ? (
           <ToolbarButton
             icon="unlink"

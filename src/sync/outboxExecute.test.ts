@@ -177,6 +177,66 @@ describe('sending a queued message', () => {
     expect(calls).toEqual(['sendEmail'])
   })
 
+  it('uploads a local attachment again even when a draft save already did', async () => {
+    // A blob the draft save uploaded may have expired on the server since;
+    // the copy on the device is the one known to exist.
+    await db.blobCache.put({
+      accountId: ACC,
+      blobId: 'local-blob',
+      size: 3,
+      lastAccess: 0,
+      payload: sealPlain({ type: 'image/png', data: new Uint8Array([1, 2, 3]) } as never),
+    })
+
+    await run({
+      kind: 'email.send',
+      mail: { attachments: [{ blobId: 'from-draft-save', localKey: 'local-blob', cid: 'c@mel' }] },
+      mailboxIds: { drafts: 'd', sent: 's' },
+    })
+
+    expect(calls).toEqual(['uploadBlob', 'sendEmail'])
+  })
+
+  it('destroys the draft it was written in only after the message went out', async () => {
+    await db.emails.put({
+      accountId: ACC,
+      id: 'draft-1',
+      threadId: 't',
+      receivedAt: 0,
+      mailboxIds: ['d'],
+      mailboxDates: [],
+      unread: 0,
+      flagged: 0,
+      payload: sealPlain({ id: 'draft-1' } as never),
+    })
+
+    await run({
+      kind: 'email.send',
+      mail: { attachments: [] },
+      mailboxIds: { drafts: 'd', sent: 's' },
+      draftId: 'draft-1',
+    })
+
+    expect(calls).toEqual(['sendEmail', 'setEmails'])
+    expect(await db.emails.get([ACC, 'draft-1'])).toBeUndefined()
+  })
+
+  it('keeps the draft when the send fails', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    answers = {
+      sendEmail: Promise.reject(Object.assign(new Error('forbiddenFrom'), { permanent: true })),
+    }
+
+    await run({
+      kind: 'email.send',
+      mail: { attachments: [] },
+      mailboxIds: { drafts: 'd', sent: 's' },
+      draftId: 'draft-1',
+    })
+
+    expect(calls).toEqual(['sendEmail'])
+  })
+
   it('fails loudly when the attachment is no longer on the device', async () => {
     /*
      * Sending the message without it would deliver a mail whose attachment

@@ -2,9 +2,10 @@ import type { ComposeInit } from '../app/store'
 import type { EmailAddress, EmailBody, EmailHeader } from '../domain/email'
 import type { Identity, OutgoingAttachment, OutgoingEmail } from '../domain/identity'
 import { sanitizeMailHtml } from '../lib/htmlSanitize'
+import { inlineAttachments, inlineParts, partCid } from '../lib/inlineImages'
 import { db } from '../storage/db'
 import { roleMailboxId } from '../storage/mailboxes'
-import { sealPlain } from '../storage/envelope'
+import { openEnvelope, sealPlain } from '../storage/envelope'
 import { connectionFor } from '../sync/connections'
 import { cancel, enqueue } from '../sync/outbox'
 
@@ -21,8 +22,15 @@ export async function getIdentities(accountId: string): Promise<Identity[]> {
   return list
 }
 
-/** Store the file locally; upload happens at send time (works offline). */
-export async function stageAttachment(accountId: string, file: File): Promise<OutgoingAttachment> {
+/**
+ * Store the file locally; upload happens at send time (works offline). With a
+ * `cid` it is a picture drawn inside the text rather than a file beside it.
+ */
+export async function stageAttachment(
+  accountId: string,
+  file: File,
+  cid?: string,
+): Promise<OutgoingAttachment> {
   const localKey = crypto.randomUUID()
   const data = await file.arrayBuffer()
   await db.blobCache.put({
@@ -38,6 +46,7 @@ export async function stageAttachment(accountId: string, file: File): Promise<Ou
     name: file.name,
     type: file.type || 'application/octet-stream',
     size: data.byteLength,
+    ...(cid ? { cid } : {}),
   }
 }
 
@@ -59,6 +68,8 @@ export async function sendMail(
     attachments: OutgoingAttachment[]
     inReplyTo?: string[]
     references?: string[]
+    /** The saved draft this was written in; destroyed once the message is out. */
+    draftId?: string | null
   },
 ): Promise<SendResult> {
   const drafts = await roleMailboxId(accountId, 'drafts')
@@ -80,7 +91,12 @@ export async function sendMail(
   }
   const seq = await enqueue(
     accountId,
-    { kind: 'email.send', mail, mailboxIds: { drafts, sent } },
+    {
+      kind: 'email.send',
+      mail,
+      mailboxIds: { drafts, sent },
+      ...(fields.draftId ? { draftId: fields.draftId } : {}),
+    },
     { delayMs: UNDO_SEND_MS },
   )
   return { undo: () => cancel(seq) }
@@ -99,7 +115,15 @@ export interface DraftSaveResult {
   ok: boolean
 }
 
-/** Saves a draft to the server; replaces the previous one in the same call. */
+/**
+ * Saves a draft to the server; replaces the previous one in the same call.
+ *
+ * Attachments and inline pictures go into the draft too, so closing the
+ * window or opening the draft elsewhere keeps them. One that is only staged
+ * locally is uploaded first, once: its `blobId` is written onto the object the
+ * composer holds, so the next autosave reuses it. The local copy stays until
+ * the real send, which uploads it afresh (see `email.send` in the outbox).
+ */
 export async function saveDraft(
   accountId: string,
   identity: Identity,
@@ -110,6 +134,7 @@ export async function saveDraft(
     subject: string
     html: string
     text: string
+    attachments?: OutgoingAttachment[]
     inReplyTo?: string[]
     references?: string[]
   },
@@ -130,11 +155,18 @@ export async function saveDraft(
     subject: fields.subject,
     html: fields.html,
     text: fields.text,
-    attachments: [],
+    attachments: fields.attachments ?? [],
     inReplyTo: fields.inReplyTo ?? null,
     references: fields.references ?? null,
   }
   try {
+    for (const a of mail.attachments) {
+      if (a.blobId || !a.localKey) continue
+      const cached = await db.blobCache.get([accountId, a.localKey])
+      if (!cached) return unsaved
+      const { data, type } = openEnvelope(cached.payload)
+      a.blobId = (await conn.mail.uploadBlob(data, type)).blobId
+    }
     const id = await conn.mail.saveDraft(mail, drafts, replaceId)
     return id ? { id, ok: true } : unsaved
   } catch {
@@ -223,9 +255,9 @@ function draftBodyHtml(body: EmailBody | null): string {
  * sending destroys it (see `sendMail` plus `discardDraft` in Compose).
  *
  * Attachments come back by blob id — they already live on the server, so
- * nothing is re-uploaded; `size` is what the part reports. Inline parts
- * (`cid:`) are left out: they belong to the HTML that references them and
- * re-attaching them would duplicate them on send.
+ * nothing is re-uploaded; `size` is what the part reports. Pictures the HTML
+ * draws (`cid:`) come back as inline images rather than attachments: listing
+ * them as files as well would send each one twice.
  */
 export function buildDraftInit(header: EmailHeader, body: EmailBody | null): ComposeInit {
   return {
@@ -239,16 +271,24 @@ export function buildDraftInit(header: EmailHeader, body: EmailBody | null): Com
     draftId: header.id,
     inReplyTo: body?.inReplyTo ?? undefined,
     references: body?.references ?? undefined,
-    attachments: (body?.attachments ?? [])
-      .filter((a) => a.blobId && !a.cid)
-      .map((a) => ({
-        blobId: a.blobId,
-        localKey: null,
-        name: a.name ?? 'attachment',
-        type: a.type,
-        size: a.size,
-      })),
+    attachments: fileAttachments(body),
+    inlineImages: body ? inlineAttachments(body) : [],
   }
+}
+
+/** A message's attachments other than the pictures its HTML draws, ready to send again. */
+export function fileAttachments(body: EmailBody | null): OutgoingAttachment[] {
+  if (!body) return []
+  const inline = inlineParts(body)
+  return body.attachments
+    .filter((a) => a.blobId && !inline.has(partCid(a) ?? ''))
+    .map((a) => ({
+      blobId: a.blobId,
+      localKey: null,
+      name: a.name ?? 'attachment',
+      type: a.type,
+      size: a.size,
+    }))
 }
 
 /**
@@ -296,13 +336,19 @@ export function buildReply(
   const messageId = header.messageId ?? body?.messageId ?? null
   const references = [...(header.references ?? body?.references ?? []), ...(messageId ?? [])]
 
+  // The quote's pictures travel with it; without them it is a page of broken images.
+  const inlineImages = body ? inlineAttachments(body) : undefined
+
   if (mode === 'forward') {
     return {
       subject: subjectPrefix + baseSubject,
       quotedHtml,
       quoteSource,
       references: references.length ? references : undefined,
-      attachments: [],
+      // A forward passes the files on too — that is usually why it is sent.
+      // Each stays removable in the composer like any other attachment.
+      attachments: fileAttachments(body),
+      inlineImages,
     }
   }
 
@@ -320,6 +366,7 @@ export function buildReply(
     subject: subjectPrefix + baseSubject,
     quotedHtml,
     quoteSource,
+    inlineImages,
     inReplyTo: messageId ?? undefined,
     references: references.length ? references : undefined,
   }

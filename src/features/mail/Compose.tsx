@@ -1,14 +1,21 @@
 import Placeholder from '@tiptap/extension-placeholder'
-import { EditorContent, useEditor } from '@tiptap/react'
+import { EditorContent, Extension, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from '@tanstack/react-router'
 import { useUi, type ComposeInit } from '../../app/store'
 import type { Identity, OutgoingAttachment } from '../../domain/identity'
 import { t } from '../../lib/i18n'
+import {
+  inlineAttachments,
+  isInlineImageType,
+  newCid,
+  stillReferenced,
+} from '../../lib/inlineImages'
 import { getEmailBody } from '../../services/mail'
 import {
   discardDraft,
+  fileAttachments,
   getIdentities,
   parseAddresses,
   quoteBlock,
@@ -16,17 +23,37 @@ import {
   sendMail,
   stageAttachment,
 } from '../../services/send'
+import { connectionFor } from '../../sync/connections'
 import { syncAccount } from '../../sync/engine'
 import { DialogHeader } from '../../ui/DialogHeader'
 import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { useMobileViewport, useModal } from '../../ui/useModal'
 import { ComposeToolbar } from './ComposeToolbar'
+import { InlineImage, inlineImageStorage, setInlineImageUrl } from './composeImage'
 import { useCanSend } from './hooks'
 import { RecipientInput } from './RecipientInput'
 
 function addressesToString(list: ComposeInit['to']): string {
   return (list ?? []).map((a) => a.email).join(', ')
+}
+
+/** "12 KB", "3.4 MB": enough to tell a screenshot from a video. */
+function formatSize(bytes: number): string {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Files from a paste or a drop, split into pictures for the text and files to attach. */
+function splitFiles(files: FileList | File[] | null | undefined): {
+  images: File[]
+  others: File[]
+} {
+  const list = Array.from(files ?? [])
+  return {
+    images: list.filter((f) => isInlineImageType(f.type)),
+    others: list.filter((f) => !isInlineImageType(f.type)),
+  }
 }
 
 /*
@@ -109,6 +136,16 @@ export function Compose({
   const [showBcc, setShowBcc] = useState(Boolean(init.bcc?.length))
   const [subject, setSubject] = useState(init.subject ?? '')
   const [attachments, setAttachments] = useState<OutgoingAttachment[]>(init.attachments ?? [])
+  /*
+   * Pictures drawn in the text. Kept apart from the attachment chips: they are
+   * shown where they sit in the message, and one whose `<img>` is deleted is
+   * simply left out when the message is saved or sent (`stillReferenced`).
+   */
+  const [inlineImages, setInlineImages] = useState<OutgoingAttachment[]>(init.inlineImages ?? [])
+  const [dragging, setDragging] = useState(false)
+  const imageInput = useRef<HTMLInputElement>(null)
+  /** Object URLs made for the editor's pictures, revoked when the window closes. */
+  const objectUrls = useRef<string[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
@@ -158,6 +195,17 @@ export function Compose({
     })
   }, [accountId])
 
+  /*
+   * What the editor's paste, drop and keyboard handlers call. The editor is
+   * built once, so they reach the current functions through this ref rather
+   * than closing over the first render's copies.
+   */
+  const handlers = useRef({
+    insertImages: (_files: File[], _at?: number) => {},
+    attach: (_files: File[]) => {},
+    send: () => {},
+  })
+
   const editor = useEditor({
     extensions: [
       // Link lives in StarterKit itself (v3) — a second, separately imported
@@ -166,7 +214,39 @@ export function Compose({
       // second import.
       StarterKit.configure({ link: { openOnClick: false } }),
       Placeholder.configure({ placeholder: t('compose.placeholder') }),
+      InlineImage,
+      // Ahead of StarterKit's hard break, which claims Mod-Enter as well.
+      Extension.create({
+        name: 'sendShortcut',
+        priority: 1000,
+        addKeyboardShortcuts: () => ({
+          'Mod-Enter': () => {
+            handlers.current.send()
+            return true
+          },
+        }),
+      }),
     ],
+    editorProps: {
+      handlePaste: (_view, event) => {
+        const { images, others } = splitFiles(event.clipboardData?.files)
+        if (!images.length && !others.length) return false
+        if (images.length) handlers.current.insertImages(images)
+        if (others.length) handlers.current.attach(others)
+        return true
+      },
+      handleDrop: (view, event, _slice, moved) => {
+        if (moved) return false
+        const { images, others } = splitFiles(event.dataTransfer?.files)
+        if (!images.length && !others.length) return false
+        event.preventDefault()
+        const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
+        if (images.length) handlers.current.insertImages(images, at)
+        if (others.length) handlers.current.attach(others)
+        setDragging(false)
+        return true
+      },
+    },
     // A reopened draft is its own whole content; a reply gets an empty
     // paragraph above the quote for the answer to go in.
     content: init.bodyHtml ?? (init.quotedHtml ? `<p></p>${init.quotedHtml}` : ''),
@@ -197,6 +277,8 @@ export function Compose({
     void getEmailBody(source.accountId, source.header.id)
       .then((body) => {
         if (!alive || !body || editor.isDestroyed) return
+        setInlineImages((cur) => [...cur, ...inlineAttachments(body)])
+        if (source.mode === 'forward') setAttachments((cur) => [...cur, ...fileAttachments(body)])
         editor.commands.insertContentAt(
           editor.state.doc.content.size,
           quoteBlock(source.header, body, source.mode),
@@ -212,6 +294,44 @@ export function Compose({
       alive = false
     }
   }, [editor, source])
+
+  /*
+   * Display URLs for pictures that arrived with the window — a reopened
+   * draft's, a quote's. They are on the server already; the ones added here
+   * got their URL when they were staged.
+   */
+  useEffect(() => {
+    if (!editor) return
+    const storage = inlineImageStorage(editor)
+    const missing = inlineImages.filter((a) => a.cid && a.blobId && !storage.urls.has(a.cid))
+    if (!missing.length) return
+    let alive = true
+    void (async () => {
+      const conn = await connectionFor(accountId).catch(() => null)
+      if (!conn?.mail) return
+      for (const a of missing) {
+        try {
+          const blob = await conn.mail.downloadBlob(a.blobId!, a.type, a.name)
+          if (!alive || editor.isDestroyed) return
+          const url = URL.createObjectURL(new Blob([blob], { type: a.type }))
+          objectUrls.current.push(url)
+          setInlineImageUrl(storage, a.cid!, url)
+        } catch {
+          // Offline or gone: the picture stays a placeholder, and still goes out.
+        }
+      }
+    })()
+    return () => {
+      alive = false
+    }
+  }, [editor, inlineImages, accountId])
+
+  useEffect(
+    () => () => {
+      for (const url of objectUrls.current) URL.revokeObjectURL(url)
+    },
+    [],
+  )
 
   /**
    * Keeps the reading pane on the draft after a save.
@@ -242,8 +362,8 @@ export function Compose({
    * the 2.5 s autosave writes, so every automatic save captures the same
    * fields.
    *
-   * Text fields only: the real send builds its own message including the
-   * attachments, which are staged locally until then.
+   * Attachments and pictures included: one staged only locally is uploaded
+   * on the first save that carries it (see `saveDraft`).
    */
   const storeDraft = (): Promise<boolean> => {
     const run = async () => {
@@ -260,6 +380,7 @@ export function Compose({
           subject,
           html: editor.getHTML(),
           text: editor.getText(),
+          attachments: outgoingAttachments(editor),
           inReplyTo: init.inReplyTo,
           references: init.references,
         },
@@ -309,12 +430,59 @@ export function Compose({
     init.references,
   ])
 
-  async function attach(files: FileList | null) {
+  /** Files beside the text, and the pictures in it that are still there. */
+  function outgoingAttachments(ed: Editor): OutgoingAttachment[] {
+    return [...attachments, ...stillReferenced(ed.getHTML(), inlineImages)]
+  }
+
+  async function attach(files: FileList | File[] | null) {
     if (!files) return
     for (const file of Array.from(files)) {
       const a = await stageAttachment(accountId, file)
+      markDirty()
       setAttachments((cur) => [...cur, a])
     }
+  }
+
+  /**
+   * Puts pictures into the text: staged locally like an attachment (so this
+   * works offline too), drawn from an object URL, referenced by a fresh cid.
+   */
+  async function insertImages(files: File[], at?: number) {
+    if (!editor) return
+    const storage = inlineImageStorage(editor)
+    let pos = at
+    for (const file of files) {
+      const cid = newCid()
+      const staged = await stageAttachment(accountId, file, cid)
+      const url = URL.createObjectURL(file)
+      objectUrls.current.push(url)
+      setInlineImageUrl(storage, cid, url)
+      setInlineImages((cur) => [...cur, staged])
+      const node = { type: 'inlineImage', attrs: { src: `cid:${cid}`, alt: file.name } }
+      if (pos === undefined) editor.chain().focus().insertContent(node).run()
+      else {
+        editor.chain().focus().insertContentAt(pos, node).run()
+        pos += 1
+      }
+    }
+  }
+
+  function dropOnPanel(event: React.DragEvent) {
+    // The editor takes its own drops (pictures go where they are dropped);
+    // anywhere else in the window, a dropped file is an attachment.
+    setDragging(false)
+    // Already taken by the editor, which prevents the default of what it handles.
+    if (event.nativeEvent.defaultPrevented || !event.dataTransfer.files.length) return
+    event.preventDefault()
+    void attach(event.dataTransfer.files)
+  }
+
+  // oxlint-disable-next-line refs
+  handlers.current = {
+    insertImages: (files, at) => void insertImages(files, at),
+    attach: (files) => void attach(files),
+    send: () => void send(),
   }
 
   /**
@@ -352,10 +520,13 @@ export function Compose({
       return
     }
     const identity = identities.find((i) => i.id === identityId)
-    if (!identity || !editor) return
+    if (!identity || !editor || busy) return
     setBusy(true)
     setError(null)
     try {
+      // A save still in flight would replace the draft after the send named
+      // it, and the replacement would be left behind in Drafts.
+      await queue.current.catch(() => {})
       const result = await sendMail(accountId, identity, {
         to: toList,
         cc: parseAddresses(cc),
@@ -363,11 +534,12 @@ export function Compose({
         subject,
         html: editor.getHTML(),
         text: editor.getText(),
-        attachments,
+        attachments: outgoingAttachments(editor),
         inReplyTo: init.inReplyTo,
         references: init.references,
+        // Destroyed by the send once it is out, so an undo leaves it in place.
+        draftId: draftId.current,
       })
-      if (draftId.current) void discardDraft(accountId, draftId.current)
       onClose()
       showSnackbar({
         message: t('mail.sending'),
@@ -405,9 +577,34 @@ export function Compose({
         role="dialog"
         aria-modal
         aria-label={init.draftId ? t('compose.editDraft') : t('compose.new')}
-        className="animate-rise flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
+        className="animate-rise relative flex h-full w-full flex-col bg-raised sm:h-[min(640px,75vh)] sm:max-w-2xl sm:rounded-panel sm:shadow-overlay sm:ring-1 sm:ring-line"
         style={mobileViewport ? { height: `${mobileViewport.height}px` } : undefined}
+        onKeyDown={(e) => {
+          // The editor handles its own (see `sendShortcut`); this covers the fields.
+          if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.defaultPrevented) {
+            e.preventDefault()
+            void send()
+          }
+        }}
+        onDragOver={(e) => {
+          if (!e.dataTransfer.types.includes('Files')) return
+          e.preventDefault()
+          setDragging(true)
+        }}
+        onDragLeave={(e) => {
+          // Leaving for a child is not leaving the window.
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false)
+        }}
+        onDrop={dropOnPanel}
       >
+        {dragging && (
+          <div
+            className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-panel border-2 border-dashed border-accent bg-accent-wash/70 text-sm font-medium text-accent"
+            aria-hidden
+          >
+            {t('compose.dropFiles')}
+          </div>
+        )}
         <DialogHeader
           title={init.draftId ? t('compose.editDraft') : t('compose.new')}
           closeLabel={t('compose.discard')}
@@ -521,7 +718,20 @@ export function Compose({
             />
           </div>
 
-          <ComposeToolbar editor={editor} />
+          <ComposeToolbar editor={editor} onInsertImage={() => imageInput.current?.click()} />
+          <input
+            ref={imageInput}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            multiple
+            hidden
+            onChange={(e) => {
+              const { images, others } = splitFiles(e.target.files)
+              if (images.length) void insertImages(images)
+              if (others.length) void attach(others)
+              e.target.value = ''
+            }}
+          />
         </div>
 
         {/*
@@ -543,12 +753,16 @@ export function Compose({
                 >
                   <Icon name="paperclip" size={11} />
                   {a.name}
+                  <span className="text-ink-muted">({formatSize(a.size)})</span>
                   <Tooltip label={t('compose.removeAttachment')}>
                     <button
                       type="button"
                       aria-label={`${t('compose.removeAttachment')}: ${a.name}`}
                       className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-ink-muted hover:bg-danger-wash hover:text-danger sm:min-h-0 sm:min-w-0"
-                      onClick={() => setAttachments((cur) => cur.filter((_, j) => j !== i))}
+                      onClick={() => {
+                        markDirty()
+                        setAttachments((cur) => cur.filter((_, j) => j !== i))
+                      }}
                     >
                       <Icon name="close" size={11} />
                     </button>
@@ -580,7 +794,11 @@ export function Compose({
             type="file"
             multiple
             hidden
-            onChange={(e) => void attach(e.target.files)}
+            onChange={(e) => {
+              void attach(e.target.files)
+              // Picking the same file again after removing it should still attach it.
+              e.target.value = ''
+            }}
           />
           {/* Only once the draft exists: throwing away a message that was
               never stored is what the close button already does. */}

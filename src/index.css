@@ -365,6 +365,24 @@ option {
   color: var(--mel-accent);
   text-decoration: underline;
 }
+/* Pictures in the text (composeImage.ts): never wider than the window. */
+.ProseMirror .compose-inline-image {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  vertical-align: bottom;
+}
+/* One still being fetched (a reopened draft's, a quote's) holds a little room. */
+.ProseMirror .compose-inline-image[data-loading='true'] {
+  width: 6rem;
+  height: 4rem;
+  background: var(--mel-surface-2);
+}
+.ProseMirror .compose-inline-image.ProseMirror-selectednode {
+  outline: 2px solid var(--mel-accent);
+  outline-offset: 1px;
+}
 
 /* Panels float on the canvas instead of being divided by hairlines. */
 @utility panel {

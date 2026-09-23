@@ -13,7 +13,17 @@ import { saveSettingsFile } from './settingsWriter'
 export type OutboxAction =
   | { kind: 'email.update'; updates: Record<string, Record<string, unknown>> }
   | { kind: 'email.destroy'; ids: string[] }
-  | { kind: 'email.send'; mail: OutgoingEmail; mailboxIds: { drafts: string; sent: string } }
+  | {
+      kind: 'email.send'
+      mail: OutgoingEmail
+      mailboxIds: { drafts: string; sent: string }
+      /**
+       * The saved draft this message was written in, destroyed once it has
+       * gone out — not before: the draft's own parts may be what the message
+       * attaches, and an undone send should leave the draft where it was.
+       */
+      draftId?: string
+    }
   | { kind: 'contact.create'; contact: Contact; tempId: string }
   | { kind: 'contact.update'; contact: Contact }
   | { kind: 'contact.destroy'; ids: string[] }
@@ -364,9 +374,13 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
     }
     case 'email.send': {
       const mail = need(conn.mail, 'mail')
-      // Upload any attachments still stored locally.
+      /*
+       * Upload any attachment still stored locally — again, even when a draft
+       * save already uploaded it: a blob nothing refers to yet may be gone
+       * from the server by now, and the local copy is what is known to exist.
+       */
       for (const a of action.mail.attachments) {
-        if (a.blobId || !a.localKey) continue
+        if (!a.localKey) continue
         const cached = await db.blobCache.get([accountId, a.localKey])
         if (!cached) throw localError('attachment lost', 'attachmentLost')
         const { data, type } = openEnvelope(cached.payload)
@@ -374,6 +388,11 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
         a.blobId = up.blobId
       }
       await mail.sendEmail(action.mail, action.mailboxIds)
+      if (action.draftId) {
+        // The message is out; failing here must not make the send run again.
+        await mail.setEmails({}, [action.draftId]).catch(() => {})
+        await db.emails.delete([accountId, action.draftId])
+      }
       // Clean up local attachment blobs.
       for (const a of action.mail.attachments) {
         if (a.localKey) await db.blobCache.delete([accountId, a.localKey])

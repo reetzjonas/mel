@@ -14,8 +14,13 @@ body back into a `ComposeInit`. Four things that are easy to miss:
 
 - **`ComposeInit.draftId` is what makes it an edit** rather than a copy: the
   autosave passes it as `replaceId` (`Email/set` create + destroy in one call),
-  so finishing a draft leaves one message, not a trail. Sending destroys it via
-  the `discardDraft` that was already there.
+  so finishing a draft leaves one message, not a trail. Sending destroys it —
+  but only once the message has gone out: the `email.send` outbox action
+  carries `draftId` and destroys it after the submission succeeded. Destroying
+  it at the moment Send was pressed (as before) ran *ahead* of the send, which
+  waits out the 10 s undo window while a destroy does not — so a send that
+  attached the draft's own parts could find them gone, and an undone send had
+  already lost the draft.
 - **Bcc only exists in the body.** It is not part of a delivered message, so it
   is deliberately not in the header property set — `EMAIL_BODY_PROPS` asks for
   `bcc` (and `inReplyTo`, for a draft that answers something) and `EmailBody`
@@ -27,8 +32,15 @@ body back into a `ComposeInit`. Four things that are easy to miss:
 - **Autosave is gated on a `dirty` flag**, not on "the fields are non-empty" as
   before. Opening a draft and closing it again must not rewrite it — every
   autosave replaces the message, so an idle reopen would churn through draft ids
-  for nothing. Attachments come back by blob id (nothing is re-uploaded); inline
-  `cid:` parts are left out, they belong to the HTML that references them.
+  for nothing. Attachments come back by blob id (nothing is re-uploaded), and
+  the pictures the HTML draws (`cid:`) come back as `inlineImages`, not as
+  attachment chips — see `compose-inline-images.md`.
+- **A draft carries its attachments and pictures.** It used to be saved as
+  text alone, so closing the window lost every file. A file staged only on the
+  device is uploaded by the first save that carries it and its `blobId` is
+  written onto the composer's object, so later autosaves reuse it; the local
+  copy stays until the send, which uploads it afresh (a blob nothing refers to
+  may have expired from the server by then).
 - **There is an icon-only Save button at the right end of the footer** (opposite the attach button), and the footer says *which* state it
   is in ("Unsaved changes" / "Draft saved"). The autosave does work — verified
   against the real server — but it only fires 2.5 s after the last change and

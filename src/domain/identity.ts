@@ -15,6 +15,12 @@ export interface OutgoingAttachment {
   name: string
   type: string
   size: number
+  /**
+   * Set for a picture drawn inside the HTML (`<img src="cid:…">`) rather than
+   * attached beside it: it goes out with `Content-Disposition: inline` and
+   * this Content-ID. See lib/inlineImages.ts.
+   */
+  cid?: string | null
 }
 
 export interface OutgoingEmail {

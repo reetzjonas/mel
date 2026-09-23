@@ -149,6 +149,80 @@ test('reopen a saved draft, finish it and send it', async ({ page }) => {
   await expect(page.getByText(subject)).toHaveCount(0, { timeout: 20_000 })
 })
 
+/** A small PNG made in the page, so the test carries no binary of its own. */
+async function picture(page: Page): Promise<Buffer> {
+  const base64 = await page.evaluate(() => {
+    const c = document.createElement('canvas')
+    c.width = 120
+    c.height = 80
+    const ctx = c.getContext('2d')!
+    ctx.fillStyle = '#0e9488'
+    ctx.fillRect(0, 0, 120, 80)
+    return c.toDataURL('image/png').split(',')[1]!
+  })
+  return Buffer.from(base64, 'base64')
+}
+
+/*
+ * Issue #9: a draft used to be saved as text alone, so closing the window lost
+ * its attachments and a picture in the text came back as a broken reference.
+ * Both now live in the draft, and sending the reopened draft still finds them
+ * — the draft is destroyed only after the message has gone out.
+ */
+test('a draft keeps its picture and its attachment, through reopening and sending', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  const subject = `Bild-${Date.now() % 100000}`
+  await login(page)
+
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('bob@localhost')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Mit Bild: ')
+  const chooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Insert picture' }).click()
+  await (
+    await chooser
+  ).setFiles({ name: 'shot.png', mimeType: 'image/png', buffer: await picture(page) })
+  const fileChooser = page.waitForEvent('filechooser')
+  await page.getByRole('button', { name: 'Attach file' }).click()
+  await (
+    await fileChooser
+  ).setFiles({
+    name: 'liste.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('Milch, Brot'),
+  })
+  await page.getByRole('button', { name: 'Save draft' }).click()
+  await expect(page.getByText('Draft saved')).toBeVisible({ timeout: 10_000 })
+  await page.getByRole('button', { name: 'Discard' }).click()
+
+  await page.getByRole('link', { name: 'Drafts' }).click()
+  await page.getByText(subject).click()
+  await page.getByRole('button', { name: 'Edit draft' }).click()
+  const inEditor = page.locator('.ProseMirror img.compose-inline-image')
+  await expect
+    .poll(() => inEditor.evaluate((img: HTMLImageElement) => img.naturalWidth), { timeout: 15_000 })
+    .toBe(120)
+  await expect(page.getByRole('dialog').getByText('liste.txt')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible({ timeout: 10_000 })
+  await expect(page.getByText(subject)).toHaveCount(0, { timeout: 25_000 })
+
+  await page.getByRole('link', { name: 'Sent Items' }).click()
+  await page.getByText(subject).first().click()
+  const frame = page.frameLocator('iframe[title="Message content"]')
+  await expect
+    .poll(() => frame.locator('img').evaluate((img: HTMLImageElement) => img.naturalWidth), {
+      timeout: 15_000,
+    })
+    .toBe(120)
+  await expect(page.getByRole('button', { name: /liste\.txt/ })).toBeVisible()
+})
+
 /*
  * The autosave waits 2.5 s after the last change and says nothing until it
  * fires, so closing the window inside that gap dropped the edit silently.

@@ -36,6 +36,12 @@ export interface ComposeInit {
   inReplyTo?: string[]
   references?: string[]
   attachments?: OutgoingAttachment[]
+  /**
+   * Pictures the starting content refers to by `cid:` — a reopened draft's
+   * own, or the ones inside a quoted message. Already on the server, so they
+   * travel by blob id; one the writer deletes from the text is left out.
+   */
+  inlineImages?: OutgoingAttachment[]
 }
 
 /**
@@ -141,5 +147,6 @@ export const useUi = create<UiState>((set) => ({
   bumpUnlock: () => set((s) => ({ unlockVersion: s.unlockVersion + 1 })),
 
   mailSelectionClearSignal: 0,
-  clearMailSelection: () => set((s) => ({ mailSelectionClearSignal: s.mailSelectionClearSignal + 1 })),
+  clearMailSelection: () =>
+    set((s) => ({ mailSelectionClearSignal: s.mailSelectionClearSignal + 1 })),
 }))

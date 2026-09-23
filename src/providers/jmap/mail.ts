@@ -74,6 +74,70 @@ function mapQuery(q: SearchQuery): EmailFilter {
   return { operator: 'AND', conditions: conds }
 }
 
+type OutgoingAttachment = import('../../domain/identity').OutgoingAttachment
+
+function filePart(a: OutgoingAttachment): Record<string, unknown> {
+  return { blobId: a.blobId, type: a.type, name: a.name, disposition: 'attachment' }
+}
+
+/**
+ * The body of an outgoing message, as Email/set properties.
+ *
+ * Without inline pictures the RFC 8621 shorthand (`textBody`, `htmlBody`,
+ * `attachments`) is enough. With them the structure is spelled out, because
+ * the shorthand leaves where they go to the server — and Stalwart puts them
+ * loose into the multipart/mixed beside the files, where Apple Mail and
+ * Outlook list them as attachments instead of drawing them. Spelled out:
+ *
+ *   multipart/mixed              (only when there are files)
+ *   ├─ multipart/alternative
+ *   │  ├─ text/plain
+ *   │  └─ multipart/related
+ *   │     ├─ text/html
+ *   │     └─ image/* (inline, Content-ID) …
+ *   └─ files …
+ */
+export function outgoingBody(mail: {
+  text: string
+  html: string
+  attachments: OutgoingAttachment[]
+}): Record<string, unknown> {
+  const bodyValues = { t: { value: mail.text }, h: { value: mail.html } }
+  const inline = mail.attachments.filter((a) => a.cid)
+  const files = mail.attachments.filter((a) => !a.cid)
+  if (!inline.length) {
+    return {
+      bodyValues,
+      textBody: [{ partId: 't', type: 'text/plain' }],
+      htmlBody: [{ partId: 'h', type: 'text/html' }],
+      attachments: files.length ? files.map(filePart) : undefined,
+    }
+  }
+  const related = {
+    type: 'multipart/related',
+    subParts: [
+      { partId: 'h', type: 'text/html' },
+      ...inline.map((a) => ({
+        blobId: a.blobId,
+        type: a.type,
+        name: a.name,
+        disposition: 'inline',
+        cid: a.cid,
+      })),
+    ],
+  }
+  const alternative = {
+    type: 'multipart/alternative',
+    subParts: [{ partId: 't', type: 'text/plain' }, related],
+  }
+  return {
+    bodyValues,
+    bodyStructure: files.length
+      ? { type: 'multipart/mixed', subParts: [alternative, ...files.map(filePart)] }
+      : alternative,
+  }
+}
+
 /** JSON Email object for a draft (text/html bodies, no submission). */
 function buildDraftObject(
   mail: import('../../domain/identity').OutgoingEmail,
@@ -89,9 +153,7 @@ function buildDraftObject(
     subject: mail.subject,
     inReplyTo: mail.inReplyTo ?? undefined,
     references: mail.references ?? undefined,
-    bodyValues: { t: { value: mail.text }, h: { value: mail.html } },
-    textBody: [{ partId: 't', type: 'text/plain' }],
-    htmlBody: [{ partId: 'h', type: 'text/html' }],
+    ...outgoingBody(mail),
   }
 }
 
@@ -363,20 +425,7 @@ export function createJmapMail(
         subject: mail.subject,
         inReplyTo: mail.inReplyTo ?? undefined,
         references: mail.references ?? undefined,
-        bodyValues: {
-          t: { value: mail.text },
-          h: { value: mail.html },
-        },
-        textBody: [{ partId: 't', type: 'text/plain' }],
-        htmlBody: [{ partId: 'h', type: 'text/html' }],
-        attachments: mail.attachments.length
-          ? mail.attachments.map((a) => ({
-              blobId: a.blobId,
-              type: a.type,
-              name: a.name,
-              disposition: 'attachment',
-            }))
-          : undefined,
+        ...outgoingBody(mail),
       }
       const b = new Batch(transport, USING_SUBMIT)
       const setCall = b.call<SetResponse<JmapEmail>>('Email/set', {

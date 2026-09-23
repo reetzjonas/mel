@@ -3,7 +3,7 @@ import type { CoreCapability, Invocation, JmapRequest } from './client/types/cor
 import type { Transport } from './client/transport'
 import { parseSearch } from '../../lib/searchParser'
 import { CannotCalculateChanges } from '../types'
-import { createJmapMail, jmapSearchFilter } from './mail'
+import { createJmapMail, jmapSearchFilter, outgoingBody } from './mail'
 
 const limits = {
   maxSizeUpload: 1,
@@ -404,6 +404,89 @@ describe('sending a message', () => {
         'keywords/$draft': null,
       },
     })
+  })
+
+  it('spells out multipart/related for a picture in the text, files beside it', async () => {
+    /*
+     * Stalwart builds the RFC 8621 shorthand into a flat multipart/mixed,
+     * where Apple Mail and Outlook list an inline picture as a file. The
+     * structure is therefore given in full whenever a picture is inline.
+     */
+    const { mail, sent } = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { created: { sub: {} } },
+    })
+    const shot = {
+      blobId: 'b1',
+      localKey: null,
+      name: 'shot.png',
+      type: 'image/png',
+      size: 3,
+      cid: 'c1@mel',
+    }
+    const plan = {
+      blobId: 'b2',
+      localKey: null,
+      name: 'plan.pdf',
+      type: 'application/pdf',
+      size: 9,
+    }
+
+    await mail.sendEmail(
+      { ...outgoing, html: '<img src="cid:c1@mel">', attachments: [shot, plan] } as never,
+      boxes,
+    )
+
+    const draft = (sent[0]![1]['create'] as Record<string, Record<string, unknown>>)['draft']!
+    expect(draft['htmlBody']).toBeUndefined()
+    expect(draft['attachments']).toBeUndefined()
+    expect(draft['bodyStructure']).toEqual({
+      type: 'multipart/mixed',
+      subParts: [
+        {
+          type: 'multipart/alternative',
+          subParts: [
+            { partId: 't', type: 'text/plain' },
+            {
+              type: 'multipart/related',
+              subParts: [
+                { partId: 'h', type: 'text/html' },
+                {
+                  blobId: 'b1',
+                  type: 'image/png',
+                  name: 'shot.png',
+                  disposition: 'inline',
+                  cid: 'c1@mel',
+                },
+              ],
+            },
+          ],
+        },
+        { blobId: 'b2', type: 'application/pdf', name: 'plan.pdf', disposition: 'attachment' },
+      ],
+    })
+  })
+
+  it('leaves out the mixed wrapper when the pictures are all there is', () => {
+    const shot = {
+      blobId: 'b1',
+      localKey: null,
+      name: 's.png',
+      type: 'image/png',
+      size: 3,
+      cid: 'c@mel',
+    }
+    const body = outgoingBody({ text: 't', html: '<img src="cid:c@mel">', attachments: [shot] })
+    expect((body['bodyStructure'] as { type: string }).type).toBe('multipart/alternative')
+  })
+
+  it('keeps the shorthand when nothing is inline', () => {
+    const plan = { blobId: 'b2', localKey: null, name: 'p.pdf', type: 'application/pdf', size: 9 }
+    const body = outgoingBody({ text: 't', html: '<p>x</p>', attachments: [plan] })
+    expect(body['bodyStructure']).toBeUndefined()
+    expect(body['attachments']).toEqual([
+      { blobId: 'b2', type: 'application/pdf', name: 'p.pdf', disposition: 'attachment' },
+    ])
   })
 
   it('leaves out the recipient fields nobody filled in', async () => {

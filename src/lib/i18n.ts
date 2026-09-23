@@ -263,6 +263,8 @@ const en = {
   'compose.unlink': 'Remove link',
   'compose.linkPrompt': 'Link URL',
   'compose.removeAttachment': 'Remove attachment',
+  'compose.insertImage': 'Insert picture',
+  'compose.dropFiles': 'Drop to attach',
 
   'shortcuts.title': 'Keyboard shortcuts',
   'shortcuts.close': 'Close',
@@ -278,6 +280,7 @@ const en = {
   'shortcuts.slash': 'Search',
   'shortcuts.gi': 'Go to inbox',
   'shortcuts.help': 'This help',
+  'shortcuts.send': 'Send (while writing)',
 
   'sync.push': 'Live updates',
   'sync.poll': 'Checking every',
@@ -1084,6 +1087,8 @@ const de: Partial<Record<MsgKey, string>> = {
   'compose.unlink': 'Link entfernen',
   'compose.linkPrompt': 'Link-URL',
   'compose.removeAttachment': 'Anhang entfernen',
+  'compose.insertImage': 'Bild einfügen',
+  'compose.dropFiles': 'Zum Anhängen loslassen',
 
   'shortcuts.title': 'Tastaturkürzel',
   'shortcuts.close': 'Schließen',
@@ -1099,6 +1104,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'shortcuts.slash': 'Suche',
   'shortcuts.gi': 'Zum Posteingang',
   'shortcuts.help': 'Diese Hilfe',
+  'shortcuts.send': 'Senden (beim Schreiben)',
 
   'sync.push': 'Live-Updates',
   'sync.poll': 'Abruf alle',

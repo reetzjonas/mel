@@ -18,6 +18,7 @@ const rows: Array<[string, Parameters<typeof t>[0]]> = [
   ['/', 'shortcuts.slash'],
   ['g i', 'shortcuts.gi'],
   ['?', 'shortcuts.help'],
+  ['Ctrl / ⌘ Enter', 'shortcuts.send'],
 ]
 
 export function HelpOverlay() {

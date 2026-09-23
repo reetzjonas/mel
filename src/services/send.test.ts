@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { EmailBody, EmailHeader } from '../domain/email'
+import type { EmailBody, EmailBodyPart, EmailHeader } from '../domain/email'
 import type { Identity } from '../domain/identity'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
@@ -101,43 +101,58 @@ describe('buildDraftInit', () => {
     expect(init.bodyHtml).toBe('<p>&lt;script>x&lt;/script> &amp; co</p>')
   })
 
-  it('keeps real attachments by blob id and drops inline parts', () => {
+  it('keeps real attachments by blob id and brings the pictures the text draws back inline', () => {
+    const part = (over: Partial<EmailBodyPart>): EmailBodyPart => ({
+      partId: '2',
+      blobId: 'b1',
+      type: 'text/plain',
+      name: 'note.txt',
+      disposition: 'attachment',
+      cid: null,
+      size: 12,
+      ...over,
+    })
     const init = buildDraftInit(
       header(),
       body({
+        html: '<p>Hi</p><img src="cid:logo@x">',
         attachments: [
-          {
-            partId: '2',
-            blobId: 'b1',
-            type: 'text/plain',
-            name: 'note.txt',
-            disposition: 'attachment',
-            cid: null,
-            size: 12,
-          },
-          {
+          part({}),
+          part({
             partId: '3',
             blobId: 'b2',
             type: 'image/png',
             name: 'logo.png',
             disposition: 'inline',
-            cid: 'logo@x',
+            cid: '<logo@x>',
             size: 99,
-          },
-          {
-            partId: '4',
-            blobId: null,
+          }),
+          // A Content-ID the text never refers to is an ordinary file.
+          part({
+            partId: '5',
+            blobId: 'b3',
             type: 'image/png',
-            name: 'gone.png',
-            disposition: 'attachment',
-            cid: null,
-            size: 5,
-          },
+            name: 'chart.png',
+            cid: 'chart@x',
+            size: 7,
+          }),
+          part({ partId: '4', blobId: null, type: 'image/png', name: 'gone.png', size: 5 }),
         ],
       }),
     )
     expect(init.attachments).toEqual([
       { blobId: 'b1', localKey: null, name: 'note.txt', type: 'text/plain', size: 12 },
+      { blobId: 'b3', localKey: null, name: 'chart.png', type: 'image/png', size: 7 },
+    ])
+    expect(init.inlineImages).toEqual([
+      {
+        blobId: 'b2',
+        localKey: null,
+        name: 'logo.png',
+        type: 'image/png',
+        size: 99,
+        cid: 'logo@x',
+      },
     ])
   })
 
@@ -227,6 +242,40 @@ describe('buildReply', () => {
     expect(init.quotedHtml).toBeUndefined()
     expect(init.quoteSource?.mode).toBe('forward')
     expect(quoteBlock(incoming(), body(), 'forward')).toContain('Forwarded message')
+  })
+
+  it('passes the files on with a forward, and the quoted pictures with any reply', () => {
+    const b = body({
+      html: '<p>see</p><img src="cid:logo@x">',
+      attachments: [
+        {
+          partId: '2',
+          blobId: 'b1',
+          type: 'application/pdf',
+          name: 'plan.pdf',
+          disposition: 'attachment',
+          cid: null,
+          size: 10,
+        },
+        {
+          partId: '3',
+          blobId: 'b2',
+          type: 'image/png',
+          name: 'logo.png',
+          disposition: 'inline',
+          cid: 'logo@x',
+          size: 5,
+        },
+      ],
+    })
+    const forward = buildReply(ACC, incoming(), b, 'forward', 'alice@localhost')
+    expect(forward.attachments?.map((a) => a.name)).toEqual(['plan.pdf'])
+    expect(forward.inlineImages?.map((a) => a.cid)).toEqual(['logo@x'])
+
+    const reply = buildReply(ACC, incoming(), b, 'reply', 'alice@localhost')
+    // A reply does not send the files back to the person who sent them.
+    expect(reply.attachments).toBeUndefined()
+    expect(reply.inlineImages?.map((a) => a.cid)).toEqual(['logo@x'])
   })
 
   // A forward is not an answer to anything, so it carries the chain but must
@@ -410,6 +459,19 @@ describe('sending', () => {
     expect(cancelled).toEqual([1])
   })
 
+  it('names the draft it was written in, for the send to destroy once it is out', async () => {
+    // Not before: the draft's parts may be what the message attaches, and an
+    // undone send should leave the draft where it was.
+    await putMailbox('mb-drafts', 'drafts')
+    await putMailbox('mb-sent', 'sent')
+
+    await sendMail(ACC, identity, { ...fields, draftId: 'draft-1' })
+    await sendMail(ACC, identity, fields)
+
+    expect(enqueued[0]![0]).toMatchObject({ draftId: 'draft-1' })
+    expect(enqueued[1]![0]).not.toHaveProperty('draftId')
+  })
+
   it('sends from the identity, not from whatever the account is labelled', async () => {
     // Stalwart matches the submission against the identity; a From built from
     // the account label is refused as forbiddenFrom.
@@ -459,12 +521,46 @@ describe('autosaving a draft', () => {
     expect(saveDraftOnServer).not.toHaveBeenCalled()
   })
 
-  it('never queues an attachment with a draft', async () => {
-    // Autosave runs on a timer; uploading the staged files on every keystroke
-    // would put a copy of each on the server per save.
-    await saveDraft(ACC, identity, fields, null)
+  it('carries attachments and pictures, uploading a staged one once across saves', async () => {
+    /*
+     * A draft without its attachments loses them the moment the window is
+     * closed. Autosave runs on a timer, though, so the upload must not repeat
+     * per save: the blob id lands on the attachment the composer holds.
+     */
+    const uploadBlob = vi.fn(async () => ({ blobId: 'up-1', size: 3 }))
+    mailProvider = { ...(mailProvider as object), uploadBlob }
+    const staged = await stageAttachment(
+      ACC,
+      new File(['abc'], 'shot.png', { type: 'image/png' }),
+      'c1@mel',
+    )
+    const withFiles = { ...fields, html: '<img src="cid:c1@mel">', attachments: [staged] }
 
-    expect(saveDraftOnServer.mock.calls[0]![0]).toMatchObject({ attachments: [] })
+    await saveDraft(ACC, identity, withFiles, null)
+    await saveDraft(ACC, identity, withFiles, 'new-draft')
+
+    expect(uploadBlob).toHaveBeenCalledTimes(1)
+    expect(saveDraftOnServer.mock.calls[1]![0]).toMatchObject({
+      attachments: [{ blobId: 'up-1', cid: 'c1@mel', name: 'shot.png' }],
+    })
+    // The local copy stays for the real send, which uploads it afresh.
+    expect(await db.blobCache.get([ACC, staged.localKey!])).toBeDefined()
+  })
+
+  it('does not save a draft whose staged file has gone missing', async () => {
+    mailProvider = { ...(mailProvider as object), uploadBlob: vi.fn() }
+    const lost = {
+      blobId: null,
+      localKey: 'nowhere',
+      name: 'x.pdf',
+      type: 'application/pdf',
+      size: 1,
+    }
+
+    await expect(
+      saveDraft(ACC, identity, { ...fields, attachments: [lost] }, 'old'),
+    ).resolves.toEqual({ id: 'old', ok: false })
+    expect(saveDraftOnServer).not.toHaveBeenCalled()
   })
 })
 
