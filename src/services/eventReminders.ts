@@ -1,14 +1,16 @@
 import { liveQuery } from 'dexie'
 import type { CalendarEvent } from '../domain/calendar'
+import type { Note } from '../domain/note'
 import { useUi } from '../app/store'
 import { pendingAlerts, type PendingAlert } from '../lib/alerts'
 import { readHiddenCalendars } from '../lib/hiddenCalendars'
 import { currentLocale, t } from '../lib/i18n'
+import { pendingNoteAlerts } from '../lib/noteAlerts'
 import { db } from '../storage/db'
 import { openEnvelope } from '../storage/envelope'
 
 /*
- * Reminders for calendar events, shown while mel is running.
+ * Reminders for calendar events and notes' due dates, shown while mel is running.
  *
  * There is no server of ours to wake a closed browser, and the one API meant
  * for it (notification triggers) was withdrawn, so a reminder is only shown by
@@ -53,8 +55,11 @@ function writeFired(accountId: string, fired: Record<string, number>, now: numbe
 const relative = new Intl.RelativeTimeFormat(currentLocale, { numeric: 'auto' })
 const clock = new Intl.DateTimeFormat(currentLocale, { hour: 'numeric', minute: '2-digit' })
 
-/** "in 15 minutes · 10:00 · Room 4" */
+/** "in 15 minutes · 10:00 · Room 4", or "Due today" for a note. */
 export function describeAlert(alert: PendingAlert, now: Date): { title: string; body: string } {
+  if (alert.kind === 'note') {
+    return { title: alert.title || t('notes.untitled'), body: t('notes.reminder.dueToday') }
+  }
   const minutes = Math.round((alert.start.getTime() - now.getTime()) / 60_000)
   const lead =
     Math.abs(minutes) >= 1440
@@ -80,10 +85,14 @@ export function runReminders(
   fired: Record<string, number>,
   viewerZone: string,
   deliver: (alerts: PendingAlert[], now: Date) => boolean,
+  notes: Note[] = [],
 ): { fired: Record<string, number>; nextAt: Date | null } {
-  const pending = pendingAlerts(events, now, HORIZON_MS, viewerZone).filter(
-    (a) => !(a.key in fired),
-  )
+  const pending = [
+    ...pendingAlerts(events, now, HORIZON_MS, viewerZone),
+    ...pendingNoteAlerts(notes, now, HORIZON_MS),
+  ]
+    .filter((a) => !(a.key in fired))
+    .sort((a, b) => a.fireAt.getTime() - b.fireAt.getTime())
   const due = pending.filter((a) => a.fireAt <= now)
   const nextAt = pending.find((a) => a.fireAt > now)?.fireAt ?? null
   if (!due.length || !deliver(due, now)) return { fired, nextAt }
@@ -99,7 +108,7 @@ function showSystemNotification(alerts: PendingAlert[], now: Date): void {
       body,
       tag: `mel-reminder-${alert.key}`,
       icon: '/icon.svg',
-      data: { url: '/calendar' },
+      data: { url: alert.kind === 'note' ? `/notes/${alert.eventId}` : '/calendar' },
     }
     void (async () => {
       // Android Chrome refuses `new Notification`; only a registration may show one.
@@ -132,7 +141,7 @@ export function deliverReminders(alerts: PendingAlert[], now: Date): boolean {
 const running = new Map<string, () => void>()
 
 /**
- * Starts showing reminders for an account's events; returns the stopper.
+ * Starts showing reminders for an account's events and due notes; returns the stopper.
  * Idempotent per account, like the sync scheduler beside it.
  */
 export function startEventReminders(accountId: string): () => void {
@@ -140,6 +149,7 @@ export function startEventReminders(accountId: string): () => void {
   if (existing) return existing
 
   let events: CalendarEvent[] = []
+  let notes: Note[] = []
   let timer: ReturnType<typeof setTimeout> | null = null
   let stopped = false
 
@@ -152,7 +162,7 @@ export function startEventReminders(accountId: string): () => void {
     const visible = events.filter((e) => Object.keys(e.calendarIds).some((id) => !hidden.has(id)))
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const fired = readFired(accountId)
-    const result = runReminders(visible, now, fired, zone, deliverReminders)
+    const result = runReminders(visible, now, fired, zone, deliverReminders, notes)
     if (result.fired !== fired) writeFired(accountId, result.fired, now.getTime())
     const wait = result.nextAt ? result.nextAt.getTime() - now.getTime() : MAX_WAIT_MS
     timer = setTimeout(plan, Math.max(1_000, Math.min(wait, MAX_WAIT_MS)))
@@ -169,6 +179,17 @@ export function startEventReminders(accountId: string): () => void {
     error: () => {},
   })
 
+  const noteSubscription = liveQuery(async () => {
+    const rows = await db.notes.where('accountId').equals(accountId).toArray()
+    return rows.map((r) => openEnvelope(r.payload))
+  }).subscribe({
+    next: (list) => {
+      notes = list
+      plan()
+    },
+    error: () => {},
+  })
+
   const onVisible = () => {
     if (!document.hidden) plan()
   }
@@ -178,6 +199,7 @@ export function startEventReminders(accountId: string): () => void {
     stopped = true
     if (timer) clearTimeout(timer)
     subscription.unsubscribe()
+    noteSubscription.unsubscribe()
     document.removeEventListener('visibilitychange', onVisible)
     running.delete(accountId)
   }

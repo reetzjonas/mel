@@ -3,6 +3,7 @@ import type { Note } from '../../domain/note'
 import { t } from '../../lib/i18n'
 import { imageNames, imageRef } from '../../lib/noteFile'
 import { deleteNote, saveNote, stageNoteImage } from '../../services/notes'
+import { requestNotificationPermission } from '../../services/notifications'
 import { Icon } from '../../ui/Icon'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { OverflowMenu } from '../../ui/OverflowMenu'
@@ -174,7 +175,16 @@ export function NoteEditor({
               type="date"
               className={`${inputClass} !w-auto !py-1`}
               value={note.due ?? ''}
-              onChange={(e) => write({ due: e.target.value || null })}
+              onChange={(e) => {
+                write({ due: e.target.value || null })
+                // A due date reminds on its morning; this is the one moment the prompt is expected.
+                if (
+                  e.target.value &&
+                  'Notification' in window &&
+                  Notification.permission === 'default'
+                )
+                  void requestNotificationPermission()
+              }}
               aria-label={t('notes.due')}
             />
           </label>

@@ -215,11 +215,27 @@ now — offline mid-sync, a server hiccup — must not count as a note that is
 gone, or the sweep at the end of the reconcile deletes the last text that was
 successfully read while the folder sits happily on the server.
 
+## Due dates and reminders
+
+A due date is an optional plain day (`due: YYYY-MM-DD`), no time and no zone —
+a note is a to-do, not an appointment (#88). The list can filter by it
+(overdue, today, upcoming, none) and sort by the next date, pinned notes
+staying on top; an overdue date is drawn in red.
+
+The reminder is the calendar's, not a second notification path: the service
+in `services/eventReminders.ts` plans notes beside events
+(`lib/noteAlerts.ts`), so it shares the timer, the record of what was shown,
+the system-notification-or-snackbar choice and every limit described in
+`calendar-alerts.md` — above all, a closed browser shows nothing. Since the
+date has no time, the reminder picks one: **09:00 on the day, local time**,
+caught up while that day lasts. After that the red date in the list is the
+reminder. There is no per-note switch: a due date is the request to be
+reminded. Moving the date reminds again, because the date is part of the key.
+Permission is asked for when a date is first set, the same moment the event
+dialog asks.
+
 ## What is not there yet
 
-- **Due dates** are stored and shown (`due:`), but nothing reminds anyone.
-  Reminders wait for the calendar's local alerts (#4/#28) rather than growing a
-  second notification path — #88.
 - **`linkedTo`** is parsed and written but nothing sets it yet; it is there for
   "make a note about this message" (#86).
 - **Sharing** waits on whether Stalwart enforces `shareWith` at all (#89, #75).

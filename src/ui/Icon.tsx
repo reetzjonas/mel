@@ -56,6 +56,7 @@ const paths: Record<string, string> = {
   plus: 'M5 12h14M12 5v14',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
   chevronDown: 'm6 9 6 6 6-6',
+  sort: 'm3 6h18M6 12h12m3 6H9',
   close: 'M18 6 6 18M6 6l12 12',
   expand:
     'M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3',

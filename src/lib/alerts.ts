@@ -105,6 +105,8 @@ export interface PendingAlert {
   end: Date
   allDay: boolean
   fireAt: Date
+  /** A note's due date (lib/noteAlerts.ts) rather than an event; `eventId` is then the note's id. */
+  kind?: 'note'
 }
 
 function fireTime(alert: Record<string, unknown>, occ: Occurrence, zone: string): Date | null {

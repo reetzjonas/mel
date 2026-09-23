@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CalendarEvent, EventAlerts } from '../domain/calendar'
+import type { Note } from '../domain/note'
 import type { PendingAlert } from '../lib/alerts'
 import { useUi } from '../app/store'
 import { db } from '../storage/db'
@@ -69,6 +70,28 @@ describe('running the reminders', () => {
     expect(shown).toHaveBeenCalledTimes(2)
   })
 
+  it('plans due notes alongside events, whichever comes first', () => {
+    const due: Note = {
+      id: 'n1',
+      folderId: 'n1',
+      fileId: 'n1',
+      folderName: 'n1',
+      title: 'Taxes',
+      body: '',
+      pinned: false,
+      due: '2026-08-03',
+      linkedTo: null,
+      extra: {},
+      modified: '',
+    }
+    const now = new Date(2026, 7, 3, 0, 30)
+    const r = runReminders([], now, {}, ZONE, shown, [due])
+    expect(shown).not.toHaveBeenCalled()
+    expect(r.nextAt).toEqual(new Date(2026, 7, 3, 9))
+    runReminders([], new Date(2026, 7, 3, 9, 1), {}, ZONE, shown, [due])
+    expect(shown.mock.calls[0]![0]).toMatchObject([{ kind: 'note', title: 'Taxes' }])
+  })
+
   it('shows an alert again when its event is moved, since that is a new moment', () => {
     const before = runReminders([event()], new Date('2026-08-03T07:46:00Z'), {}, ZONE, shown)
     const moved = event({ start: '2026-08-03T16:00:00' })
@@ -111,6 +134,27 @@ describe('what a reminder says', () => {
       new Date('2026-08-03T07:45:00Z'),
     )
     expect(body).toBe('in 15 minutes · All day')
+  })
+})
+
+describe('what a note reminder says', () => {
+  it('names the note and that it is due today', () => {
+    const { title, body } = describeAlert(
+      {
+        key: 'k',
+        eventId: 'n1',
+        title: '',
+        location: '',
+        start: new Date(2026, 7, 3),
+        end: new Date(2026, 7, 4),
+        allDay: true,
+        fireAt: new Date(2026, 7, 3, 9),
+        kind: 'note',
+      },
+      new Date(2026, 7, 3, 9),
+    )
+    expect(title).toBe('Untitled note')
+    expect(body).toBe('Due today')
   })
 })
 
@@ -161,6 +205,17 @@ describe('delivering a reminder', () => {
     expect(options).toMatchObject({ tag: 'mel-reminder-k1', data: { url: '/calendar' } })
     // Nothing in the page as well: one or the other.
     expect(useUi.getState().snackbar).toBeNull()
+  })
+
+  it('leads a note reminder to the note', async () => {
+    const showNotification = vi.fn().mockResolvedValue(undefined)
+    setPermission('granted')
+    vi.stubGlobal('navigator', {
+      serviceWorker: { getRegistration: () => Promise.resolve({ showNotification }) },
+    })
+    deliverReminders([{ ...alert, eventId: 'n1', kind: 'note' }], now)
+    await vi.waitFor(() => expect(showNotification).toHaveBeenCalledTimes(1))
+    expect(showNotification.mock.calls[0]![1]).toMatchObject({ data: { url: '/notes/n1' } })
   })
 
   it('falls back to the page notification where there is no service worker', async () => {
@@ -214,6 +269,7 @@ describe('running for an account', () => {
     useUi.getState().hideSnackbar()
     localStorage.clear()
     await db.events.clear()
+    await db.notes.clear()
     // 07:40Z, five minutes before the event's alert at 07:45Z.
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
     vi.setSystemTime(new Date('2026-08-03T07:40:00Z'))
@@ -281,6 +337,34 @@ describe('running for an account', () => {
     vi.setSystemTime(new Date('2026-08-03T07:50:00Z'))
     await put(event())
     await vi.waitFor(() => expect(snack()).toMatch(/^Standup/))
+  })
+
+  it('reminds of a note due today, whatever the calendar filter says', async () => {
+    // A hidden calendar is about events; a note has none.
+    localStorage.setItem('mel:cal:hidden:acc-rem', JSON.stringify(['c']))
+    vi.setSystemTime(new Date(2026, 7, 3, 10))
+    const note: Note = {
+      id: 'n1',
+      folderId: 'n1',
+      fileId: 'n1',
+      folderName: 'n1',
+      title: 'Taxes',
+      body: '',
+      pinned: false,
+      due: '2026-08-03',
+      linkedTo: null,
+      extra: {},
+      modified: '',
+    }
+    await db.notes.put({
+      accountId: ACC,
+      id: note.id,
+      pinned: 0,
+      modified: '',
+      payload: sealPlain(note),
+    })
+    start()
+    await vi.waitFor(() => expect(snack()).toBe('Taxes — Due today'))
   })
 
   it('tries again when the tab comes back to the front', async () => {

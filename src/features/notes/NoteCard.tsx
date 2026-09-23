@@ -2,6 +2,7 @@ import { Link } from '@tanstack/react-router'
 import type { Note } from '../../domain/note'
 import { currentLocale, t } from '../../lib/i18n'
 import { Icon } from '../../ui/Icon'
+import { isOverdue } from './noteList'
 
 const dayFmt = new Intl.DateTimeFormat(currentLocale, { day: 'numeric', month: 'short' })
 
@@ -92,7 +93,11 @@ export function NoteCard({
         {note.title || t('notes.untitled')}
       </span>
       {note.due && (
-        <span className="shrink-0 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-ink-muted">
+        <span
+          className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${
+            isOverdue(note) ? 'bg-danger-wash text-danger' : 'bg-surface-2 text-ink-muted'
+          }`}
+        >
           {note.due}
         </span>
       )}

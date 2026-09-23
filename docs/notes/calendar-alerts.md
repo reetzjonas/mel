@@ -70,6 +70,10 @@ server-side work.
 
 ## Where it runs
 
+Notes' due dates ride along (#88, `lib/noteAlerts.ts`): the same run plans
+them next to events, with `kind: 'note'` on the alert deciding what it says
+and where a click leads. See `notes-app.md`.
+
 `services/eventReminders.ts`, started from `AppShell` beside the sync
 scheduler — but it holds no connection, so it _stops_ on an account change or a
 lock rather than being left running. It reads events through `liveQuery`, so
@@ -101,7 +105,6 @@ lives in the main thread and not the service worker (same limit as
   the field while editing "this one", because a patch for one occurrence does
   not carry `alerts` and a change would be lost.
 - A declined invitation still reminds if the server's copy has an alert.
-- Notes' due dates (#88) are meant to reuse this plumbing.
 
 ## Testing
 

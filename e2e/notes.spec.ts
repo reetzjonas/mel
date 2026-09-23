@@ -101,11 +101,15 @@ async function serverNoteTexts(): Promise<string[]> {
 }
 
 /** Wait until a note with this title holds the text on the server. */
-async function expectOnServer(title: string, text: string) {
+async function expectOnServer(title: string, text: string | string[]) {
+  const wanted = Array.isArray(text) ? text : [text]
   await expect
     .poll(
-      async () => (await serverNoteTexts()).some((t) => t.includes(title) && t.includes(text)),
-      { timeout: 20_000, message: `"${text}" of note ${title} on the server` },
+      async () =>
+        (await serverNoteTexts()).some(
+          (body) => body.includes(title) && wanted.every((value) => body.includes(value)),
+        ),
+      { timeout: 20_000, message: `"${wanted.join(', ')}" of note ${title} on the server` },
     )
     .toBe(true)
 }
@@ -168,6 +172,7 @@ test('write a note, tick an item off, and find it again after a reload', async (
   await page.setViewportSize(desktopViewport)
 
   await page.getByRole('textbox', { name: 'Title' }).fill(title)
+  await page.getByLabel('Due').fill('2000-01-01')
   const body = page.getByRole('textbox', { name: 'Note', exact: true })
   await body.click()
   // Typed, not filled: the editor is a document, and Enter on a list line
@@ -179,10 +184,15 @@ test('write a note, tick an item off, and find it again after a reload', async (
    * server through the outbox, and a fresh page has nothing to go on but what
    * came back from it.
    */
-  await expectOnServer(title, 'Brot')
+  await expectOnServer(title, ['due: 2000-01-01', 'Brot'])
   await page.reload()
   await page.getByRole('link', { name: 'Notes' }).first().click()
   await expect(page.getByRole('link', { name: title })).toBeVisible({ timeout: 20_000 })
+  await page.getByRole('button', { name: 'Note list options' }).click()
+  const listOptions = page.getByRole('menu', { name: 'Note list options' })
+  await expect(listOptions.getByRole('menuitem', { name: 'Sort by due date' })).toBeVisible()
+  await listOptions.getByRole('menuitemcheckbox', { name: 'Show overdue notes' }).click()
+  await expect(page.getByRole('link', { name: title })).toBeVisible()
   await page.getByRole('link', { name: title }).click()
 
   // The checkbox is drawn over the `- [ ]` in the text; ticking it rewrites

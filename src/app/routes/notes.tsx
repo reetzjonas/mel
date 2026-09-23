@@ -3,6 +3,12 @@ import { useMemo, useRef, useState } from 'react'
 import { useAccounts } from '../../features/mail/hooks'
 import { NoteCard } from '../../features/notes/NoteCard'
 import { useNotes } from '../../features/notes/hooks'
+import {
+  matchesDueFilter,
+  sortNotes,
+  type DueFilter,
+  type NoteSort,
+} from '../../features/notes/noteList'
 import { CapabilityNotice } from '../../features/settings/ServerCapabilities'
 import { t } from '../../lib/i18n'
 import { PANEL_WIDTH_VAR, usePanelWidth, type PanelLimits } from '../../lib/panelWidths'
@@ -12,6 +18,7 @@ import { EmptyState } from '../../ui/EmptyState'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Icon } from '../../ui/Icon'
 import { MobileFab } from '../../ui/MobileFab'
+import { OverflowMenu } from '../../ui/OverflowMenu'
 import { ResizeHandle } from '../../ui/ResizeHandle'
 import { SearchInput } from '../../ui/SearchInput'
 import { SelectionActionButton, SelectionToolbar } from '../../ui/SelectionToolbar'
@@ -38,14 +45,23 @@ function NotesLayout() {
   const [busy, setBusy] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const [filter, setFilter] = useState('')
+  const [dueFilter, setDueFilter] = useState<DueFilter>('all')
+  const [sort, setSort] = useState<NoteSort>('recent')
   const listPanel = usePanelWidth('notes-list', LIST_LIMITS)
   const listRef = useRef<HTMLElement | null>(null)
 
   const filtered = useMemo(() => {
     if (!notes) return undefined
     const needle = filter.trim().toLowerCase()
-    return needle ? notes.filter((n) => n.title.toLowerCase().includes(needle)) : notes
-  }, [notes, filter])
+    return sortNotes(
+      notes.filter(
+        (note) =>
+          (!needle || note.title.toLowerCase().includes(needle)) &&
+          matchesDueFilter(note, dueFilter),
+      ),
+      sort,
+    )
+  }, [notes, filter, dueFilter, sort])
 
   const selectionRows = useMemo(
     () => (filtered ?? []).map((n) => ({ key: n.id, ids: [n.id] })),
@@ -132,6 +148,42 @@ function NotesLayout() {
               >
                 {t('notes.selectToggle')}
               </button>
+              <OverflowMenu
+                label={t('notes.listOptions')}
+                actions={[
+                  {
+                    icon: 'calendar',
+                    label: t('notes.due.overdue'),
+                    pressed: dueFilter === 'overdue',
+                    onSelect: () =>
+                      setDueFilter((value) => (value === 'overdue' ? 'all' : 'overdue')),
+                  },
+                  {
+                    icon: 'calendar',
+                    label: t('notes.due.today'),
+                    pressed: dueFilter === 'today',
+                    onSelect: () => setDueFilter((value) => (value === 'today' ? 'all' : 'today')),
+                  },
+                  {
+                    icon: 'calendar',
+                    label: t('notes.due.upcoming'),
+                    pressed: dueFilter === 'upcoming',
+                    onSelect: () =>
+                      setDueFilter((value) => (value === 'upcoming' ? 'all' : 'upcoming')),
+                  },
+                  {
+                    icon: 'calendar',
+                    label: t('notes.due.none'),
+                    pressed: dueFilter === 'none',
+                    onSelect: () => setDueFilter((value) => (value === 'none' ? 'all' : 'none')),
+                  },
+                  {
+                    icon: 'sort',
+                    label: t(sort === 'due' ? 'notes.sort.recent' : 'notes.sort.due'),
+                    onSelect: () => setSort((value) => (value === 'due' ? 'recent' : 'due')),
+                  },
+                ]}
+              />
               <Tooltip label={t('notes.new')}>
                 <button
                   type="button"

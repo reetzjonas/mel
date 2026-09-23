@@ -252,6 +252,13 @@ test('app switcher navigates between apps (after login)', async ({ page }) => {
       await expect(menu).toBeHidden()
     }
     if (compact && name === 'Notes') {
+      await page.getByRole('button', { name: 'Note list options' }).click()
+      const noteOptions = page.getByRole('menu', { name: 'Note list options' })
+      await expect(
+        noteOptions.getByRole('menuitemcheckbox', { name: 'Show overdue notes' }),
+      ).toBeVisible()
+      await expect(noteOptions.getByRole('menuitem', { name: 'Sort by due date' })).toBeVisible()
+      await page.keyboard.press('Escape')
       await page.getByRole('button', { name: 'New note', exact: true }).click()
       await expect(page).toHaveURL(/\/notes\/.+$/)
       await expectCompactTouchTargets(page)
