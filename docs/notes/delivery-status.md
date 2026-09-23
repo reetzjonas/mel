@@ -30,6 +30,24 @@ reply. The list row gets a warning mark.
   with `noRecipients`, before anything is sent. No submission exists, so that
   is the outbox's business (a failed `sendEmail`), not this band's.
 
+## A refused submission (issue #99)
+
+`sendEmail` creates the message and submits it in one request. When the
+submission half is refused, Stalwart still keeps the message it created, in
+Drafts, since `onSuccessUpdateEmail` never ran. Retrying used to add one more
+there per attempt. Now `sendEmail` destroys that message again in a follow-up
+request (best effort; the refusal is still what it throws). The autosaved
+draft the message was written in is a different one, and stays so the
+address can be fixed.
+
+The refusals that sending the same message again cannot change
+(`noRecipients`, `invalidRecipients`, `invalidEmail`, `tooManyRecipients`,
+`forbiddenFrom`, `forbiddenMailFrom`) are permanent: the outbox gives up at
+once and the queue shows the type as the reason. `forbiddenToSend` stays
+transient, because RFC 8621 words it as "right now" and a server may use it
+for a rate limit. The e2e test (`compose.spec.ts`, `#99`) counts Drafts on
+the server after a send and a retry, and fails without the cleanup.
+
 ## Why a window and not `/changes`
 
 The status fills in without moving `EmailSubmission`'s state: `/changes` right

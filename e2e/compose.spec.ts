@@ -11,6 +11,28 @@ async function login(page: Page, user: string, pass: string) {
 const ALICE = ['alice@localhost', 'korrekt-pferd-batterie-alice'] as const
 const BOB = ['bob@localhost', 'korrekt-pferd-batterie-bob'] as const
 
+/** How many messages in Alice's Drafts carry this subject, straight from Stalwart. */
+async function draftsWithSubject(page: Page, subject: string): Promise<number> {
+  const headers = { Authorization: `Basic ${btoa(ALICE.join(':'))}` }
+  const session = (await (
+    await page.request.get('http://localhost:8080/jmap/session', { headers })
+  ).json()) as { primaryAccounts: Record<string, string> }
+  const accountId = session.primaryAccounts['urn:ietf:params:jmap:mail']
+  const call = async (method: string, args: Record<string, unknown>) => {
+    const res = await page.request.post('http://localhost:8080/jmap', {
+      headers,
+      data: {
+        using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+        methodCalls: [[method, { accountId, ...args }, '0']],
+      },
+    })
+    return ((await res.json()) as { methodResponses: [string, { ids: string[] }][] })
+      .methodResponses[0]![1].ids
+  }
+  const [drafts] = await call('Mailbox/query', { filter: { role: 'drafts' } })
+  return (await call('Email/query', { filter: { inMailbox: drafts, subject } })).length
+}
+
 test('formatting toolbar output — bold, italic, a list and a link — survives to the recipient', async ({
   page,
   browser,
@@ -386,4 +408,49 @@ test('a recipient the server refuses is announced and named on the sent message 
     .locator('[data-testid="virtuoso-item-list"] [role="button"]')
     .filter({ hasText: subject })
   await expect(row.getByRole('img', { name: 'Not delivered' })).toBeVisible()
+})
+
+test('a submission the server refuses is given up on, without a message per attempt in Drafts (#99)', async ({
+  page,
+}) => {
+  test.setTimeout(90_000)
+  const subject = `e2e-refused-${Date.now()}`
+
+  await login(page, ...ALICE)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+
+  // Stalwart creates the message, then refuses the submission with
+  // noRecipients: nothing it will deliver to.
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('someone@example.invalid')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Never leaves.')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible()
+
+  // Given up on at once, not retried in the background.
+  await expect(page.getByTestId('sync-status')).toContainText('could not be sent', {
+    timeout: 30_000,
+  })
+  const entries = page.getByRole('listitem').filter({ hasText: 'noRecipients' })
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await page.getByRole('tab', { name: 'Account' }).click()
+  await expect(entries).toHaveCount(1, { timeout: 15_000 })
+
+  // A retry is refused the same way, and still leaves nothing behind.
+  await entries.first().getByRole('button', { name: 'Retry' }).click()
+  await expect(entries).toHaveCount(1, { timeout: 20_000 })
+  await expect(entries.first()).toContainText('Not sent', { timeout: 20_000 })
+  await entries.first().getByRole('button', { name: 'Discard' }).click()
+  await page
+    .getByRole('dialog', { name: 'Discard' })
+    .getByRole('button', { name: 'Discard' })
+    .click()
+  await expect(entries).toHaveCount(0, { timeout: 10_000 })
+  await page.getByRole('button', { name: 'Close settings' }).click()
+
+  // At most the autosaved draft it was written in, never one per attempt.
+  // Asked of the server itself: the list would only show what synced so far.
+  expect(await draftsWithSubject(page, subject)).toBeLessThanOrEqual(1)
 })

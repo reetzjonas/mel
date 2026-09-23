@@ -42,6 +42,18 @@ const PERMANENT_SET_ERRORS = new Set([
   'overQuota',
   'tooLarge',
   'singleton',
+  /*
+   * EmailSubmission/set's own (RFC 8621 §7.5): the addresses or the sender
+   * are wrong, and sending the same message again changes neither. Not
+   * `forbiddenToSend`, which the RFC words as "right now" and a server may
+   * use for a rate limit.
+   */
+  'invalidEmail',
+  'tooManyRecipients',
+  'noRecipients',
+  'invalidRecipients',
+  'forbiddenMailFrom',
+  'forbiddenFrom',
 ])
 
 function toFailure(e: SetError | undefined): SetFailure {
@@ -451,11 +463,25 @@ export function createJmapMail(
       })
       await b.send()
       const notCreated = setCall.result.notCreated?.['draft'] ?? submit.result.notCreated?.['sub']
+      /*
+       * The message half went through and the submission did not: the server
+       * keeps the message in Drafts (onSuccessUpdateEmail never ran), and every
+       * retry would add another. The draft the message was written in, if it
+       * was autosaved, is a different one and stays for fixing it.
+       */
+      const orphan = setCall.result.created?.['draft']?.id
+      if (notCreated && orphan) {
+        const cleanup = new Batch(transport, USING)
+        cleanup.call('Email/set', { accountId, destroy: [orphan] })
+        // Best effort: the refusal is what the caller has to hear about.
+        await cleanup.send().catch(() => {})
+      }
       if (notCreated) {
         const f = toFailure(notCreated)
         const err = new Error(`${f.type}${f.description ? `: ${f.description}` : ''}`)
-        ;(err as Error & { permanent?: boolean }).permanent = f.permanent
-        throw err
+        // `reason` is what the outbox records and the queue shows: the type
+        // alone, since a description can quote the addresses.
+        throw Object.assign(err, { permanent: f.permanent, reason: f.type })
       }
     },
 

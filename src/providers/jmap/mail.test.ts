@@ -521,8 +521,82 @@ describe('sending a message', () => {
       'EmailSubmission/set': { notCreated: { sub: { type: 'forbiddenFrom' } } },
     })
     await expect(refusedSubmission.mail.sendEmail(outgoing as never, boxes)).rejects.toMatchObject({
+      permanent: true,
+    })
+
+    // "Not right now" is worth another try later.
+    const notNow = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { notCreated: { sub: { type: 'forbiddenToSend' } } },
+    })
+    await expect(notNow.mail.sendEmail(outgoing as never, boxes)).rejects.toMatchObject({
       permanent: false,
     })
+  })
+
+  it.each([
+    'noRecipients',
+    'invalidRecipients',
+    'invalidEmail',
+    'tooManyRecipients',
+    'forbiddenMailFrom',
+  ])('gives up on a submission refused with %s', async (type) => {
+    const { mail } = serverAnswering({
+      'Email/set': [{ created: { draft: { id: 'e1' } } }, { destroyed: ['e1'] }],
+      'EmailSubmission/set': { notCreated: { sub: { type } } },
+    })
+    await expect(mail.sendEmail(outgoing as never, boxes)).rejects.toMatchObject({
+      message: expect.stringContaining(type),
+      permanent: true,
+      reason: type,
+    })
+  })
+
+  it('takes back the message a refused submission left in Drafts', async () => {
+    // Stalwart keeps it there, and each retry of the send would add another.
+    const { mail, sent } = serverAnswering({
+      'Email/set': [{ created: { draft: { id: 'e1' } } }, { destroyed: ['e1'] }],
+      'EmailSubmission/set': { notCreated: { sub: { type: 'noRecipients' } } },
+    })
+    await expect(mail.sendEmail(outgoing as never, boxes)).rejects.toThrow('noRecipients')
+    expect(sent.map(([name]) => name)).toEqual(['Email/set', 'EmailSubmission/set', 'Email/set'])
+    expect(sent[2]![1]).toMatchObject({ destroy: ['e1'] })
+  })
+
+  it('still reports the refusal when taking the message back fails', async () => {
+    let calls = 0
+    const transport: Transport = {
+      fetchRaw: vi.fn(),
+      request: async (req: JmapRequest) => {
+        if (++calls > 1) throw new Error('connection lost')
+        return {
+          methodResponses: [
+            ['Email/set', { created: { draft: { id: 'e1' } } }, req.methodCalls[0]![2]],
+            [
+              'EmailSubmission/set',
+              { notCreated: { sub: { type: 'invalidRecipients' } } },
+              req.methodCalls[1]![2],
+            ],
+          ],
+          sessionState: 's',
+        } as never
+      },
+    }
+    const mail = createJmapMail(transport, 'acc', limits, 'u', 'd')
+    await expect(mail.sendEmail(outgoing as never, boxes)).rejects.toMatchObject({
+      message: expect.stringContaining('invalidRecipients'),
+      permanent: true,
+    })
+    expect(calls).toBe(2)
+  })
+
+  it('leaves Drafts alone when the message itself was refused', async () => {
+    const { mail, sent } = serverAnswering({
+      'Email/set': { notCreated: { draft: { type: 'invalidProperties' } } },
+      'EmailSubmission/set': {},
+    })
+    await expect(mail.sendEmail(outgoing as never, boxes)).rejects.toThrow('invalidProperties')
+    expect(sent.map(([name]) => name)).toEqual(['Email/set', 'EmailSubmission/set'])
   })
 })
 
