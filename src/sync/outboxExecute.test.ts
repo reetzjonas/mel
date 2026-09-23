@@ -11,11 +11,16 @@ Object.defineProperty(navigator, 'locks', {
 const ACC = 'acc'
 const calls: string[] = []
 
-/** Each provider call records itself and answers with whatever a test set. */
+/**
+ * Each provider call records itself and answers with whatever a test set. A
+ * function is called at that moment: a rejection made up front, before
+ * anything awaits it, is reported as unhandled.
+ */
 let answers: Record<string, unknown> = {}
 const answer = (name: string, fallback: unknown) => {
   calls.push(name)
-  return Promise.resolve(name in answers ? answers[name] : fallback)
+  const set = answers[name]
+  return Promise.resolve(name in answers ? (typeof set === 'function' ? set() : set) : fallback)
 }
 
 vi.mock('./connections', () => ({
@@ -224,7 +229,8 @@ describe('sending a queued message', () => {
   it('keeps the draft when the send fails', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {})
     answers = {
-      sendEmail: Promise.reject(Object.assign(new Error('forbiddenFrom'), { permanent: true })),
+      sendEmail: () =>
+        Promise.reject(Object.assign(new Error('forbiddenFrom'), { permanent: true })),
     }
 
     await run({

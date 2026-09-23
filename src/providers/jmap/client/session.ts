@@ -1,6 +1,7 @@
 import type { AccountCapabilities, Credentials } from '../../../domain/account'
 import { t } from '../../../lib/i18n'
-import { JmapError, authHeader, toError } from './transport'
+import { authorizedFetch } from './auth'
+import { JmapError, toError } from './errors'
 import { Cap, type CoreCapability, type JmapSession } from './types/core'
 
 /**
@@ -36,10 +37,7 @@ export function discoveryCandidates(email: string): string[] {
   if (!domain) return []
   if (isLocal(domain)) {
     // The dev Stalwart; https and the bare host are hopeless here.
-    return [
-      'http://localhost:8080/.well-known/jmap',
-      `http://${domain}/.well-known/jmap`,
-    ]
+    return ['http://localhost:8080/.well-known/jmap', `http://${domain}/.well-known/jmap`]
   }
   return [
     `https://mail.${domain}/.well-known/jmap`,
@@ -111,12 +109,21 @@ export async function fetchSession(
 ): Promise<ResolvedSession> {
   let res: Response
   try {
-    res = await fetch(sessionUrl, { headers: { Authorization: authHeader(creds) } })
+    res = await authorizedFetch(creds, sessionUrl)
   } catch (e) {
+    if (e instanceof JmapError) throw e
     throw new JmapError(e instanceof Error ? e.message : 'network error', 'network')
   }
   if (res.status === 401 || res.status === 403)
     throw new JmapError(t('login.failed'), 'auth', undefined, res.status)
+  /*
+   * Stalwart's answer to Basic auth for an account with a second factor. The
+   * password was right; the code has to go through the token login, and
+   * reaching here means that was not available — typically a reverse proxy
+   * that forwards /jmap but not /api/auth. An auth error, so the login stops
+   * looking at other hosts, and one that says what is actually wrong.
+   */
+  if (res.status === 402) throw new JmapError(t('login.totpUnavailable'), 'auth', undefined, 402)
   // Everything else through the shared taxonomy, so a 429 here means the same
   // as a 429 anywhere else — transient, with the server's own Retry-After.
   if (!res.ok) throw await toError(res)

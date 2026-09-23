@@ -55,6 +55,7 @@ export default defineConfig({
       // State-mutating flows run on desktop only — both projects share one
       // Stalwart account and would race each other.
       testIgnore: [
+        '**/auth.spec.ts',
         '**/capabilities.spec.ts',
         '**/initial-sync.spec.ts',
         '**/unsubscribe.spec.ts',

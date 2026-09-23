@@ -3,6 +3,7 @@ import type { Account, AccountCapabilities, Credentials } from '../domain/accoun
 import type { ProviderConnection } from '../providers/types'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
+import { authorization, forgetAccessTokens } from '../providers/jmap/client/auth'
 import { connectionFor, dropConnection, storedAccount } from './connections'
 
 const ACCOUNT_ID = 'account-1'
@@ -118,5 +119,58 @@ describe('connectionFor', () => {
     await expect(connectionFor(ACCOUNT_ID)).resolves.toBeDefined()
 
     put.mockRestore()
+  })
+
+  it('does not write back credentials replaced while it was opening', async () => {
+    // A token login swaps the password out at the moment the first connection
+    // opens; writing the opening credentials back would restore the password.
+    const tokens: Credentials = { method: 'oauth', username: 'alice', secret: 'refresh-1' }
+    const opening = open.getMockImplementation()!
+    open.mockImplementationOnce(async (stored: Account) => {
+      const row = await db.accounts.get(ACCOUNT_ID)
+      await db.accounts.put({
+        ...row!,
+        payload: sealPlain({ ...openEnvelope(row!.payload), credentials: tokens }),
+      })
+      return opening(stored)
+    })
+
+    await connectionFor(ACCOUNT_ID)
+
+    expect((await storedAccount(ACCOUNT_ID)).credentials).toEqual(tokens)
+  })
+})
+
+describe('a refresh token the server replaced', () => {
+  it('is stored in place of the old one', async () => {
+    const tokens: Credentials = {
+      method: 'oauth',
+      username: 'alice',
+      secret: 'refresh-1',
+      tokenEndpoint: 'https://example.test/auth/token',
+    }
+    await db.accounts.clear()
+    await db.accounts.put({
+      id: ACCOUNT_ID,
+      provider: 'jmap',
+      encrypted: false,
+      payload: sealPlain({ account: account(caps()), credentials: tokens }),
+    })
+    forgetAccessTokens()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({ access_token: 'a', expires_in: 3600, refresh_token: 'refresh-2' }),
+      ),
+    )
+
+    try {
+      await authorization({ ...tokens })
+      await vi.waitFor(async () =>
+        expect((await storedAccount(ACCOUNT_ID)).credentials.secret).toBe('refresh-2'),
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })

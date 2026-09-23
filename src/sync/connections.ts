@@ -1,10 +1,25 @@
 import type { Account, Credentials } from '../domain/account'
+import { onRefreshTokenRotated } from '../providers/jmap/client/auth'
 import { providerFor } from '../providers/registry'
 import type { ProviderConnection } from '../providers/types'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 
 const cache = new Map<string, Promise<ProviderConnection>>()
+
+/*
+ * A renewal that came with a new refresh token: store it in place of the old
+ * one, or the next start presents a token the server has retired.
+ */
+onRefreshTokenRotated((previous, credentials) => {
+  void (async () => {
+    for (const row of await db.accounts.toArray()) {
+      const stored = openEnvelope(row.payload)
+      if (stored.credentials.secret !== previous) continue
+      await db.accounts.put({ ...row, payload: sealPlain({ ...stored, credentials }) })
+    }
+  })().catch(() => {})
+})
 
 export async function storedAccount(
   accountId: string,
@@ -32,7 +47,14 @@ async function persistAccount(account: Account, credentials: Credentials): Promi
     // Gone means signed out while this connection was still opening — writing
     // it back now would resurrect the account row we just deleted.
     if (!row) return
-    await db.accounts.put({ ...row, payload: sealPlain({ account, credentials }) })
+    // The credentials as stored now, not as they were when this connection
+    // set out: a token login or a re-sign-in may have replaced them since, and
+    // writing the old ones back would restore a password just dropped.
+    const current = openEnvelope(row.payload).credentials
+    await db.accounts.put({
+      ...row,
+      payload: sealPlain({ account, credentials: current ?? credentials }),
+    })
   } catch {
     // See above.
   }

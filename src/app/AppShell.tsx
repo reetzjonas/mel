@@ -1,6 +1,7 @@
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
+import { ReauthPrompt } from '../features/auth/ReauthPrompt'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAppBadge } from '../features/mail/appBadge'
@@ -15,7 +16,7 @@ import { Icon, type IconName } from '../ui/Icon'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
-import { signOut } from '../services/accounts'
+import { signOut, upgradeToTokens } from '../services/accounts'
 import { startEventReminders } from '../services/eventReminders'
 import { refreshPushSubscription } from '../services/webPush'
 import { startScheduler } from '../sync/scheduler'
@@ -186,6 +187,13 @@ export function AppShell() {
     return startEventReminders(accountId)
   }, [accountId, locked])
 
+  // A stored password becomes a refresh token where the server has learnt the
+  // token login since the account was added (issue #97). Unlocked only: the
+  // password is sealed behind the passphrase until then.
+  useEffect(() => {
+    if (accountId && !locked) void upgradeToTokens(accountId).catch(() => {})
+  }, [accountId, locked])
+
   // A push subscription expires unless it is renewed (a week on Stalwart),
   // and one from before it named its types wakes this device for every change.
   useEffect(() => {
@@ -259,6 +267,7 @@ export function AppShell() {
           }}
         />
       )}
+      {account && <ReauthPrompt accountId={account.id} label={account.label} />}
       <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Outlet />
       </main>

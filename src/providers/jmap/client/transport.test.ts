@@ -43,7 +43,7 @@ describe('how a failed request is classified', () => {
   const problem = (status: number, body?: unknown, headers?: HeadersInit) =>
     new Response(body === undefined ? '' : JSON.stringify(body), { status, headers })
 
-  it('separates a refused password from a broken server from a bad request', () => {
+  it('separates a refused password from a broken server from a bad request', async () => {
     // The sync bar says something different for each of these, and the outbox
     // only retries some of them.
     const cases: Array<[number, string]> = [
@@ -55,12 +55,11 @@ describe('how a failed request is classified', () => {
       [400, 'protocol'],
       [404, 'protocol'],
     ]
-    return Promise.all(
-      cases.map(async ([status, kind]) => {
-        const { transport } = transportAnswering(problem(status))
-        await expect(transport.request({} as never)).rejects.toMatchObject({ kind, status })
-      }),
-    )
+    // One at a time: each case stubs the global fetch.
+    for (const [status, kind] of cases) {
+      const { transport } = transportAnswering(problem(status))
+      await expect(transport.request({} as never)).rejects.toMatchObject({ kind, status })
+    }
   })
 
   it('prefers the server’s own explanation over a bare status', async () => {
@@ -115,8 +114,25 @@ describe('a successful request', () => {
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit]
     expect(url).toBe('https://mail.example.test/jmap/')
     expect(init.method).toBe('POST')
-    const headers = init.headers as Record<string, string>
-    expect(headers['Content-Type']).toBe('application/json')
-    expect(headers['Authorization']).toBe(authHeader(creds))
+    const headers = new Headers(init.headers)
+    expect(headers.get('Content-Type')).toBe('application/json')
+    expect(headers.get('Authorization')).toBe(authHeader(creds))
+  })
+})
+
+describe('a token that cannot be renewed', () => {
+  it('is a sign-in problem, not a network one', async () => {
+    // A network error is retried quietly; this has to reach the user as
+    // "sign in again".
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ error: 'invalid_grant' }, { status: 400 })),
+    )
+    const transport = createTransport('https://mail.example.test/jmap/', {
+      method: 'oauth',
+      secret: 'revoked',
+      tokenEndpoint: 'https://mail.example.test/auth/token',
+    })
+    await expect(transport.request({} as never)).rejects.toMatchObject({ kind: 'auth' })
   })
 })

@@ -3,14 +3,22 @@
 
 export type ProviderKind = 'jmap'
 
-export type AuthMethod = 'basic' | 'bearer'
+/**
+ * `oauth` is a refresh token from the server's own token login (Stalwart's
+ * `/api/auth`): the password is used once to get it and never stored.
+ */
+export type AuthMethod = 'basic' | 'bearer' | 'oauth'
 
 export interface Credentials {
   method: AuthMethod
   /** Username for basic auth (usually the email address). */
   username?: string
-  /** Password (basic) or API token (bearer). */
+  /** Password (basic), API token (bearer) or refresh token (oauth). */
   secret: string
+  /** oauth only: where the refresh token is exchanged for access tokens. */
+  tokenEndpoint?: string
+  /** oauth only: the client the token was issued to; renewals must name it. */
+  clientId?: string
 }
 
 /** Feature flags derived from server capabilities; the UI renders only what's supported. */

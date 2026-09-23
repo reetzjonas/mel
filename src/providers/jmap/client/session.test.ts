@@ -162,6 +162,16 @@ describe('fetchSession', () => {
       fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
     ).rejects.toMatchObject({ kind: 'auth', status: 401 })
 
+    // Stalwart's "a second factor is needed": the right password, the wrong
+    // way in. Ends the login's host walk like a refused password does.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 402 })),
+    )
+    await expect(
+      fetchSession('https://x.test/s', { method: 'basic', secret: 'p' }),
+    ).rejects.toMatchObject({ kind: 'auth', status: 402, message: /one-time code/ })
+
     vi.stubGlobal(
       'fetch',
       vi.fn(async () => new Response('', { status: 500 })),

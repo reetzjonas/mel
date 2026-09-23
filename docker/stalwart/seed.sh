@@ -124,6 +124,23 @@ else
   echo "Accounts exist"
 fi
 
+# carol signs in with a TOTP code as well, for the token login's code step
+# (issue #97). The secret is fixed so the e2e spec can work the codes out, and
+# 160 bits long: Stalwart turns down anything under 128 as a failed login, with
+# no hint that the secret was the problem. Basic auth is refused for her (402).
+CAROL_PASS=korrekt-pferd-batterie-carol
+CAROL_TOTP=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ
+if ! jmap "$ADMIN_AUTH" '[["x:Account/query",{},"q"],["x:Account/get",{"#ids":{"resultOf":"q","name":"x:Account/query","path":"/ids"},"properties":["name"]},"g"]]' |
+  grep -q '"name":"carol"'; then
+  echo "Creating account carol (TOTP)..."
+  DOMAIN_ID=$(jmap "$ADMIN_AUTH" '[["x:Domain/query",{},"c0"]]' | sed -E 's/.*"ids":\["([^"]+)".*/\1/')
+  RESP=$(jmap "$ADMIN_AUTH" "[[\"x:Account/set\",{\"create\":{
+    \"c\":{\"@type\":\"User\",\"name\":\"carol\",\"domainId\":\"$DOMAIN_ID\",\"description\":\"Carol (dev, TOTP)\",
+          \"credentials\":{\"0\":{\"@type\":\"Password\",\"secret\":\"$CAROL_PASS\",
+            \"otpAuth\":\"otpauth://totp/mel:carol@localhost?secret=$CAROL_TOTP&issuer=mel\"}}}}},\"c0\"]]")
+  echo "$RESP" | grep -q '"created"' || { echo "Account creation failed: $RESP"; exit 1; }
+fi
+
 # maxConcurrentRequests defaults to 4 *per account*, and the whole e2e suite
 # drives the one alice: two Playwright workers, each with an SSE stream and a
 # sync in flight, sit right on that budget. One more request from anywhere in
@@ -210,4 +227,5 @@ echo "Done."
 echo "  JMAP session:  $BASE/jmap/session  (autodiscovery: $BASE/.well-known/jmap)"
 echo "  Accounts:      alice@localhost / $ALICE_PASS"
 echo "                 bob@localhost   / $BOB_PASS"
+echo "                 carol@localhost / $CAROL_PASS  (TOTP secret $CAROL_TOTP)"
 echo "  Web-Admin:     $BASE/admin  (admin@localhost / $(cat $PASS_FILE))"

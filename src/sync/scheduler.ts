@@ -1,5 +1,5 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source'
-import { authHeader } from '../providers/jmap/client/transport'
+import { authorizedFetch } from '../providers/jmap/client/auth'
 import type { StateChange } from '../providers/jmap/client/types/core'
 import { classifyConnectionError, type ConnectionError } from '../lib/netError'
 import { db } from '../storage/db'
@@ -161,6 +161,7 @@ async function startSse(accountId: string, ctl: Controller) {
     schedulePoll(accountId, ctl)
     return
   }
+  const credentials = conn.push.credentials
   const url = conn.push.eventSourceUrl
     .replace('{types}', '*')
     .replace('{closeafter}', 'no')
@@ -169,7 +170,9 @@ async function startSse(accountId: string, ctl: Controller) {
   try {
     await fetchEventSource(url, {
       signal: ctl.abort.signal,
-      headers: { Authorization: authHeader(conn.push.credentials) },
+      // Through the account's own fetch rather than a fixed header, so a token
+      // that expires is renewed on the reconnect instead of failing it.
+      fetch: (input, init) => authorizedFetch(credentials, input, init),
       openWhenHidden: true,
       onopen: async (res) => {
         if (!res.ok) throw new Error(`SSE ${res.status}`)

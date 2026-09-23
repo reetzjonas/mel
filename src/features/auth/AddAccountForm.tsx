@@ -2,10 +2,12 @@ import { useState } from 'react'
 import type { AuthMethod } from '../../domain/account'
 import { discoveryCandidates, srvCandidates } from '../../providers/jmap/client/session'
 import { t } from '../../lib/i18n'
+import { TotpRequired } from '../../providers/jmap/client/auth'
 import { addAccount, NoServerFound } from '../../services/accounts'
 import { Icon } from '../../ui/Icon'
 import { Select } from '../../ui/Select'
 import { inputClass, primaryButtonClass, secondaryButtonClass } from '../../ui/styles'
+import { TotpField } from './ReauthPrompt'
 
 /** Just the host, so the error names servers rather than full well-known URLs. */
 function hostOf(url: string): string {
@@ -30,6 +32,9 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
   const [error, setError] = useState<string | null>(null)
   // Set once the guesses have come up empty; unlocks the fallbacks.
   const [notFound, setNotFound] = useState(false)
+  // Set once the server asked for a one-time code (TOTP) on top.
+  const [needsTotp, setNeedsTotp] = useState(false)
+  const [totp, setTotp] = useState('')
 
   const credentials = () => ({
     method,
@@ -41,9 +46,11 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
     setBusy(true)
     setError(null)
     try {
-      onDone(await addAccount(candidates, credentials()))
+      onDone(await addAccount(candidates, credentials(), needsTotp ? totp.trim() : undefined))
     } catch (err) {
-      if (err instanceof NoServerFound) {
+      if (err instanceof TotpRequired) {
+        setNeedsTotp(true)
+      } else if (err instanceof NoServerFound) {
         setNotFound(true)
         // A reachable server that just lacks CORS headers fails identically to
         // one that isn't there, so say both rather than assert the wrong one.
@@ -108,6 +115,7 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
             onChange={(e) => {
               setEmail(e.target.value)
               setNotFound(false)
+              setNeedsTotp(false)
             }}
             placeholder="you@example.com"
             autoComplete="username"
@@ -128,6 +136,8 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
             required
           />
         </label>
+
+        {needsTotp && <TotpField value={totp} onChange={setTotp} />}
 
         {error && (
           <p className="rounded-control bg-danger-wash px-3 py-2 text-sm text-danger">{error}</p>

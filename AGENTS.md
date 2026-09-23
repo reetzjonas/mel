@@ -113,6 +113,9 @@ working on that specific feature, not on every session:
   `docs/notes/outbox-queue.md`
 - **Login, autodiscovery, sign-out** (`discoveryCandidates`, DoH SRV lookup,
   purge-vs-sync-race): `docs/notes/login-discovery.md`
+- **Token login** (issue #97: Stalwart's `/api/auth` for a refresh token instead
+  of a stored password, the TOTP step, renew-on-401, the "sign in again" band,
+  upgrading existing accounts): `docs/notes/token-login.md`
 - **Design system** (OKLCH tokens, scrollbar behaviour, hover-height rule):
   `docs/notes/design-system.md`
 - **Drag and drop** (mail onto folders, folders into folders, events on the

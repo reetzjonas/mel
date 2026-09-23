@@ -36,6 +36,17 @@ const en = {
   'login.connect': 'Connect',
   'login.connecting': 'Connecting…',
   'login.failed': 'Sign-in failed',
+  'login.totp': 'Verification code',
+  'login.totpUnavailable':
+    'This account needs a one-time code, but the server’s token login (/api/auth) could not be reached — if a reverse proxy sits in front, it has to forward /api/auth and /auth/ as well. An app password works meanwhile.',
+  'login.totpHint':
+    'Your account asks for a one-time code as well — enter the one from your authenticator app.',
+  'auth.expired': 'Your sign-in has expired. Mail on this device stays as it is.',
+  'reauth.action': 'Sign in again',
+  'reauth.title': 'Sign in again',
+  'reauth.hint':
+    'The server no longer accepts this device’s sign-in — it expired, was revoked, or the password changed. Nothing stored here is lost.',
+  'reauth.submit': 'Sign in',
   'login.noMailAccount': 'Server reports no mail account',
 
   'mail.refresh': 'Refresh',
@@ -858,6 +869,17 @@ const de: Partial<Record<MsgKey, string>> = {
   'login.connect': 'Verbinden',
   'login.connecting': 'Verbinde…',
   'login.failed': 'Anmeldung fehlgeschlagen',
+  'login.totp': 'Bestätigungscode',
+  'login.totpUnavailable':
+    'Dieses Konto verlangt einen Einmalcode, aber der Token-Login des Servers (/api/auth) war nicht erreichbar — steht ein Reverse-Proxy davor, muss er auch /api/auth und /auth/ weiterleiten. Ein App-Passwort funktioniert solange.',
+  'login.totpHint':
+    'Dein Konto verlangt zusätzlich einen Einmalcode — gib den aus deiner Authenticator-App ein.',
+  'auth.expired': 'Deine Anmeldung ist abgelaufen. Die Mails auf diesem Gerät bleiben erhalten.',
+  'reauth.action': 'Erneut anmelden',
+  'reauth.title': 'Erneut anmelden',
+  'reauth.hint':
+    'Der Server nimmt die Anmeldung dieses Geräts nicht mehr an — sie ist abgelaufen, wurde widerrufen oder das Passwort hat sich geändert. Hier gespeichert bleibt alles erhalten.',
+  'reauth.submit': 'Anmelden',
   'login.noMailAccount': 'Server meldet keinen Mail-Account',
 
   'mail.refresh': 'Aktualisieren',

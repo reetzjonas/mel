@@ -3,13 +3,16 @@ import type { Account, Credentials } from '../domain/account'
 import { JmapError } from '../providers/jmap/client/transport'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
+import { TotpRequired } from '../providers/jmap/client/auth'
 import {
   NoServerFound,
   addAccount,
+  reauthenticate,
   refreshCapabilities,
   removeAccount,
   resyncAccount,
   signOut,
+  upgradeToTokens,
 } from './accounts'
 
 // These rows only need their index columns to be real; the sealed payloads are
@@ -34,7 +37,28 @@ vi.mock('../providers/registry', () => ({
   }),
 }))
 
-vi.mock('../sync/scheduler', () => ({ stopScheduler: () => void order.push('stopScheduler') }))
+/** What the server's token login answers; null is a server without one. */
+let tokenLoginAnswer: (password: string, totp?: string) => Promise<Credentials | null> = () =>
+  Promise.resolve(null)
+/** What the session check makes of credentials handed to it. */
+let sessionAccepts: (creds: Credentials) => boolean = () => true
+
+vi.mock('../providers/jmap/client/auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../providers/jmap/client/auth')>()),
+  tokenLogin: (p: { password: string; totp?: string }) => tokenLoginAnswer(p.password, p.totp),
+}))
+vi.mock('../providers/jmap/client/session', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../providers/jmap/client/session')>()),
+  fetchSession: (_url: string, c: Credentials) =>
+    sessionAccepts(c)
+      ? Promise.resolve({})
+      : Promise.reject(new JmapError('refused', 'auth', undefined, 401)),
+}))
+
+vi.mock('../sync/scheduler', () => ({
+  stopScheduler: () => void order.push('stopScheduler'),
+  startScheduler: () => void order.push('startScheduler'),
+}))
 vi.mock('../sync/engine', () => ({
   syncAccount: () => void order.push('syncAccount'),
   syncSettled: () => void order.push('syncSettled'),
@@ -45,6 +69,10 @@ vi.mock('../sync/connections', () => ({
     return Promise.resolve({ account: { id: 'acc', capabilities: { mail: true } } })
   },
   dropConnection: () => void order.push('dropConnection'),
+  storedAccount: async (id: string) => {
+    const row = await db.accounts.get(id)
+    return openEnvelope(row!.payload)
+  },
 }))
 
 const MINE = 'account-1'
@@ -135,7 +163,17 @@ beforeEach(() => {
   order.length = 0
   attempts.length = 0
   connectTo = (server) => Promise.resolve({ account: { id: 'x', label: server } as Account })
+  tokenLoginAnswer = () => Promise.resolve(null)
+  sessionAccepts = () => true
 })
+
+const tokens: Credentials = {
+  method: 'oauth',
+  username: 'alice',
+  secret: 'refresh-1',
+  tokenEndpoint: 'https://example.test/auth/token',
+  clientId: 'mel',
+}
 
 describe('adding an account', () => {
   beforeEach(clearAll)
@@ -193,6 +231,87 @@ describe('adding an account', () => {
     expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toEqual(creds)
     // The first sync starts without being waited for, so the form can close.
     expect(order).toContain('syncAccount')
+  })
+})
+
+describe('signing in with a token instead of a stored password', () => {
+  beforeEach(clearAll)
+
+  const account = { id: MINE, label: 'alice', sessionUrl: 'https://example.test/jmap' }
+  const seedAccount = (credentials: Credentials) =>
+    db.accounts.put({
+      id: MINE,
+      provider: 'jmap',
+      encrypted: false,
+      payload: sealPlain({ account: account as Account, credentials }),
+    })
+  const stored = async () => openEnvelope((await db.accounts.get(MINE))!.payload).credentials
+
+  it('stores the refresh token, not the password, where the server offers one', async () => {
+    tokenLoginAnswer = (password) => Promise.resolve(password === 'pw' ? tokens : null)
+
+    const id = await addAccount(['https://example.test'], creds)
+
+    expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toEqual(tokens)
+  })
+
+  it('hands a request for a code back to the form without trying other hosts', async () => {
+    tokenLoginAnswer = () => Promise.reject(new TotpRequired())
+
+    await expect(
+      addAccount(['https://mail.example.test', 'https://example.test'], creds),
+    ).rejects.toBeInstanceOf(TotpRequired)
+    expect(attempts).toEqual([])
+
+    tokenLoginAnswer = (_pw, totp) => Promise.resolve(totp === '123456' ? tokens : null)
+    const id = await addAccount(['https://example.test'], creds, '123456')
+    expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toEqual(tokens)
+  })
+
+  it('swaps an existing account’s stored password for a token once', async () => {
+    await seedAccount(creds)
+    tokenLoginAnswer = () => Promise.resolve(tokens)
+
+    await upgradeToTokens(MINE)
+
+    expect(await stored()).toEqual(tokens)
+    expect(order).toContain('dropConnection')
+  })
+
+  it('leaves the password where the swap cannot happen', async () => {
+    // No token login on the server, a code it would need, no network: Basic
+    // keeps working as it did, and nobody is signed out over it.
+    await seedAccount(creds)
+    for (const answer of [
+      () => Promise.resolve(null),
+      () => Promise.reject(new TotpRequired()),
+      () => Promise.reject(new TypeError('Failed to fetch')),
+    ]) {
+      tokenLoginAnswer = answer
+      await upgradeToTokens(MINE)
+      expect(await stored()).toEqual(creds)
+    }
+  })
+
+  it('signs in again with a password, restarting the sync on the new credentials', async () => {
+    await seedAccount({ ...tokens, secret: 'expired' })
+    tokenLoginAnswer = (password) => Promise.resolve(password === 'new-pw' ? tokens : null)
+
+    await reauthenticate(MINE, 'new-pw')
+
+    expect(await stored()).toEqual(tokens)
+    expect(order.slice(-3)).toEqual(['stopScheduler', 'dropConnection', 'startScheduler'])
+  })
+
+  it('keeps what was stored when the new password is refused too', async () => {
+    const expired = { ...tokens, secret: 'expired' }
+    await seedAccount(expired)
+    sessionAccepts = () => false
+
+    await expect(reauthenticate(MINE, 'typo')).rejects.toMatchObject({ kind: 'auth' })
+
+    expect(await stored()).toEqual(expired)
+    expect(order).not.toContain('startScheduler')
   })
 })
 

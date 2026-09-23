@@ -1,5 +1,8 @@
 # Login, setup and signing out
 
+(Where the server offers a token login, the password is traded for a refresh
+token and not stored — see `token-login.md`.)
+
 One form for every server: **email plus password**, no provider presets any more
 (Fastmail and the explicit Stalwart entry are gone). `discoveryCandidates()` guesses
 the session URL from the address — `mail.<domain>` first, then the apex, `jmap.`,
