@@ -9,7 +9,7 @@ import { dateBucket, formatListDate, type DateBucket } from '../../lib/dates'
 import { t, type MsgKey } from '../../lib/i18n'
 import { cleanPreview } from '../../lib/preview'
 import type { Selection } from '../../lib/selection'
-import { useContactsByEmail, useMailboxes, type ContactByEmail } from './hooks'
+import { useContactsByEmail, useMailboxes, useUndeliveredIds, type ContactByEmail } from './hooks'
 import { conversationItem, messageItem, type RowItem } from './rowItem'
 import { bulkArchive, bulkDelete, bulkNotSpam, bulkSetKeyword } from '../../services/mailActions'
 import { Avatar } from '../../ui/Avatar'
@@ -172,6 +172,7 @@ function Row({
   inJunk,
   mailboxId,
   photos,
+  undelivered,
   onToggleSelect,
   onOpen,
 }: {
@@ -188,6 +189,8 @@ function Row({
   mailboxId: string
   /** Sender email → contact, looked up once for the whole list. */
   photos: Map<string, ContactByEmail> | undefined
+  /** A recipient refused one of the row's messages (issue #70). */
+  undelivered: boolean
   onToggleSelect: (extend: boolean) => void
   onOpen: () => void
 }) {
@@ -370,6 +373,11 @@ function Row({
               )}
             </span>
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-ink-subtle group-hover:lg:invisible">
+              {undelivered && (
+                <span role="img" aria-label={t('mail.notDelivered')} title={t('mail.notDelivered')}>
+                  <Icon name="warning" size={11} className="text-danger" />
+                </span>
+              )}
               {flagged && <Icon name="flag" size={11} className="text-honey" />}
               {item.hasAttachment && <Icon name="paperclip" size={11} />}
               {formatListDate(email.receivedAt)}
@@ -496,6 +504,7 @@ export function ThreadList({
   const navigate = useNavigate()
   const mailboxes = useMailboxes(accountId)
   const contacts = useContactsByEmail(accountId)
+  const undelivered = useUndeliveredIds(accountId)
   const junkId = mailboxes?.find((m) => m.role === 'junk')?.id
   const selectedIds = useMemo(() => [...selection.selected], [selection.selected])
   // Memoised for the same reason `selected` above is a Set, not the array:
@@ -563,6 +572,7 @@ export function ThreadList({
             inJunk={Boolean(junkId && item.item.email.mailboxIds[junkId])}
             mailboxId={mailboxId}
             photos={contacts}
+            undelivered={Boolean(undelivered && item.item.ids.some((id) => undelivered.has(id)))}
             onToggleSelect={(extend) => selection.toggle(item.item.email.id, extend)}
             onOpen={() => open(item.item.email.id)}
           />

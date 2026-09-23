@@ -6,6 +6,7 @@ import type { Account } from '../../domain/account'
 import { storedContact } from '../../domain/contact'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
+import { deliveryProblems, hasFailure, type DeliveryProblems } from '../../domain/submission'
 import { db, type AccountScopedKey, type EmailRow } from '../../storage/db'
 import { mailboxDateRange } from '../../storage/emailRow'
 import { buildConversations, isHidden, type Conversation } from './conversations'
@@ -98,6 +99,53 @@ export function useContactsByEmail(
     }
     return out
   }, [accountId])
+}
+
+/** Recipients the message did not reach, per what the server reported after sending. */
+export function useDeliveryProblems(
+  accountId: string,
+  emailId: string,
+): DeliveryProblems | undefined {
+  return useLiveQuery(async () => {
+    const rows = await db.submissions.where({ accountId, emailId }).toArray()
+    return deliveryProblems(rows.map((r) => openEnvelope(r.payload)))
+  }, [accountId, emailId])
+}
+
+/**
+ * Messages a recipient refused, looked up once for the whole list. Small:
+ * only mail sent in the last week is read back, plus older refusals.
+ */
+export function useUndeliveredIds(accountId: string | undefined): Set<string> | undefined {
+  return useLiveQuery(async () => {
+    const out = new Set<string>()
+    if (!accountId) return out
+    const rows = await db.submissions.where('accountId').equals(accountId).toArray()
+    for (const row of rows) if (hasFailure(openEnvelope(row.payload))) out.add(row.emailId)
+    return out
+  }, [accountId])
+}
+
+/**
+ * Whether Sent holds a refused message nobody has opened since (issue #70).
+ * Gone once it is opened, deleted or moved out of Sent.
+ */
+export function useSentNeedsAttention(
+  accountId: string | undefined,
+  sentId: string | undefined,
+): boolean {
+  return (
+    useLiveQuery(async () => {
+      if (!accountId || !sentId) return false
+      const rows = await db.submissions.where('accountId').equals(accountId).toArray()
+      const unseen = rows
+        .filter((r) => r.seen !== 1 && hasFailure(openEnvelope(r.payload)))
+        .map((r): AccountScopedKey => [accountId, r.emailId])
+      if (!unseen.length) return false
+      const emails = await db.emails.bulkGet(unseen)
+      return emails.some((e) => e?.mailboxIds.includes(sentId))
+    }, [accountId, sentId]) ?? false
+  )
 }
 
 export function useMailboxes(accountId: string | undefined): Mailbox[] | undefined {

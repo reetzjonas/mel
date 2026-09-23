@@ -90,6 +90,21 @@ export interface JmapThread {
 }
 
 /** Header-level properties fetched during sync; bodies are fetched on demand. */
+/** RFC 8621 §7 EmailSubmission, the properties mel asks for. */
+export interface JmapEmailSubmission {
+  id: string
+  emailId: string
+  sendAt?: string
+  undoStatus?: 'pending' | 'final' | 'canceled'
+  /** Keyed by recipient address; null until the server knows anything. */
+  deliveryStatus?: Record<
+    string,
+    { delivered?: string; smtpReply?: string; displayed?: string }
+  > | null
+}
+
+export const SUBMISSION_PROPS = ['id', 'emailId', 'sendAt', 'undoStatus', 'deliveryStatus'] as const
+
 export const EMAIL_HEADER_PROPS = [
   'id',
   'blobId',

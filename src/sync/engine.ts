@@ -2,6 +2,7 @@ import type { Table } from 'dexie'
 import { contactSortKey, type AddressBook, type Contact } from '../domain/contact'
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
+import { hasFailure } from '../domain/submission'
 import {
   CannotCalculateChanges,
   type CalendarProvider,
@@ -17,9 +18,10 @@ import {
   type ContactRow,
   type MailboxRow,
 } from '../storage/db'
-import { sealPlain } from '../storage/envelope'
+import { openEnvelope, sealPlain } from '../storage/envelope'
 import { toEmailRow } from '../storage/emailRow'
 import { connectionFor } from './connections'
+import { announceDeliveryFailures } from './deliveryEvents'
 import { reconcileNotes } from './notes'
 import { setFullSyncProgress } from './progress'
 import { reconcileSettings } from './settings'
@@ -170,6 +172,62 @@ async function syncEmails(accountId: string, mail: MailProvider) {
     if (!page.hasMore) return
     since = page.newState
   }
+}
+
+/** How far back sent mail is checked for what became of it. */
+const SUBMISSION_WINDOW_MS = 7 * 24 * 60 * 60 * 1000
+/** How old a refusal that has been looked at may get before it is let go. */
+const SEEN_FAILURE_KEPT_MS = 30 * 24 * 60 * 60 * 1000
+
+const isoSeconds = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+/**
+ * What became of recently sent mail (issue #70), read again on every pass.
+ *
+ * Not a delta sync like the rest: Stalwart fills in a recipient's delivery
+ * status without moving the collection's state, so `/changes` never reports a
+ * refusal that came in after sending. The last week is read afresh instead.
+ * Older rows stay as they last were if they carry a failure, which a message
+ * sent a fortnight ago should go on showing, until it has been looked at
+ * and is over a month old; the rest are dropped.
+ *
+ * A refusal not stored as one before is announced, except on the first pass
+ * for the account: a new sign-in is no moment to report last week's. Those
+ * start out seen, so the Sent folder does not point at them either.
+ */
+async function syncSubmissions(accountId: string, mail: MailProvider, now = Date.now()) {
+  const after = isoSeconds(now - SUBMISSION_WINDOW_MS)
+  const forgetSeen = isoSeconds(now - SEEN_FAILURE_KEPT_MS)
+  const list = await mail.recentSubmissions(after)
+  if (!list) return
+  const firstPass = (await getState(accountId, 'EmailSubmission')) === undefined
+  const fresh = new Set(list.map((s) => s.id))
+  const announce: typeof list = []
+  await db.transaction('rw', [db.submissions, db.syncState], async () => {
+    const stored = new Map(
+      (await db.submissions.where('accountId').equals(accountId).toArray()).map((row) => [
+        row.id,
+        { seen: row.seen ?? 0, sub: openEnvelope(row.payload) },
+      ]),
+    )
+    const drop = [...stored].filter(([id, { seen, sub }]) => {
+      if (fresh.has(id)) return false
+      if (sub.sendAt >= after || !hasFailure(sub)) return true
+      return seen === 1 && sub.sendAt < forgetSeen
+    })
+    if (drop.length) await db.submissions.bulkDelete(drop.map(([id]) => [accountId, id]))
+    const rows = list.map((s) => {
+      const before = stored.get(s.id)
+      const isNew = hasFailure(s) && !(before && hasFailure(before.sub))
+      if (isNew && !firstPass) announce.push(s)
+      const seen: 0 | 1 = before?.seen ?? (isNew && firstPass ? 1 : 0)
+      return { accountId, id: s.id, emailId: s.emailId, seen, payload: sealPlain(s) }
+    })
+    if (rows.length) await db.submissions.bulkPut(rows)
+    // Only a marker that the first pass is done; the window is the cursor.
+    await putState(accountId, 'EmailSubmission', 'window')
+  })
+  announceDeliveryFailures(accountId, announce)
 }
 
 /** What every synced row has; each table adds its own index columns to it. */
@@ -375,6 +433,7 @@ function startSync(accountId: string): Promise<void> {
       if (conn.mail) {
         await syncMailboxes(accountId, conn.mail)
         await syncEmails(accountId, conn.mail)
+        if (conn.capabilities.submission) await syncSubmissions(accountId, conn.mail)
       }
       if (conn.contacts) await syncContacts(accountId, conn.contacts)
       if (conn.calendars) await syncCalendarData(accountId, conn.calendars)

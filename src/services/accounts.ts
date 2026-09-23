@@ -177,6 +177,7 @@ export async function removeAccount(accountId: string): Promise<void> {
     db.calendars,
     db.events,
     db.eventNotifications,
+    db.submissions,
     db.files,
     db.notes,
   ]

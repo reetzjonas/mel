@@ -6,6 +6,7 @@ import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { FileNode } from '../domain/file'
 import type { Mailbox } from '../domain/mailbox'
 import type { Note } from '../domain/note'
+import type { Submission } from '../domain/submission'
 import { cryptoMiddleware } from './crypto/middleware'
 import { mailboxDateKey } from './emailRow'
 import type { Envelope } from './envelope'
@@ -135,6 +136,23 @@ export interface EventNotificationRow {
   payload: Envelope<EventNotification>
 }
 
+/**
+ * What became of a sent message. Only the message id is outside the envelope:
+ * the recipients and the server's replies are as private as the mail itself.
+ */
+export interface SubmissionRow {
+  accountId: string
+  id: string
+  emailId: string
+  /**
+   * 1 once a refusal on it has been looked at: the Sent folder stops pointing
+   * at it. Kept on this device only, and carried over when the row is
+   * rewritten by the next sync.
+   */
+  seen?: 0 | 1
+  payload: Envelope<Submission>
+}
+
 export interface EventRow {
   accountId: string
   id: string
@@ -210,6 +228,7 @@ export class MelDb extends Dexie {
   files!: Table<FileNodeRow, AccountScopedKey>
   notes!: Table<NoteRow, AccountScopedKey>
   imageSenders!: Table<ImageSendersRow, string>
+  submissions!: Table<SubmissionRow, AccountScopedKey>
 
   constructor() {
     super('mel')
@@ -257,6 +276,7 @@ export class MelDb extends Dexie {
     })
     this.version(8).stores({ imageSenders: '&accountId' })
     this.version(9).stores({ eventNotifications: '&[accountId+id], accountId' })
+    this.version(10).stores({ submissions: '&[accountId+id], accountId, [accountId+emailId]' })
     this.use(cryptoMiddleware)
   }
 }

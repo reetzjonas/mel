@@ -765,6 +765,63 @@ describe('the addresses a message can be sent from', () => {
   })
 })
 
+describe('what became of sent mail', () => {
+  it('asks for the recent window in one request and reads the status per recipient', async () => {
+    const { mail, sent } = serverAnswering({
+      'EmailSubmission/query': { ids: ['s1'] },
+      'EmailSubmission/get': {
+        list: [
+          {
+            id: 's1',
+            emailId: 'e1',
+            sendAt: '2026-09-23T20:03:42Z',
+            undoStatus: 'final',
+            deliveryStatus: {
+              'nobody@localhost': {
+                delivered: 'no',
+                smtpReply: '550 5.1.2 Mailbox does not exist.',
+                displayed: 'unknown',
+              },
+              'bob@localhost': { delivered: 'something new' },
+            },
+          },
+          // A server that has not heard anything yet may send null.
+          { id: 's2', emailId: 'e2', deliveryStatus: null },
+        ],
+      },
+    })
+
+    await expect(mail.recentSubmissions('2026-09-16T20:00:00Z')).resolves.toEqual([
+      {
+        id: 's1',
+        emailId: 'e1',
+        sendAt: '2026-09-23T20:03:42Z',
+        undoStatus: 'final',
+        recipients: [
+          {
+            email: 'nobody@localhost',
+            delivered: 'no',
+            smtpReply: '550 5.1.2 Mailbox does not exist.',
+          },
+          // A value the RFC does not name is treated as no word back.
+          { email: 'bob@localhost', delivered: 'unknown', smtpReply: '' },
+        ],
+      },
+      { id: 's2', emailId: 'e2', sendAt: '', undoStatus: 'final', recipients: [] },
+    ])
+    expect(sent.map(([name]) => name)).toEqual(['EmailSubmission/query', 'EmailSubmission/get'])
+    expect(sent[0]![1]).toMatchObject({ filter: { after: '2026-09-16T20:00:00Z' } })
+    expect(sent[1]![1]['#ids']).toMatchObject({ path: '/ids' })
+  })
+
+  it('answers null when the server cannot list what it sent', async () => {
+    const { mail } = serverAnswering({
+      'EmailSubmission/query': { error: { type: 'unknownMethod' } },
+    })
+    await expect(mail.recentSubmissions('2026-09-16T20:00:00Z')).resolves.toBeNull()
+  })
+})
+
 describe('blobs', () => {
   it('fills the download template with escaped values', async () => {
     /*

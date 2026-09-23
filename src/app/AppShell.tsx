@@ -17,8 +17,10 @@ import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut, upgradeToTokens } from '../services/accounts'
+import { showDeliveryAlert } from '../services/deliveryAlerts'
 import { startEventReminders } from '../services/eventReminders'
 import { refreshPushSubscription } from '../services/webPush'
+import { onNewDeliveryFailures } from '../sync/deliveryEvents'
 import { startScheduler } from '../sync/scheduler'
 import { Snackbar } from '../ui/Snackbar'
 import { secondaryIconButtonClass } from '../ui/styles'
@@ -199,6 +201,16 @@ export function AppShell() {
   useEffect(() => {
     if (accountId && !locked) void refreshPushSubscription(accountId).catch(() => {})
   }, [accountId, locked])
+
+  // A sent message refused by a recipient's server says so where it will be
+  // seen, not only in Sent (issue #70).
+  useEffect(() => {
+    if (!accountId || locked) return
+    return onNewDeliveryFailures((id, submissions) => {
+      if (id !== accountId) return
+      void showDeliveryAlert(id, submissions, (url) => void navigate({ to: url })).catch(() => {})
+    })
+  }, [accountId, locked, navigate])
 
   if (lockedIds === undefined) return null
   if (lockedIds.length > 0) return <UnlockGate accountIds={lockedIds} />

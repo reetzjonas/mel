@@ -31,6 +31,7 @@ import {
 } from '../../lib/dragAndDrop'
 import { mailboxTree, moveTargets } from './mailboxTree'
 import { SyncStatus } from './SyncStatus'
+import { useSentNeedsAttention } from './hooks'
 
 /** Stands for "no parent" in `dropTarget`, which otherwise holds folder ids. */
 const TOP_DROP = '__top__'
@@ -233,6 +234,10 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
   const { mailboxId: activeMailboxId } = useParams({ strict: false }) as { mailboxId?: string }
   const [refreshing, setRefreshing] = useState(false)
   const [dialog, setDialog] = useState<Dialog>(null)
+  const sentNeedsAttention = useSentNeedsAttention(
+    accountId,
+    mailboxes.find((m) => m.role === 'sent')?.id,
+  )
   /*
    * The folder being dragged. A ref, not state: a touch-started drag can fire
    * dragover on a target before React has re-rendered from the setState in
@@ -418,7 +423,13 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
              * different while the pointer is over it, since that button only
              * appears on hover.
              */
-            const ariaLabel = m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name
+            const attention = m.role === 'sent' && sentNeedsAttention
+            const ariaLabel = [
+              m.unreadEmails > 0 ? `${m.name} ${m.unreadEmails}` : m.name,
+              attention ? t('mail.sentNeedsAttention') : '',
+            ]
+              .filter(Boolean)
+              .join(', ')
             const className = `group flex min-h-11 items-center gap-2.5 rounded-control px-2.5 text-[13px] leading-5 text-ink-muted transition-colors duration-100 hover:bg-surface-2 hover:text-ink focus-visible:!outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent lg:min-h-[34px] ${
               isActive ? 'bg-accent-wash font-medium text-accent' : ''
             } ${dropTarget === m.id ? 'bg-accent-wash ring-2 ring-accent ring-inset' : ''} ${
@@ -429,6 +440,11 @@ export function MailboxSidebar({ account, mailboxes }: { account: Account; mailb
               <>
                 <Icon name={ROLE_ICONS[m.role ?? ''] ?? 'folder'} size={15} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">{m.name}</span>
+                {attention && (
+                  <span title={t('mail.sentNeedsAttention')} className="shrink-0 text-danger">
+                    <Icon name="warning" size={13} />
+                  </span>
+                )}
                 {m.unreadEmails > 0 && (
                   <span className="inline-flex h-5 shrink-0 items-center rounded-full bg-surface-2 px-1.5 text-[11px] font-semibold text-ink-muted">
                     {m.unreadEmails}

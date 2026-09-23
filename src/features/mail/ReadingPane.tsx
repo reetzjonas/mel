@@ -39,6 +39,7 @@ import { Tooltip } from '../../ui/Tooltip'
 import { usePopover } from '../../ui/usePopover'
 import { Skeleton } from '../../ui/Skeleton'
 import { useSettingsRoute } from '../settings/navigation'
+import { DeliveryNotice } from './DeliveryNotice'
 
 /*
  * Loaded only once a message actually carries an event: reading the .ics costs
@@ -906,6 +907,7 @@ export function ReadingPane({
             <AddressLine label={t('mail.cc')} list={expanded.cc} />
           </div>
         </div>
+        <DeliveryNotice accountId={accountId} emailId={expanded.id} />
         {invitePart && (
           // No fallback: the card appears when it has something to say, rather
           // than reserving a band above the message first.

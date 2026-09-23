@@ -17,15 +17,19 @@ import {
   EMAIL_BODY_PROPS,
   EMAIL_HEADER_PROPS,
   EMAIL_METADATA_PROPS,
+  SUBMISSION_PROPS,
   type EmailFilter,
   type JmapEmail,
+  type JmapEmailSubmission,
   type JmapMailbox,
 } from './client/types/mail'
-import { toEmailBody, toEmailHeader, toMailbox } from './mappers/mail'
+import { toEmailBody, toEmailHeader, toMailbox, toSubmission } from './mappers/mail'
 import { fetchChanges, syncCollection } from './collectionSync'
 
 const USING = [Cap.core, Cap.mail]
 const USING_SUBMIT = [Cap.core, Cap.mail, Cap.submission]
+/** The most submissions read back per sync; the newest win. */
+const RECENT_SUBMISSIONS = 100
 /** Page size when walking a whole mailbox for a bulk selection. */
 const BULK_QUERY_PAGE = 1000
 
@@ -453,6 +457,31 @@ export function createJmapMail(
         ;(err as Error & { permanent?: boolean }).permanent = f.permanent
         throw err
       }
+    },
+
+    /*
+     * A query rather than /changes: Stalwart updates `deliveryStatus` as the
+     * queue gets its answers without moving the collection's state, so a
+     * recipient refused an hour after sending never shows up as a change.
+     * Reading the recent window again is what finds it.
+     */
+    async recentSubmissions(after) {
+      const b = new Batch(transport, USING_SUBMIT)
+      const q = b.call<QueryResponse>('EmailSubmission/query', {
+        accountId,
+        filter: { after },
+        sort: [{ property: 'sentAt', isAscending: false }],
+        limit: RECENT_SUBMISSIONS,
+      })
+      const g = b.call<GetResponse<JmapEmailSubmission>>('EmailSubmission/get', {
+        accountId,
+        '#ids': q.ref('/ids'),
+        properties: SUBMISSION_PROPS,
+      })
+      await b.send()
+      // A server that sends but cannot list what it sent has nothing to say.
+      if (q.error || g.error) return null
+      return g.result.list.map(toSubmission)
     },
 
     async searchEmails(query, opts) {

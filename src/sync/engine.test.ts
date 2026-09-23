@@ -1,6 +1,7 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { EmailHeader } from '../domain/email'
 import type { Mailbox } from '../domain/mailbox'
+import type { Submission } from '../domain/submission'
 import {
   CannotCalculateChanges,
   type CalendarProvider,
@@ -59,9 +60,10 @@ const page = <T>(over: Partial<SyncPage<T>> = {}): SyncPage<T> => ({
 let mail: Partial<MailProvider> | null
 let contacts: Partial<ContactsProvider> | null
 let calendars: Partial<CalendarProvider> | null
+let capabilities: { submission: boolean } = { submission: false }
 
 vi.mock('./connections', () => ({
-  connectionFor: () => Promise.resolve({ mail, contacts, calendars }),
+  connectionFor: () => Promise.resolve({ mail, contacts, calendars, capabilities }),
 }))
 
 const storedState = async (collection: string) =>
@@ -629,5 +631,173 @@ describe('one sync at a time', () => {
 
     await expect(settled).resolves.toBeUndefined()
     await expect(running).rejects.toThrow('connection lost')
+  })
+})
+
+describe('what became of sent mail', () => {
+  const DAY = 24 * 60 * 60 * 1000
+  const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z')
+  const submission = (
+    id: string,
+    delivered: Submission['recipients'][number]['delivered'],
+    sendAt: string,
+  ) =>
+    ({
+      id,
+      emailId: `e-${id}`,
+      sendAt,
+      undoStatus: 'final',
+      recipients: [{ email: 'bob@example.com', delivered, smtpReply: '' }],
+    }) satisfies Submission
+  const storedIds = async () =>
+    (await db.submissions.where('accountId').equals(ACCOUNT).toArray()).map((r) => r.id).sort()
+
+  beforeEach(async () => {
+    contacts = null
+    calendars = null
+    capabilities = { submission: true }
+    await db.submissions.where('accountId').equals(ACCOUNT).delete()
+    await db.syncState.delete([ACCOUNT, 'EmailSubmission'])
+    await db.syncState.put({ accountId: ACCOUNT, collection: 'Mailbox', state: 'm', updatedAt: 0 })
+    await db.syncState.put({ accountId: ACCOUNT, collection: 'Email', state: 'e', updatedAt: 0 })
+  })
+
+  const withSubmissions = (list: Submission[] | null) => {
+    const asked: string[] = []
+    mail = {
+      syncMailboxes: () => Promise.resolve(page<Mailbox>()),
+      syncEmailHeaders: () => Promise.resolve(page<EmailHeader>()),
+      recentSubmissions: (after) => {
+        asked.push(after)
+        return Promise.resolve(list)
+      },
+    }
+    return asked
+  }
+
+  it('reads the last week again on every pass and keeps it by message', async () => {
+    const asked = withSubmissions([submission('s1', 'no', iso(Date.now()))])
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    const row = await db.submissions.get([ACCOUNT, 's1'])
+    expect(row?.emailId).toBe('e-s1')
+    expect(openEnvelope(row!.payload).recipients[0]?.delivered).toBe('no')
+    // A week back, in the form Stalwart compares against.
+    expect(Date.now() - Date.parse(asked[0]!)).toBeGreaterThan(7 * DAY - 60_000)
+    expect(asked[0]).toMatch(/:\d\dZ$/)
+  })
+
+  it('keeps an old failure but lets an old success and a vanished recent one go', async () => {
+    const old = iso(Date.now() - 30 * DAY)
+    for (const s of [
+      submission('old-failed', 'no', old),
+      submission('old-fine', 'unknown', old),
+      submission('recent-gone', 'no', iso(Date.now() - DAY)),
+    ])
+      await db.submissions.put({
+        accountId: ACCOUNT,
+        id: s.id,
+        emailId: s.emailId,
+        payload: { plain: s },
+      })
+    withSubmissions([submission('new', 'unknown', iso(Date.now()))])
+
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    expect(await storedIds()).toEqual(['new', 'old-failed'])
+  })
+
+  it('leaves what it has when the server cannot say', async () => {
+    const s = submission('kept', 'no', iso(Date.now()))
+    await db.submissions.put({
+      accountId: ACCOUNT,
+      id: s.id,
+      emailId: s.emailId,
+      payload: { plain: s },
+    })
+    withSubmissions(null)
+
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    expect(await storedIds()).toEqual(['kept'])
+  })
+
+  const announced = async (run: () => Promise<void>) => {
+    const { onNewDeliveryFailures } = await import('./deliveryEvents')
+    const heard: string[][] = []
+    const stop = onNewDeliveryFailures((_, subs) => heard.push(subs.map((s) => s.id)))
+    try {
+      await run()
+    } finally {
+      stop()
+    }
+    return heard
+  }
+  const seenOf = async (id: string) => (await db.submissions.get([ACCOUNT, id]))?.seen
+
+  it('announces a refusal it had not stored as one, once', async () => {
+    const { syncAccount } = await import('./engine')
+    const now = iso(Date.now())
+    withSubmissions([submission('queued', 'unknown', now)])
+    // The first pass only sets the baseline.
+    expect(await announced(() => syncAccount(ACCOUNT))).toEqual([])
+
+    withSubmissions([submission('queued', 'no', now), submission('refused', 'no', now)])
+    expect(await announced(() => syncAccount(ACCOUNT))).toEqual([['queued', 'refused']])
+    expect(await seenOf('refused')).toBe(0)
+
+    // Still refused on the next pass: already said.
+    expect(await announced(() => syncAccount(ACCOUNT))).toEqual([])
+  })
+
+  it('starts last week’s refusals out as seen on a first pass, without a word', async () => {
+    withSubmissions([submission('old', 'no', iso(Date.now() - 2 * DAY))])
+    const { syncAccount } = await import('./engine')
+    expect(await announced(() => syncAccount(ACCOUNT))).toEqual([])
+    expect(await seenOf('old')).toBe(1)
+  })
+
+  it('keeps a refusal marked as seen when the next pass rewrites it', async () => {
+    const s = submission('s', 'no', iso(Date.now()))
+    withSubmissions([s])
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+    await db.submissions.update([ACCOUNT, 's'], { seen: 0 })
+    await syncAccount(ACCOUNT)
+    expect(await seenOf('s')).toBe(0)
+    await db.submissions.update([ACCOUNT, 's'], { seen: 1 })
+    await syncAccount(ACCOUNT)
+    expect(await seenOf('s')).toBe(1)
+  })
+
+  it('lets a refusal go once it was looked at and is over a month old', async () => {
+    const put = (s: Submission, seen: 0 | 1) =>
+      db.submissions.put({
+        accountId: ACCOUNT,
+        id: s.id,
+        emailId: s.emailId,
+        seen,
+        payload: { plain: s },
+      })
+    await put(submission('seen-long-ago', 'no', iso(Date.now() - 40 * DAY)), 1)
+    await put(submission('seen-lately', 'no', iso(Date.now() - 20 * DAY)), 1)
+    await put(submission('never-seen', 'no', iso(Date.now() - 40 * DAY)), 0)
+    withSubmissions([])
+
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+
+    expect(await storedIds()).toEqual(['never-seen', 'seen-lately'])
+  })
+
+  it('does not ask a server that cannot send', async () => {
+    capabilities = { submission: false }
+    const asked = withSubmissions([])
+    const { syncAccount } = await import('./engine')
+    await syncAccount(ACCOUNT)
+    expect(asked).toEqual([])
   })
 })

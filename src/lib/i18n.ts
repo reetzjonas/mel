@@ -112,6 +112,14 @@ const en = {
   'unsub.failed': 'The request did not go out.',
   'unsub.open': 'Unsubscribe page',
   'unsub.write': 'Unsubscribe by email',
+  'mail.notDelivered': 'Not delivered',
+  'mail.notDeliveredTo': 'Not delivered to {recipients}',
+  'mail.sentNeedsAttention': 'A sent message was not delivered',
+  'mail.notDeliveredHint':
+    'The receiving server refused this message for these recipients. It will not be tried again.',
+  'mail.deliveryDelayed': 'Delivery delayed',
+  'mail.deliveryDelayedHint':
+    'The receiving server turned this message away for now. Your server keeps trying.',
   'mail.imagesBlocked': 'Remote images blocked',
   'mail.imagesBlockedWhy': 'Remote images can tell the sender that you opened this message.',
   'mail.loadImages': 'Load images',
@@ -946,6 +954,14 @@ const de: Partial<Record<MsgKey, string>> = {
   'unsub.failed': 'Die Anfrage ging nicht raus.',
   'unsub.open': 'Abmeldeseite',
   'unsub.write': 'Per E-Mail abbestellen',
+  'mail.notDelivered': 'Nicht zugestellt',
+  'mail.notDeliveredTo': 'Nicht zugestellt an {recipients}',
+  'mail.sentNeedsAttention': 'Eine gesendete Nachricht wurde nicht zugestellt',
+  'mail.notDeliveredHint':
+    'Der empfangende Server hat die Nachricht für diese Empfänger abgelehnt. Sie wird nicht erneut versucht.',
+  'mail.deliveryDelayed': 'Zustellung verzögert',
+  'mail.deliveryDelayedHint':
+    'Der empfangende Server hat die Nachricht vorerst abgewiesen. Dein Server versucht es weiter.',
   'mail.imagesBlocked': 'Externe Bilder blockiert',
   'mail.imagesBlockedWhy':
     'Externe Bilder können dem Absender verraten, dass du die Mail geöffnet hast.',

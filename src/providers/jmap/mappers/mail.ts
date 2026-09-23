@@ -1,7 +1,13 @@
 import type { EmailBody, EmailHeader } from '../../../domain/email'
 import type { Mailbox, MailboxRole } from '../../../domain/mailbox'
 import { parseUnsubscribe } from '../../../domain/unsubscribe'
-import type { JmapEmail, JmapEmailBodyPart, JmapMailbox } from '../client/types/mail'
+import type { Delivered, Submission } from '../../../domain/submission'
+import type {
+  JmapEmail,
+  JmapEmailBodyPart,
+  JmapEmailSubmission,
+  JmapMailbox,
+} from '../client/types/mail'
 
 const KNOWN_ROLES = new Set([
   'inbox',
@@ -112,6 +118,22 @@ export function toEmailBody(e: JmapEmail): EmailBody {
       disposition: p.disposition,
       cid: p.cid,
       size: p.size,
+    })),
+  }
+}
+
+const DELIVERED = new Set<Delivered>(['queued', 'yes', 'no', 'unknown'])
+
+export function toSubmission(s: JmapEmailSubmission): Submission {
+  return {
+    id: s.id,
+    emailId: s.emailId,
+    sendAt: s.sendAt ?? '',
+    undoStatus: s.undoStatus ?? 'final',
+    recipients: Object.entries(s.deliveryStatus ?? {}).map(([email, d]) => ({
+      email,
+      delivered: DELIVERED.has(d.delivered as Delivered) ? (d.delivered as Delivered) : 'unknown',
+      smtpReply: d.smtpReply ?? '',
     })),
   }
 }

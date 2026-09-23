@@ -23,6 +23,7 @@ const ACCOUNT_TABLES = [
   'contacts',
   'calendars',
   'events',
+  'submissions',
 ] as const
 
 /** Load the encrypted-flag set into the middleware. Call once at startup. */

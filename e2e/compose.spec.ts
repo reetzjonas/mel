@@ -350,3 +350,40 @@ test('a mailto: link and a share both open the composer filled in', async ({ pag
   await expect(page.getByPlaceholder('Subject', { exact: true })).toHaveValue('Look at this')
   await expect(page.getByText('https://example.com')).toBeVisible()
 })
+
+test('a recipient the server refuses is announced and named on the sent message (#70)', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const subject = `e2e-undelivered-${Date.now()}`
+
+  await login(page, ...ALICE)
+  await expect(page.getByText('Willkommen bei mel')).toBeVisible({ timeout: 15_000 })
+
+  // Stalwart accepts the submission and moves the message to Sent, then
+  // reports the unknown local mailbox in the submission's deliveryStatus.
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('nobody@localhost')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Nobody reads this.')
+  await page.getByRole('button', { name: 'Send' }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible()
+
+  // Said where it is seen, without opening Sent.
+  await expect(page.getByText('Not delivered to nobody@localhost')).toBeVisible({ timeout: 30_000 })
+  const sent = page.getByRole('link', { name: /^Sent Items/ })
+  await expect(sent).toHaveAccessibleName(/A sent message was not delivered/)
+
+  await page.getByRole('button', { name: 'Show this message' }).click()
+  const notice = page.getByRole('status').filter({ hasText: 'Not delivered' })
+  await expect(notice).toBeVisible()
+  await expect(notice).toContainText('nobody@localhost')
+  await expect(notice).toContainText('Mailbox does not exist')
+  // Looked at: the folder stops pointing at it, the message keeps its mark.
+  await expect(sent).toHaveAccessibleName('Sent Items')
+  const row = page
+    .locator('[data-testid="virtuoso-item-list"] [role="button"]')
+    .filter({ hasText: subject })
+  await expect(row.getByRole('img', { name: 'Not delivered' })).toBeVisible()
+})

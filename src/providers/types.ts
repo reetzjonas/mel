@@ -97,6 +97,11 @@ export interface MailProvider {
   uploadBlob(data: Blob | ArrayBuffer, type: string): Promise<{ blobId: string; size: number }>
   /** Create the message and submit it in one request (moves it to Sent). */
   sendEmail(mail: OutgoingEmail, mailboxIds: { drafts: string; sent: string }): Promise<void>
+  /**
+   * What became of messages sent since `after` (an ISO date), newest first;
+   * null when the server cannot say.
+   */
+  recentSubmissions(after: string): Promise<import('../domain/submission').Submission[] | null>
   /** Persist a draft (replacing a previous autosave); returns the new draft id. */
   saveDraft(
     mail: OutgoingEmail,

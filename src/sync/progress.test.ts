@@ -87,7 +87,12 @@ vi.mock('./connections', () => ({
   connectionFor: () => Promise.resolve(connection),
 }))
 
-let connection: { mail: MailProvider | null; contacts: null; calendars: null }
+let connection: {
+  mail: MailProvider | null
+  contacts: null
+  calendars: null
+  capabilities: { submission: boolean }
+}
 
 describe('the first full fetch, as the UI sees it', () => {
   // syncAccount takes a Web Lock so two tabs cannot sync the same account at
@@ -112,6 +117,7 @@ describe('the first full fetch, as the UI sees it', () => {
       mail: pagingProvider([['a', 'b'], ['c']], 3),
       contacts: null,
       calendars: null,
+      capabilities: { submission: false },
     }
 
     const { syncAccount } = await import('./engine')
@@ -147,6 +153,7 @@ describe('the first full fetch, as the UI sees it', () => {
       } as unknown as MailProvider,
       contacts: null,
       calendars: null,
+      capabilities: { submission: false },
     }
 
     const { syncAccount } = await import('./engine')
