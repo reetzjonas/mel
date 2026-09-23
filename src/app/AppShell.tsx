@@ -17,6 +17,7 @@ import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { startEventReminders } from '../services/eventReminders'
+import { narrowPushSubscription } from '../services/webPush'
 import { startScheduler } from '../sync/scheduler'
 import { Snackbar } from '../ui/Snackbar'
 import { secondaryIconButtonClass } from '../ui/styles'
@@ -183,6 +184,12 @@ export function AppShell() {
   useEffect(() => {
     if (!accountId || locked) return
     return startEventReminders(accountId)
+  }, [accountId, locked])
+
+  // A push subscription from before it named its types still wakes this
+  // device for every change on any other one (see `PUSH_TYPES`).
+  useEffect(() => {
+    if (accountId && !locked) void narrowPushSubscription(accountId).catch(() => {})
   }, [accountId, locked])
 
   if (lockedIds === undefined) return null

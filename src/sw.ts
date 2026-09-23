@@ -38,9 +38,14 @@ self.addEventListener('push', (event) => {
 
   if (data['@type'] === 'StateChange') {
     const changed = (data['changed'] ?? {}) as Record<string, Record<string, string>>
-    // Only notify about new mail; open clients handle the rest via SSE.
+    /*
+     * Only mail that arrived: `EmailDelivery`, not `Email`, which also moves
+     * when a message is archived or flagged on another device. The
+     * subscription asks for nothing else (`PUSH_TYPES`), but one made before
+     * it did still sends everything until the app narrows it on start.
+     */
     const mailAccounts = Object.entries(changed)
-      .filter(([, types]) => 'Email' in types || 'EmailDelivery' in types)
+      .filter(([, types]) => 'EmailDelivery' in types)
       .map(([accountId]) => accountId)
     if (!mailAccounts.length) return
     event.waitUntil(

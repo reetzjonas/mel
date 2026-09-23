@@ -59,6 +59,7 @@ const {
   disableWebPush,
   enableWebPush,
   isSubscribed,
+  narrowPushSubscription,
   pushDetailsEnabled,
   setPushDetails,
   webPushSupported,
@@ -261,6 +262,61 @@ describe('turning push on', () => {
     const second = (sent[0]![1]['create'] as Record<string, Record<string, unknown>>)['p0']!
 
     expect(second['deviceClientId']).toBe(first['deviceClientId'])
+  })
+})
+
+describe('what a subscription wakes the device for', () => {
+  it('asks for mail deliveries only', async () => {
+    // With everything, archiving on another device woke this one into a
+    // "New mail" with nothing new behind it.
+    answers = { 'PushSubscription/set': [{ created: { p0: { id: 'ps-1' } } }, {}] }
+    onCall = (name) => name === 'PushSubscription/set' && pushVerification('ps-1', 'code-1')
+
+    await enableWebPush('acc')
+
+    const create = sent[0]![1]['create'] as Record<string, Record<string, unknown>>
+    expect(create['p0']!['types']).toEqual(['EmailDelivery'])
+  })
+
+  it('narrows a subscription made before it asked for any', async () => {
+    localStorage.setItem('mel:pushDeviceId', 'this-device')
+    answers = {
+      'PushSubscription/get': {
+        list: [
+          { id: 'ps-1', deviceClientId: 'this-device', types: null },
+          { id: 'ps-phone', deviceClientId: 'another-device', types: null },
+        ],
+      },
+    }
+
+    await narrowPushSubscription('acc')
+
+    // Another device's subscription is that device's to change.
+    expect(sent[1]).toEqual([
+      'PushSubscription/set',
+      { update: { 'ps-1': { types: ['EmailDelivery'] } } },
+    ])
+  })
+
+  it('leaves one that already asks for the right types alone', async () => {
+    localStorage.setItem('mel:pushDeviceId', 'this-device')
+    answers = {
+      'PushSubscription/get': {
+        list: [{ id: 'ps-1', deviceClientId: 'this-device', types: ['EmailDelivery'] }],
+      },
+    }
+
+    await narrowPushSubscription('acc')
+
+    expect(sent.map(([name]) => name)).toEqual(['PushSubscription/get'])
+  })
+
+  it('asks the server nothing where this browser has no subscription', async () => {
+    subscription = null
+
+    await narrowPushSubscription('acc')
+
+    expect(sent).toEqual([])
   })
 })
 

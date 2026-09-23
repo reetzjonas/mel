@@ -16,6 +16,16 @@ import { connectionFor, storedAccount } from '../sync/connections'
 
 const DEVICE_ID_KEY = 'mel:pushDeviceId'
 
+/*
+ * The one change a push is for: mail arriving. `EmailDelivery` (RFC 8621
+ * §1.5) moves only on delivery, where `Email` moves on every flag, move and
+ * draft save — on any device. Subscribed to everything, archiving on the
+ * desktop woke the phone into a "New mail" with nothing new behind it. And a
+ * push the worker let pass without a notification is not free either: the
+ * browser shows its own "updated in the background" for it instead.
+ */
+export const PUSH_TYPES = ['EmailDelivery']
+
 function deviceClientId(): string {
   let id = localStorage.getItem(DEVICE_ID_KEY)
   if (!id) {
@@ -90,6 +100,7 @@ export async function enableWebPush(accountId: string): Promise<void> {
     create: {
       p0: {
         deviceClientId: deviceClientId(),
+        types: PUSH_TYPES,
         url: sub.endpoint,
         keys: { p256dh: b64url(p256dh), auth: b64url(auth) },
       },
@@ -109,6 +120,31 @@ export async function enableWebPush(accountId: string): Promise<void> {
   await b2.send()
   const err = upd.result.notUpdated?.[id]
   if (err) throw new Error(err.description ?? err.type)
+}
+
+/**
+ * Narrows this device's subscription to `PUSH_TYPES` where it was made before
+ * it asked for them (`types: null`, everything). Run on start; a subscription
+ * that already asks for the right types costs one `get` and nothing more.
+ */
+export async function narrowPushSubscription(accountId: string): Promise<void> {
+  if (!(await isSubscribed())) return
+  const { transport } = await transportFor(accountId)
+  const b = new Batch(transport, [Cap.core])
+  const get = b.call<GetResponse<{ id: string; deviceClientId: string; types?: string[] | null }>>(
+    'PushSubscription/get',
+    { ids: null },
+  )
+  await b.send()
+  const stale = get.result.list.filter(
+    (s) => s.deviceClientId === deviceClientId() && (s.types ?? []).join() !== PUSH_TYPES.join(),
+  )
+  if (!stale.length) return
+  const b2 = new Batch(transport, [Cap.core])
+  b2.call('PushSubscription/set', {
+    update: Object.fromEntries(stale.map((s) => [s.id, { types: PUSH_TYPES }])),
+  })
+  await b2.send()
 }
 
 /**

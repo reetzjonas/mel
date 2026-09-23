@@ -5,6 +5,23 @@ in `src/services/webPush.ts` and is described by the comment at the top of that
 file. This note is about the part that came later: letting a notification say
 *who wrote* and *about what*, instead of only "New mail".
 
+## Only deliveries wake the device
+
+The subscription asks for `types: ["EmailDelivery"]` (`PUSH_TYPES` in
+`webPush.ts`), and the service worker notifies on nothing else. `Email` is
+the wrong signal: it moves on every flag, move and draft save, on any device,
+so archiving on the desktop showed "New mail" on the phone with nothing new
+behind it. Checked against Stalwart: a flag change sends `Email` alone, a
+draft save `Email`/`Mailbox`/`Thread`, and only an SMTP delivery adds
+`EmailDelivery`.
+
+Asking for the type on the subscription, rather than only filtering in the
+worker, matters: a push the worker lets pass without a notification is not
+free under `userVisibleOnly`, the browser shows its own "updated in the
+background" notice for it. Subscriptions from before this carry
+`types: null` (everything); `narrowPushSubscription()` updates this device's
+one on start.
+
 ## Why it costs anything at all
 
 The JMAP server pushes a `StateChange` (RFC 8620 §7.2). It carries no content —
