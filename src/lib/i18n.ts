@@ -101,7 +101,8 @@ const en = {
   'unsub.failed': 'The request did not go out.',
   'unsub.open': 'Unsubscribe page',
   'unsub.write': 'Unsubscribe by email',
-  'mail.imagesBlocked': 'Remote images were not loaded — they can tell the sender you opened this.',
+  'mail.imagesBlocked': 'Remote images blocked',
+  'mail.imagesBlockedWhy': 'Remote images can tell the sender that you opened this message.',
   'mail.loadImages': 'Load images',
   'mail.alwaysLoadImages': 'Always load images from this sender',
   'mail.imageSenderFailed': 'Could not save the image permission. Please try again.',
@@ -923,8 +924,9 @@ const de: Partial<Record<MsgKey, string>> = {
   'unsub.failed': 'Die Anfrage ging nicht raus.',
   'unsub.open': 'Abmeldeseite',
   'unsub.write': 'Per E-Mail abbestellen',
-  'mail.imagesBlocked':
-    'Externe Bilder wurden nicht geladen — sie können dem Absender verraten, dass du die Mail geöffnet hast.',
+  'mail.imagesBlocked': 'Externe Bilder blockiert',
+  'mail.imagesBlockedWhy':
+    'Externe Bilder können dem Absender verraten, dass du die Mail geöffnet hast.',
   'mail.loadImages': 'Bilder laden',
   'mail.alwaysLoadImages': 'Bilder von diesem Absender immer laden',
   'mail.imageSenderFailed':

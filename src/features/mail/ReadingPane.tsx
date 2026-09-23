@@ -937,34 +937,43 @@ export function ReadingPane({
           {blocked && (
             <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface-2 px-4 py-2 text-xs text-ink-muted">
               <Icon name="offline" size={13} className="shrink-0" />
-              <span className="min-w-0 flex-1">{t('mail.imagesBlocked')}</span>
-              <button
-                type="button"
-                onClick={() => setRelease({ accountId, id: expanded.id, allowed: true })}
-                className="shrink-0 font-medium text-accent hover:underline"
-              >
-                {t('mail.loadImages')}
-              </button>
-              {!inJunk && imageSender && (
+              {/* A real basis, not flex-1's zero: with zero the buttons kept
+                  their width and squeezed the text to a word per line
+                  instead of wrapping below it. */}
+              <span className="min-w-0 flex-[1_1_12rem]" title={t('mail.imagesBlockedWhy')}>
+                {t('mail.imagesBlocked')}
+              </span>
+              {/* The actions wrap as one group: on their own, the second one
+                  dropped to a line by itself with its divider dangling. */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <button
                   type="button"
-                  disabled={savingSender}
-                  title={imageSender}
-                  onClick={async () => {
-                    setSavingSender(true)
-                    try {
-                      await setImageSender(accountId, imageSender, true)
-                    } catch {
-                      showSnackbar({ message: t('mail.imageSenderFailed') })
-                    } finally {
-                      setSavingSender(false)
-                    }
-                  }}
-                  className="ml-1 border-l border-ink-subtle/40 pl-3 text-left font-medium text-accent hover:underline disabled:opacity-50"
+                  onClick={() => setRelease({ accountId, id: expanded.id, allowed: true })}
+                  className="shrink-0 font-medium text-accent hover:underline"
                 >
-                  {t('mail.alwaysLoadImages')}
+                  {t('mail.loadImages')}
                 </button>
-              )}
+                {!inJunk && imageSender && (
+                  <button
+                    type="button"
+                    disabled={savingSender}
+                    title={imageSender}
+                    onClick={async () => {
+                      setSavingSender(true)
+                      try {
+                        await setImageSender(accountId, imageSender, true)
+                      } catch {
+                        showSnackbar({ message: t('mail.imageSenderFailed') })
+                      } finally {
+                        setSavingSender(false)
+                      }
+                    }}
+                    className="text-left font-medium text-accent hover:underline disabled:opacity-50"
+                  >
+                    {t('mail.alwaysLoadImages')}
+                  </button>
+                )}
+              </div>
             </div>
           )}
           {doc && (
