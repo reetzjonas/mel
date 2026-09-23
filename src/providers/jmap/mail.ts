@@ -182,6 +182,28 @@ export function createJmapMail(
 ): MailProvider {
   const batch = () => new Batch(transport, USING)
 
+  /*
+   * What follows a create-and-submit request, for both send paths. The
+   * message half went through and the submission did not: the server keeps
+   * the message in Drafts (onSuccessUpdateEmail never ran), and every retry
+   * would add another. The draft the message was written in, if it was
+   * autosaved, is a different one and stays for fixing it.
+   */
+  async function settleSubmission(created: string | undefined, notCreated: SetError | undefined) {
+    if (!notCreated) return
+    if (created) {
+      const cleanup = new Batch(transport, USING)
+      cleanup.call('Email/set', { accountId, destroy: [created] })
+      // Best effort: the refusal is what the caller has to hear about.
+      await cleanup.send().catch(() => {})
+    }
+    const f = toFailure(notCreated)
+    const err = new Error(`${f.type}${f.description ? `: ${f.description}` : ''}`)
+    // `reason` is what the outbox records and the queue shows: the type
+    // alone, since a description can quote the addresses.
+    throw Object.assign(err, { permanent: f.permanent, reason: f.type })
+  }
+
   return {
     syncMailboxes(sinceState) {
       return syncCollection<JmapMailbox, Mailbox>(
@@ -462,27 +484,62 @@ export function createJmapMail(
         },
       })
       await b.send()
-      const notCreated = setCall.result.notCreated?.['draft'] ?? submit.result.notCreated?.['sub']
-      /*
-       * The message half went through and the submission did not: the server
-       * keeps the message in Drafts (onSuccessUpdateEmail never ran), and every
-       * retry would add another. The draft the message was written in, if it
-       * was autosaved, is a different one and stays for fixing it.
-       */
-      const orphan = setCall.result.created?.['draft']?.id
-      if (notCreated && orphan) {
-        const cleanup = new Batch(transport, USING)
-        cleanup.call('Email/set', { accountId, destroy: [orphan] })
-        // Best effort: the refusal is what the caller has to hear about.
-        await cleanup.send().catch(() => {})
-      }
-      if (notCreated) {
-        const f = toFailure(notCreated)
-        const err = new Error(`${f.type}${f.description ? `: ${f.description}` : ''}`)
-        // `reason` is what the outbox records and the queue shows: the type
-        // alone, since a description can quote the addresses.
-        throw Object.assign(err, { permanent: f.permanent, reason: f.type })
-      }
+      await settleSubmission(
+        setCall.result.created?.['draft']?.id,
+        setCall.result.notCreated?.['draft'] ?? submit.result.notCreated?.['sub'],
+      )
+    },
+
+    /*
+     * A message mel wrote itself, byte for byte (OpenPGP, issue #63): imported
+     * into Drafts, then submitted in the same request, exactly like the
+     * server-built path above. The envelope is spelled out because the
+     * message has no Bcc header to take it from.
+     */
+    async sendRawEmail(raw, envelope, identityId, mailboxIds) {
+      const { blobId } = await this.uploadBlob(
+        new TextEncoder().encode(raw).buffer as ArrayBuffer,
+        'message/rfc822',
+      )
+      const b = new Batch(transport, USING_SUBMIT)
+      const imported = b.call<{
+        created?: Record<string, { id: string }>
+        notCreated?: Record<string, SetError>
+      }>('Email/import', {
+        accountId,
+        emails: {
+          draft: {
+            blobId,
+            mailboxIds: { [mailboxIds.drafts]: true },
+            keywords: { $seen: true, $draft: true },
+          },
+        },
+      })
+      const submit = b.call<SetResponse<unknown>>('EmailSubmission/set', {
+        accountId,
+        create: {
+          sub: {
+            emailId: '#draft',
+            identityId,
+            envelope: {
+              mailFrom: { email: envelope.mailFrom },
+              rcptTo: envelope.rcptTo.map((email) => ({ email })),
+            },
+          },
+        },
+        onSuccessUpdateEmail: {
+          '#sub': {
+            [`mailboxIds/${mailboxIds.drafts}`]: null,
+            [`mailboxIds/${mailboxIds.sent}`]: true,
+            'keywords/$draft': null,
+          },
+        },
+      })
+      await b.send()
+      await settleSubmission(
+        imported.result.created?.['draft']?.id,
+        imported.result.notCreated?.['draft'] ?? submit.result.notCreated?.['sub'],
+      )
     },
 
     /*

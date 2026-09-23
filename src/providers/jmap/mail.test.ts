@@ -600,6 +600,83 @@ describe('sending a message', () => {
   })
 })
 
+describe('sending a message mel wrote itself', () => {
+  const boxes = { drafts: 'mb-drafts', sent: 'mb-sent' }
+  const envelope = {
+    mailFrom: 'alice@example.test',
+    rcptTo: ['bob@example.test', 'eve@example.test'],
+  }
+  const uploaded = (fetchRaw: ReturnType<typeof vi.fn>) =>
+    fetchRaw.mockResolvedValue({ json: async () => ({ blobId: 'raw1', size: 10 }) })
+
+  it('uploads the bytes, imports them into Drafts and submits them in one request', async () => {
+    const { mail, sent, fetchRaw } = serverAnswering(
+      {
+        'Email/import': { created: { draft: { id: 'e1' } } },
+        'EmailSubmission/set': { created: { sub: {} } },
+      },
+      { upload: 'https://x/upload/{accountId}' },
+    )
+    uploaded(fetchRaw)
+
+    await mail.sendRawEmail('From: a\r\n\r\nhi', envelope, 'i1', boxes)
+
+    const [url, init] = fetchRaw.mock.calls[0]!
+    expect(url).toBe('https://x/upload/acc')
+    expect(init.headers).toEqual({ 'Content-Type': 'message/rfc822' })
+    expect(new TextDecoder().decode(init.body)).toBe('From: a\r\n\r\nhi')
+    expect(sent.map(([name]) => name)).toEqual(['Email/import', 'EmailSubmission/set'])
+    expect(sent[0]![1]['emails']).toEqual({
+      draft: {
+        blobId: 'raw1',
+        mailboxIds: { 'mb-drafts': true },
+        keywords: { $seen: true, $draft: true },
+      },
+    })
+    const submission = sent[1]![1]
+    // No Bcc header to take them from: every recipient is in the envelope.
+    expect(submission['create']).toEqual({
+      sub: {
+        emailId: '#draft',
+        identityId: 'i1',
+        envelope: {
+          mailFrom: { email: 'alice@example.test' },
+          rcptTo: [{ email: 'bob@example.test' }, { email: 'eve@example.test' }],
+        },
+      },
+    })
+    expect(submission['onSuccessUpdateEmail']).toEqual({
+      '#sub': { 'mailboxIds/mb-drafts': null, 'mailboxIds/mb-sent': true, 'keywords/$draft': null },
+    })
+  })
+
+  it('takes back the imported message when the submission is refused, and says why', async () => {
+    const { mail, sent, fetchRaw } = serverAnswering({
+      'Email/import': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { notCreated: { sub: { type: 'noRecipients' } } },
+      'Email/set': { destroyed: ['e1'] },
+    })
+    uploaded(fetchRaw)
+    await expect(mail.sendRawEmail('x', envelope, 'i1', boxes)).rejects.toMatchObject({
+      permanent: true,
+      reason: 'noRecipients',
+    })
+    expect(sent.at(-1)).toEqual(['Email/set', { accountId: 'acc', destroy: ['e1'] }])
+  })
+
+  it('reports a refused import without anything to take back', async () => {
+    const { mail, sent, fetchRaw } = serverAnswering({
+      'Email/import': { notCreated: { draft: { type: 'invalidEmail' } } },
+      'EmailSubmission/set': {},
+    })
+    uploaded(fetchRaw)
+    await expect(mail.sendRawEmail('x', envelope, 'i1', boxes)).rejects.toMatchObject({
+      reason: 'invalidEmail',
+    })
+    expect(sent.map(([name]) => name)).toEqual(['Email/import', 'EmailSubmission/set'])
+  })
+})
+
 describe('saving a draft', () => {
   it('replaces the previous one in the same set', async () => {
     /*

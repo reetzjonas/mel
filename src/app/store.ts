@@ -28,6 +28,8 @@ export interface ComposeInit {
    * whether an empty paragraph is prepended.
    */
   bodyHtml?: string
+  /** Start out encrypted and signed: a reply to a message that was encrypted. */
+  encrypt?: boolean
   /**
    * The existing draft this compose window continues. Autosave replaces that
    * message instead of creating a second one, and sending destroys it.

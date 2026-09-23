@@ -1,5 +1,6 @@
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test'
 import * as openpgp from 'openpgp'
+import PostalMime from 'postal-mime'
 
 // Desktop-only (see testIgnore in playwright.config.ts): it adds a contact
 // and mail to the shared account.
@@ -272,4 +273,237 @@ test('a signed message names its signer, and an altered one says it does not mat
   } finally {
     await jmap(request, [['Email/set', { accountId: ids.mail, destroy: created }, 'd']])
   }
+})
+
+/** Import the user's key through Settings → Security, as someone would. */
+async function importInSettings(page: Page, key: openpgp.PrivateKey) {
+  await page.goto('/mail?settings=security')
+  await page.getByRole('button', { name: 'Import key' }).click()
+  await page
+    .getByLabel(/Paste your secret key/)
+    .fill((await openpgp.encryptKey({ privateKey: key, passphrase: PASS })).armor())
+  await page.getByRole('button', { name: 'Continue' }).click()
+  await page.getByRole('textbox', { name: 'Key passphrase' }).fill(PASS)
+  await page.getByRole('button', { name: 'Import key' }).click()
+  await expect(page.getByText('Unlocked for this session')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: 'Close settings' }).click()
+}
+
+/*
+ * Writing: Alice sends Bob an encrypted, signed message. What reaches Bob is
+ * checked outside mel, with Bob's key and OpenPGP.js, so the test does not
+ * just prove mel agrees with itself; Alice's own copy in Sent must open in
+ * mel again, since it was encrypted to her too.
+ */
+test('an encrypted, signed message reaches the recipient readable only with their key', async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(120_000)
+  const stamp = Date.now()
+  const subject = `e2e-pgp-send-${stamp}`
+  const BOB = ['bob@localhost', 'korrekt-pferd-batterie-bob'] as const
+  const bobHeaders = { Authorization: `Basic ${btoa(BOB.join(':'))}` }
+  const gen = async (email: string) =>
+    (await openpgp.generateKey({ userIDs: [{ email }], format: 'object' })).privateKey
+  const [alice, bob] = await Promise.all([gen(ALICE[0]), gen(BOB[0])])
+  await addContactWithKey(request, BOB[0], bob)
+
+  const bobCall = async (calls: unknown[]) => {
+    const session = (await (
+      await request.get('http://localhost:8080/jmap/session', { headers: bobHeaders })
+    ).json()) as { primaryAccounts: Record<string, string>; downloadUrl: string }
+    const accountId = session.primaryAccounts['urn:ietf:params:jmap:mail']!
+    const res = await request.post('http://localhost:8080/jmap', {
+      headers: bobHeaders,
+      data: {
+        using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+        methodCalls: (calls as [string, Record<string, unknown>, string][]).map(([m, args, id]) => [
+          m,
+          { accountId, ...args },
+          id,
+        ]),
+      },
+    })
+    const body = (await res.json()) as { methodResponses: [string, Record<string, unknown>][] }
+    return { responses: body.methodResponses, accountId, downloadUrl: session.downloadUrl }
+  }
+
+  await login(page)
+  await importInSettings(page, alice)
+
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill(`${BOB[0]}, carol-${stamp}@example.com`)
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Nur für Bob lesbar.')
+  await page.getByRole('button', { name: 'Encrypt', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Sign', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  // A recipient without a key is named while typing, and the send refused.
+  await expect(page.getByText(`No OpenPGP key for carol-${stamp}@example.com`)).toBeVisible({
+    timeout: 10_000,
+  })
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('Sending in 10 s')).toHaveCount(0)
+  await page.getByPlaceholder('To', { exact: true }).fill(BOB[0])
+  await expect(page.getByText(/^No OpenPGP key for/)).toHaveCount(0, { timeout: 10_000 })
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible()
+
+  // Bob's side, read with Bob's key outside mel.
+  let emailId = ''
+  await expect
+    .poll(
+      async () => {
+        const { responses } = await bobCall([['Email/query', { filter: { subject } }, 'q']])
+        emailId = (responses[0]![1] as { ids: string[] }).ids[0] ?? ''
+        return emailId
+      },
+      { timeout: 60_000 },
+    )
+    .not.toBe('')
+  const { responses, accountId, downloadUrl } = await bobCall([
+    ['Email/get', { ids: [emailId], properties: ['attachments', 'textBody', 'preview'] }, 'g'],
+  ])
+  const got = (
+    responses[0]![1] as {
+      list: { attachments: { type: string; blobId: string }[]; preview: string }[]
+    }
+  ).list[0]!
+  expect(got.attachments.map((a) => a.type)).toEqual([
+    'application/pgp-encrypted',
+    'application/octet-stream',
+  ])
+  expect(got.preview ?? '').not.toContain('Bob lesbar')
+  const cipher = got.attachments[1]!.blobId
+  const armored = await (
+    await request.get(
+      downloadUrl
+        .replace('{accountId}', accountId)
+        .replace('{blobId}', cipher)
+        .replace('{type}', 'application/octet-stream')
+        .replace('{name}', 'encrypted.asc'),
+      { headers: bobHeaders },
+    )
+  ).text()
+  const decrypted = await openpgp.decrypt({
+    message: await openpgp.readMessage({ armoredMessage: armored }),
+    decryptionKeys: bob,
+    verificationKeys: alice.toPublic(),
+  })
+  expect((await PostalMime.parse(decrypted.data)).text?.trim()).toBe('Nur für Bob lesbar.')
+  await expect(decrypted.signatures[0]!.verified).resolves.toBe(true)
+
+  // Alice's copy in Sent opens in mel: it was encrypted to her as well.
+  await page.getByRole('link', { name: /^Sent Items/ }).click()
+  await page
+    .getByRole('button', { name: new RegExp(subject) })
+    .first()
+    .click()
+  await expect(
+    page.frameLocator('iframe[title="Message content"]').getByText('Nur für Bob lesbar.'),
+  ).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('Signed by you')).toBeVisible()
+
+  await bobCall([['Email/set', { destroy: [emailId] }, 'd']])
+})
+
+/*
+ * A signed message is only worth sending if the bytes it signed arrive as
+ * they were: the server imports and delivers the message mel wrote, and any
+ * re-encoding on the way would break the signature. Checked on the
+ * recipient's copy, fetched raw, outside mel.
+ */
+test('a signed message arrives with its signature intact', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const stamp = Date.now()
+  const subject = `e2e-pgp-signed-send-${stamp}`
+  const BOB = ['bob@localhost', 'korrekt-pferd-batterie-bob'] as const
+  const bobHeaders = { Authorization: `Basic ${btoa(BOB.join(':'))}` }
+  const alice = (await openpgp.generateKey({ userIDs: [{ email: ALICE[0] }], format: 'object' }))
+    .privateKey
+
+  await login(page)
+  await importInSettings(page, alice)
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill(BOB[0])
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Unterschrieben, nicht verschlüsselt: Grüße!')
+  await page.getByRole('button', { name: 'Sign', exact: true }).click()
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible()
+
+  const session = (await (
+    await request.get('http://localhost:8080/jmap/session', { headers: bobHeaders })
+  ).json()) as { primaryAccounts: Record<string, string>; downloadUrl: string }
+  const accountId = session.primaryAccounts['urn:ietf:params:jmap:mail']!
+  const call = async (calls: unknown[]) =>
+    (
+      (await (
+        await request.post('http://localhost:8080/jmap', {
+          headers: bobHeaders,
+          data: {
+            using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+            methodCalls: calls,
+          },
+        })
+      ).json()) as { methodResponses: [string, Record<string, unknown>][] }
+    ).methodResponses
+  let found: { id: string; blobId: string } | undefined
+  await expect
+    .poll(
+      async () => {
+        const r = await call([
+          ['Email/query', { accountId, filter: { subject } }, 'q'],
+          [
+            'Email/get',
+            {
+              accountId,
+              '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+              properties: ['blobId'],
+            },
+            'g',
+          ],
+        ])
+        found = (r[1]![1] as { list: { id: string; blobId: string }[] }).list[0]
+        return Boolean(found)
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true)
+  const raw = await (
+    await request.get(
+      session.downloadUrl
+        .replace('{accountId}', accountId)
+        .replace('{blobId}', found!.blobId)
+        .replace('{type}', 'message/rfc822')
+        .replace('{name}', 'm.eml'),
+      { headers: bobHeaders },
+    )
+  ).body()
+
+  // Cut out the signed part the way RFC 3156 defines it: between the first
+  // two delimiters, without the line break that belongs to the second.
+  const text = raw.toString('latin1')
+  const boundary = /boundary="([^"]+)"/.exec(text)![1]!
+  const first = text.indexOf(`--${boundary}\r\n`) + `--${boundary}\r\n`.length
+  const second = text.indexOf(`\r\n--${boundary}\r\n`, first)
+  const signed = raw.subarray(first, second)
+  const sig = /-----BEGIN PGP SIGNATURE-----[\s\S]+?-----END PGP SIGNATURE-----/.exec(text)![0]
+  const verified = await openpgp.verify({
+    message: await openpgp.createMessage({ binary: new Uint8Array(signed) }),
+    signature: await openpgp.readSignature({ armoredSignature: sig }),
+    verificationKeys: alice.toPublic(),
+    format: 'binary',
+  })
+  await expect(verified.signatures[0]!.verified).resolves.toBe(true)
+  expect((await PostalMime.parse(raw)).text?.trim()).toBe(
+    'Unterschrieben, nicht verschlüsselt: Grüße!',
+  )
+
+  await call([['Email/set', { accountId, destroy: [found!.id] }, 'd']])
 })

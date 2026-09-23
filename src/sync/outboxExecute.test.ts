@@ -29,6 +29,7 @@ vi.mock('./connections', () => ({
       mail: {
         setEmails: () => answer('setEmails', { updated: [], destroyed: [], failed: {} }),
         sendEmail: () => answer('sendEmail', undefined),
+        sendRawEmail: (...a: unknown[]) => answer('sendRawEmail', void rawSends.push(a)),
         uploadBlob: () => answer('uploadBlob', { blobId: 'server-blob', size: 3 }),
       },
       contacts: {
@@ -47,6 +48,7 @@ vi.mock('./connections', () => ({
 vi.mock('./engine', () => ({ syncAccount: () => Promise.resolve() }))
 
 const { flush } = await import('./outbox')
+const rawSends: unknown[][] = []
 
 /** Queue one action and run it. */
 async function run(action: Record<string, unknown>) {
@@ -241,6 +243,31 @@ describe('sending a queued message', () => {
     })
 
     expect(calls).toEqual(['sendEmail'])
+  })
+
+  it('sends a finished OpenPGP message as it is, then tidies up after it', async () => {
+    rawSends.length = 0
+    await db.blobCache.put({
+      accountId: ACC,
+      blobId: 'staged',
+      size: 1,
+      lastAccess: 0,
+      payload: sealPlain({ type: 'text/plain', data: new Uint8Array([1]) } as never),
+    })
+    const envelope = { mailFrom: 'a@x', rcptTo: ['b@x'] }
+    await run({
+      kind: 'email.sendRaw',
+      raw: 'RAW',
+      identityId: 'i1',
+      envelope,
+      mailboxIds: { drafts: 'd', sent: 's' },
+      draftId: 'draft-1',
+      localKeys: ['staged'],
+    })
+
+    expect(calls).toEqual(['sendRawEmail', 'setEmails'])
+    expect(rawSends[0]).toEqual(['RAW', envelope, 'i1', { drafts: 'd', sent: 's' }])
+    expect(await db.blobCache.get([ACC, 'staged'])).toBeUndefined()
   })
 
   it('fails loudly when the attachment is no longer on the device', async () => {

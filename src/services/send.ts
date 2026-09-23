@@ -2,12 +2,14 @@ import type { ComposeInit } from '../app/store'
 import type { EmailAddress, EmailBody, EmailHeader } from '../domain/email'
 import type { Identity, OutgoingAttachment, OutgoingEmail } from '../domain/identity'
 import { sanitizeMailHtml } from '../lib/htmlSanitize'
+import type { MimeAttachment } from '../lib/mimeBuild'
 import { inlineAttachments, inlineParts, partCid } from '../lib/inlineImages'
 import { db } from '../storage/db'
 import { roleMailboxId } from '../storage/mailboxes'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { connectionFor } from '../sync/connections'
 import { cancel, enqueue } from '../sync/outbox'
+import type { SecureOptions } from './pgpWrite'
 
 const UNDO_SEND_MS = 10_000
 
@@ -70,6 +72,8 @@ export async function sendMail(
     references?: string[]
     /** The saved draft this was written in; destroyed once the message is out. */
     draftId?: string | null
+    /** OpenPGP: encrypt to every recipient, sign with the user's key, or both. */
+    secure?: SecureOptions
   },
 ): Promise<SendResult> {
   const drafts = await roleMailboxId(accountId, 'drafts')
@@ -89,6 +93,9 @@ export async function sendMail(
     inReplyTo: fields.inReplyTo ?? null,
     references: fields.references ?? null,
   }
+  if (fields.secure?.encrypt || fields.secure?.sign) {
+    return sendSecure(accountId, mail, fields.secure, { drafts, sent }, fields.draftId ?? undefined)
+  }
   const seq = await enqueue(
     accountId,
     {
@@ -96,6 +103,64 @@ export async function sendMail(
       mail,
       mailboxIds: { drafts, sent },
       ...(fields.draftId ? { draftId: fields.draftId } : {}),
+    },
+    { delayMs: UNDO_SEND_MS },
+  )
+  return { undo: () => cancel(seq) }
+}
+
+/** The bytes of every attachment, from the local stage or from the server. */
+async function attachmentBytes(
+  accountId: string,
+  attachments: OutgoingAttachment[],
+): Promise<MimeAttachment[]> {
+  const out: MimeAttachment[] = []
+  for (const a of attachments) {
+    let data: ArrayBuffer | null = null
+    if (a.localKey) {
+      const cached = await db.blobCache.get([accountId, a.localKey])
+      if (cached) data = openEnvelope(cached.payload).data
+    }
+    if (!data && a.blobId) {
+      // A file forwarded from a message, or already uploaded by a draft save.
+      const conn = await connectionFor(accountId)
+      data = await (await conn.mail!.downloadBlob(a.blobId, a.type, a.name)).arrayBuffer()
+    }
+    if (!data) throw new Error(`attachment lost: ${a.name}`)
+    out.push({ name: a.name, type: a.type, data: new Uint8Array(data), cid: a.cid ?? null })
+  }
+  return out
+}
+
+/*
+ * An OpenPGP message is finished before it is queued: the queue then holds
+ * ciphertext rather than the plaintext, and the unlocked key does not have
+ * to still be unlocked whenever the queue gets round to it (after a reload,
+ * say, or back online tomorrow). The undo window is the same as ever.
+ */
+async function sendSecure(
+  accountId: string,
+  mail: OutgoingEmail,
+  secure: SecureOptions,
+  mailboxIds: { drafts: string; sent: string },
+  draftId: string | undefined,
+): Promise<SendResult> {
+  const { buildSecureMessage } = await import('./pgpWrite')
+  const files = await attachmentBytes(accountId, mail.attachments)
+  const raw = await buildSecureMessage(accountId, mail, files, secure)
+  const rcptTo = [
+    ...new Set([...mail.to, ...mail.cc, ...mail.bcc].map((a) => a.email.trim())),
+  ].filter(Boolean)
+  const seq = await enqueue(
+    accountId,
+    {
+      kind: 'email.sendRaw',
+      raw,
+      identityId: mail.identityId,
+      envelope: { mailFrom: mail.from.email, rcptTo },
+      mailboxIds,
+      ...(draftId ? { draftId } : {}),
+      localKeys: mail.attachments.flatMap((a) => (a.localKey ? [a.localKey] : [])),
     },
     { delayMs: UNDO_SEND_MS },
   )

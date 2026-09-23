@@ -626,7 +626,13 @@ export function ReadingPane({
     // turns that into a quote the composer fetches, rather than a quote of
     // nothing.
     const b = body === 'loading' ? null : body
-    openCompose(buildReply(accountId, expanded, b, mode, ownEmail))
+    // An answer to an encrypted message starts out encrypted. It still quotes
+    // the server's body, not the plaintext: turning encryption off must not
+    // send the quote out in the clear.
+    openCompose({
+      ...buildReply(accountId, expanded, b, mode, ownEmail),
+      ...(encryptedMail && mode !== 'forward' ? { encrypt: true } : {}),
+    })
   }
 
   // Your own unsent message: replying to it makes no sense, picking it back up

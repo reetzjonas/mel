@@ -822,6 +822,14 @@ const en = {
   'crypto.newPassphrase': 'New passphrase',
   'crypto.changed': 'Passphrase changed',
 
+  'compose.encrypt': 'Encrypt',
+  'compose.sign': 'Sign',
+  'compose.noKeyFor':
+    'No OpenPGP key for {recipients} — add it to their contact card, or turn encryption off.',
+  'compose.keyLocked': 'Unlock your OpenPGP key to sign:',
+  'compose.noOwnKey': 'Import your OpenPGP key in Settings → Security first.',
+  'compose.encryptNotes':
+    'The subject line is not encrypted. Encrypted messages are not saved as drafts on the server.',
   'pgp.section': 'OpenPGP key',
   'pgp.hint':
     'Your own OpenPGP key reads mail encrypted to you and recognises your own signatures. It stays on this device — mel has nowhere to sync it to — and it is kept protected by its own passphrase, separate from the one for encrypting local data.',
@@ -1725,6 +1733,15 @@ const de: Partial<Record<MsgKey, string>> = {
   'crypto.newPassphrase': 'Neue Passphrase',
   'crypto.changed': 'Passphrase geändert',
 
+  'compose.encrypt': 'Verschlüsseln',
+  'compose.sign': 'Signieren',
+  'compose.noKeyFor':
+    'Kein OpenPGP-Schlüssel für {recipients} — füge ihn der Kontaktkarte hinzu oder schalte die Verschlüsselung aus.',
+  'compose.keyLocked': 'Entsperre deinen OpenPGP-Schlüssel zum Signieren:',
+  'compose.noOwnKey':
+    'Importiere zuerst deinen OpenPGP-Schlüssel unter Einstellungen → Sicherheit.',
+  'compose.encryptNotes':
+    'Der Betreff wird nicht verschlüsselt. Verschlüsselte Nachrichten werden nicht als Entwurf auf dem Server gespeichert.',
   'pgp.section': 'OpenPGP-Schlüssel',
   'pgp.hint':
     'Mit deinem eigenen OpenPGP-Schlüssel liest mel an dich verschlüsselte Mails und erkennt deine eigenen Signaturen. Er bleibt auf diesem Gerät — mel hat nichts, wohin es ihn synchronisieren könnte — und bleibt durch seine eigene Passphrase geschützt, unabhängig von der für die Verschlüsselung lokaler Daten.',

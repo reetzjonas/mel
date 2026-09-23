@@ -24,6 +24,21 @@ export type OutboxAction =
        */
       draftId?: string
     }
+  | {
+      /**
+       * A message mel wrote itself (OpenPGP, issue #63): finished and, when
+       * encrypted, already ciphertext — so neither the plaintext nor the
+       * unlocked key has to wait in the queue for it.
+       */
+      kind: 'email.sendRaw'
+      raw: string
+      identityId: string
+      envelope: { mailFrom: string; rcptTo: string[] }
+      mailboxIds: { drafts: string; sent: string }
+      draftId?: string
+      /** Staged attachments the message was built from, dropped once it is out. */
+      localKeys: string[]
+    }
   | { kind: 'contact.create'; contact: Contact; tempId: string }
   | { kind: 'contact.update'; contact: Contact }
   | { kind: 'contact.destroy'; ids: string[] }
@@ -397,6 +412,16 @@ async function execute(accountId: string, action: OutboxAction): Promise<void> {
       for (const a of action.mail.attachments) {
         if (a.localKey) await db.blobCache.delete([accountId, a.localKey])
       }
+      return
+    }
+    case 'email.sendRaw': {
+      const mail = need(conn.mail, 'mail')
+      await mail.sendRawEmail(action.raw, action.envelope, action.identityId, action.mailboxIds)
+      if (action.draftId) {
+        await mail.setEmails({}, [action.draftId]).catch(() => {})
+        await db.emails.delete([accountId, action.draftId])
+      }
+      for (const key of action.localKeys) await db.blobCache.delete([accountId, key])
       return
     }
   }

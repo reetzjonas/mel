@@ -25,6 +25,15 @@ vi.mock('../sync/connections', () => ({
   connectionFor: () => Promise.resolve({ mail: mailProvider }),
 }))
 
+/** What the OpenPGP builder was handed; it answers with a stand-in message. */
+const built: unknown[][] = []
+vi.mock('./pgpWrite', () => ({
+  buildSecureMessage: (...a: unknown[]) => {
+    built.push(a)
+    return Promise.resolve('RAW MESSAGE')
+  },
+}))
+
 const {
   buildDraftInit,
   buildReply,
@@ -484,6 +493,81 @@ describe('sending', () => {
       identityId: 'i1',
       from: { name: 'Alice', email: 'alice@example.test' },
     })
+  })
+})
+
+describe('sending an OpenPGP message', () => {
+  beforeEach(async () => {
+    built.length = 0
+    await putMailbox('mb-drafts', 'drafts')
+    await putMailbox('mb-sent', 'sent')
+  })
+
+  it('builds it before queueing, so the queue holds the finished message and no plaintext', async () => {
+    const staged = await stageAttachment(ACC, new File(['local'], 'a.txt', { type: 'text/plain' }))
+    const downloadBlob = vi.fn(async () => new Blob(['remote']))
+    mailProvider = { ...(mailProvider as object), downloadBlob }
+
+    const { undo } = await sendMail(ACC, identity, {
+      ...fields,
+      cc: [{ name: null, email: 'carol@example.test' }],
+      bcc: [{ name: null, email: 'dave@example.test' }],
+      attachments: [
+        staged,
+        { blobId: 'fwd', localKey: null, name: 'b.pdf', type: 'application/pdf', size: 6 },
+      ],
+      draftId: 'draft-1',
+      secure: { encrypt: true, sign: true },
+    })
+
+    const [accountId, mail, files, options] = built[0]!
+    expect(accountId).toBe(ACC)
+    expect(mail).toMatchObject({ identityId: 'i1', subject: 'Rechnung' })
+    expect(options).toEqual({ encrypt: true, sign: true })
+    const bytes = (files as { name: string; data: Uint8Array }[]).map((f) => [
+      f.name,
+      new TextDecoder().decode(f.data),
+    ])
+    expect(bytes).toEqual([
+      ['a.txt', 'local'],
+      ['b.pdf', 'remote'],
+    ])
+    expect(downloadBlob).toHaveBeenCalledWith('fwd', 'application/pdf', 'b.pdf')
+
+    const [action, opts] = enqueued[0]!
+    expect(action).toEqual({
+      kind: 'email.sendRaw',
+      raw: 'RAW MESSAGE',
+      identityId: 'i1',
+      // Bcc lives only here: the message itself carries no Bcc header.
+      envelope: {
+        mailFrom: 'alice@example.test',
+        rcptTo: ['bob@example.test', 'carol@example.test', 'dave@example.test'],
+      },
+      mailboxIds: { drafts: 'mb-drafts', sent: 'mb-sent' },
+      draftId: 'draft-1',
+      localKeys: [staged.localKey],
+    })
+    expect(opts).toEqual({ delayMs: 10_000 })
+    await undo()
+    expect(cancelled).toEqual([1])
+  })
+
+  it('takes the ordinary path when neither switch is on', async () => {
+    await sendMail(ACC, identity, { ...fields, secure: { encrypt: false, sign: false } })
+    expect(built).toEqual([])
+    expect(enqueued[0]![0]).toMatchObject({ kind: 'email.send' })
+  })
+
+  it('refuses to queue when an attachment is nowhere to be found', async () => {
+    await expect(
+      sendMail(ACC, identity, {
+        ...fields,
+        attachments: [{ blobId: null, localKey: 'gone', name: 'x', type: 'text/plain', size: 1 }],
+        secure: { encrypt: false, sign: true },
+      }),
+    ).rejects.toThrow(/attachment lost/)
+    expect(enqueued).toEqual([])
   })
 })
 

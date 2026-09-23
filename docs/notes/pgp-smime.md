@@ -1,10 +1,13 @@
-# OpenPGP (issue #63): what is built, and what sending runs into
+# OpenPGP (issue #63): keys, reading and writing
 
-Part 1 (public keys on contact cards) and part 2 (reading encrypted and
-signed mail with the user's own key) are built and described below. Part 3,
-writing encrypted and signed mail, is not; its section records what the
-existing seams can and cannot do for it. Everything here was established
-against the real server and the real code, not from the RFCs alone.
+All three parts are built:
+
+1. Public keys on contact cards.
+2. Reading encrypted and signed mail with the user's own key.
+3. Writing encrypted and signed mail.
+
+Everything here was established against the real server and the real code,
+not from the RFCs alone.
 
 S/MIME moved to its own issue (#100). Follow-ups that grew out of this one:
 Autocrypt (#101), WKD lookup (#102), Stalwart's encryption at rest (#103) and
@@ -132,25 +135,89 @@ hole") is not shown in place of the outer one. The band says the subject was
 not encrypted instead. Search and previews cannot see into encrypted mail
 (the server cannot either).
 
-## Part 3: writing — what it runs into
+## Part 3: writing (done)
 
-**Sending needs a second send path.** `sendEmail` builds an Email object out of
-`textBody`/`htmlBody` plus attachment blobs. An encrypted message is a
-`multipart/encrypted` with two parts, the second being the ciphertext — so it
-has to go out as a `bodyStructure` referencing a blob from `uploadBlob`, not as
-body values. EmailSubmission is unchanged. Worth deciding before writing any of
-it: the **subject is not covered** by PGP/MIME and travels in the clear, which
-is a thing to say in the UI rather than to discover.
+**Why mel writes the MIME itself.** Every other message goes out as a JMAP
+Email object that the server turns into MIME. A signed message cannot go that
+way: RFC 3156 signs the exact bytes of the first part, and a server that
+writes that part itself writes different bytes. An encrypted message must not
+show the server what is inside. So for both, mel writes the whole RFC 5322
+message and sends it with **`Email/import` into Drafts plus
+`EmailSubmission/set` in one request**, with `onSuccessUpdateEmail` moving it
+to Sent (`sendRawEmail` in `providers/jmap/mail.ts`). This was checked against
+Stalwart 0.16:
 
-**Encryption happens at send time, which suits the outbox.** Every recipient
-key is local (it is on their card), so an encrypted message can be composed and
-queued offline like any other. What cannot be done offline is fetching a key
-for a recipient who has none stored — so "encrypt" has to be a state the
-composer can _fail_ to reach, and say why, per recipient.
+- The creation-id back-reference from the import to the submission works.
+- An explicit `envelope` is honoured.
+- A delivered signed message still verifies at the recipient. The e2e test
+  fetches Bob's raw copy and checks it outside mel.
 
-**A lookup by address exists now:** `contactKeysFor()` in
-`services/pgpKeys.ts`, exact and over every card with the address. Compose
-can use it as is.
+The builder is `lib/mimeBuild.ts`, deliberately narrow:
+
+- Every part is base64, so the output is 7-bit clean, as RFC 3156 requires of
+  signed content, and no line-length or trailing-space rule matters.
+- Every line ends in CRLF.
+- Nesting is mixed › alternative › related.
+- Header words are RFC 2047 encoded, file names RFC 2231.
+- It never writes a Bcc header. The recipients travel in the submission's
+  envelope instead, so the Sent copy does not list Bcc.
+
+The existing libraries (mimetext) pull in babel-runtime/core-js, so writing
+this ~200-line builder was cheaper. The tests round-trip it through
+postal-mime. All cryptography is still OpenPGP.js.
+
+**The shapes it writes.**
+
+- _Encrypted_: one OpenPGP message, signed when Sign is on, and encrypted to
+  every recipient and to the user, so the Sent copy stays readable. It is
+  wrapped in RFC 3156 `multipart/encrypted`. This is the form most clients
+  write and every client reads.
+- _Signed only_: `multipart/signed` over the body entity, with `micalg` taken
+  from the hash the signature actually used.
+
+**Built before queueing, not when the queue runs** (`sendSecure` in
+`services/send.ts`, outbox action `email.sendRaw`). The queue then holds the
+finished message, which is ciphertext when encrypted, rather than the
+plaintext. The unlocked key also does not have to stay unlocked until a queue
+that is offline until tomorrow gets round to it. Attachments are read from
+the local stage, or downloaded when they only exist on the server (a
+forwarded file). The 10-second undo window is unchanged.
+
+**Compose.**
+
+- The Encrypt and Sign switches in the footer appear only when a key is
+  stored.
+- Turning Encrypt on turns Sign on with it.
+- A line above the footer names every recipient without a usable key (not
+  expired, not revoked), found as the fields change. Send is refused until
+  that list is empty, Bcc included: encrypting to some recipients and sending
+  the rest nothing, or plaintext, would be worse than refusing.
+- A locked key gets a passphrase field in the same line.
+- The line also says the subject is not encrypted, and that nothing is
+  autosaved to the server while Encrypt is on. A draft is stored as it is,
+  and this one is meant not to be readable there. The Save button is off for
+  the same reason.
+- A reply to an encrypted message starts out encrypted, and still quotes the
+  server's body, not the plaintext (see part 2).
+
+**Not done:**
+
+- Autocrypt headers (#101).
+- WKD lookup for recipients without a key (#102).
+- Protected headers, which would encrypt the subject.
+- Saving encrypted drafts.
+- Quoting the plaintext in an encrypted reply. That needs a guard for turning
+  encryption off afterwards.
+
+Tests:
+
+- `lib/mimeBuild.test.ts`: round trip through postal-mime.
+- `services/pgpWrite.test.ts`: decrypts and verifies what was built, with
+  OpenPGP.js and with mel's own `splitSigned`.
+- `send.test.ts` and `outboxExecute.test.ts`: the queue path.
+- `e2e/pgp.spec.ts`: Alice sends Bob an encrypted, signed message. Bob's copy
+  is decrypted with Bob's key in Node, and Alice's Sent copy opens in mel. A
+  signed-only message is verified from Bob's raw copy.
 
 ## Where the private key lives (decided, built)
 

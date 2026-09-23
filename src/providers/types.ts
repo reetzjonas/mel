@@ -98,6 +98,16 @@ export interface MailProvider {
   /** Create the message and submit it in one request (moves it to Sent). */
   sendEmail(mail: OutgoingEmail, mailboxIds: { drafts: string; sent: string }): Promise<void>
   /**
+   * Send a message mel wrote itself as raw RFC 5322 (OpenPGP mail, whose bytes
+   * the server must not rebuild). Same Drafts-then-Sent path as sendEmail.
+   */
+  sendRawEmail(
+    raw: string,
+    envelope: { mailFrom: string; rcptTo: string[] },
+    identityId: string,
+    mailboxIds: { drafts: string; sent: string },
+  ): Promise<void>
+  /**
    * What became of messages sent since `after` (an ISO date), newest first;
    * null when the server cannot say.
    */

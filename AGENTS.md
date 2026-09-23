@@ -155,11 +155,13 @@ working on that specific feature, not on every session:
 - **Deployment** (nginx-unprivileged, CORS vs same-origin, CI): `docs/notes/deployment.md`
 - **OpenPGP** (issue #63): public keys on contact cards (with fingerprint),
   the user's own secret key in Settings → Security (protected by its own
-  passphrase, unlocked per session in memory), and reading encrypted and
-  signed mail with a band in the reading pane. Covers what Stalwart shows of
-  PGP/MIME, why a signature needs the raw message, which keys may have
-  signed, why replies quote the server's body, and what sending (part 3)
-  still runs into. S/MIME is #100: `docs/notes/pgp-smime.md`
+  passphrase, unlocked per session in memory), reading encrypted and signed
+  mail with a band in the reading pane, and writing it (Encrypt/Sign in
+  compose). Covers what Stalwart shows of PGP/MIME, why a signature needs the
+  raw message, which keys may have signed, why mel writes the MIME itself and
+  sends it with `Email/import`, why the message is built before it is queued,
+  and why replies quote the server's body. S/MIME is #100:
+  `docs/notes/pgp-smime.md`
 - **Settings sync** (issue #20): theme, language and a few other preferences
   mirrored to `.mel/settings.json` via JMAP FileNode — what syncs and what
   deliberately stays local, the read-merge-write schema-evolution rule, why

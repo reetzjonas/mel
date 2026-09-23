@@ -45,6 +45,7 @@ export function describeAction(action: OutboxAction): ActionSummary {
     case 'email.destroy':
       return { label: 'queue.email.destroy', count: action.ids.length }
     case 'email.send':
+    case 'email.sendRaw':
       return { label: 'queue.email.send', count: 1 }
     case 'contact.create':
       return { label: 'queue.contact.create', count: 1 }

@@ -30,6 +30,9 @@ import { Icon } from '../../ui/Icon'
 import { Tooltip } from '../../ui/Tooltip'
 import { useMobileViewport, useModal } from '../../ui/useModal'
 import { ComposeToolbar } from './ComposeToolbar'
+import { SecurityNotices, SecurityToggles } from './ComposeSecurity'
+import { secureProblemText, useHasOwnKey } from './secureSend'
+import type { SecureOptions, SecureSendError } from '../../services/pgpWrite'
 import { InlineImage, inlineImageStorage, setInlineImageUrl } from './composeImage'
 import { useCanSend } from './hooks'
 import { RecipientInput } from './RecipientInput'
@@ -135,6 +138,16 @@ export function Compose({
   const [showCc, setShowCc] = useState(Boolean(init.cc?.length))
   const [showBcc, setShowBcc] = useState(Boolean(init.bcc?.length))
   const [subject, setSubject] = useState(init.subject ?? '')
+  /*
+   * OpenPGP (issue #63). Offered only once the user has a key here; a reply
+   * to an encrypted message starts out encrypted.
+   */
+  const hasKey = useHasOwnKey(accountId)
+  const [secureChoice, setSecureChoice] = useState<SecureOptions>({
+    encrypt: Boolean(init.encrypt),
+    sign: Boolean(init.encrypt),
+  })
+  const secure: SecureOptions = hasKey ? secureChoice : { encrypt: false, sign: false }
   const [attachments, setAttachments] = useState<OutgoingAttachment[]>(init.attachments ?? [])
   /*
    * Pictures drawn in the text. Kept apart from the attachment chips: they are
@@ -410,13 +423,16 @@ export function Compose({
   // oxlint-disable-next-line refs
   storeDraftRef.current = storeDraft
 
-  // Draft autosave: 2.5 s after the last change.
+  // Draft autosave: 2.5 s after the last change. Not while encrypting: a draft
+  // is stored on the server as it is, and this one is meant not to be readable
+  // there.
   useEffect(() => {
-    if (!dirty) return
+    if (!dirty || secure.encrypt) return
     const timer = setTimeout(() => void storeDraftRef.current(), 2500)
     return () => clearTimeout(timer)
   }, [
     dirty,
+    secure.encrypt,
     to,
     cc,
     bcc,
@@ -539,6 +555,7 @@ export function Compose({
         references: init.references,
         // Destroyed by the send once it is out, so an undo leaves it in place.
         draftId: draftId.current,
+        secure,
       })
       onClose()
       showSnackbar({
@@ -551,7 +568,12 @@ export function Compose({
         },
       })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      const problem = e instanceof Error && 'problem' in e ? (e as SecureSendError).problem : null
+      // A missing key or a locked one is already said, live, by the notice
+      // above the footer, which goes away once fixed; a copy of it here would
+      // stay standing after the recipient was corrected.
+      if (problem?.kind === 'missingKeys' || problem?.kind === 'locked') return
+      setError(problem ? secureProblemText(problem) : e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
@@ -773,6 +795,13 @@ export function Compose({
           )}
         </div>
 
+        {hasKey && (
+          <SecurityNotices
+            accountId={accountId}
+            value={secure}
+            recipients={[...parseAddresses(to), ...parseAddresses(cc), ...parseAddresses(bcc)]}
+          />
+        )}
         {error && <p className="px-4 py-1 text-sm text-danger">{error}</p>}
 
         <footer className="flex items-center gap-2 border-t border-line px-4 py-2.5">
@@ -789,6 +818,7 @@ export function Compose({
               <Icon name="paperclip" size={16} />
             </button>
           </Tooltip>
+          {hasKey && <SecurityToggles value={secure} onChange={setSecureChoice} />}
           <input
             ref={fileInput}
             type="file"
@@ -826,7 +856,8 @@ export function Compose({
               type="button"
               aria-label={t('compose.saveDraft')}
               onClick={() => void saveNow()}
-              disabled={saving || busy}
+              // An encrypted message is not stored as a draft (see the autosave).
+              disabled={saving || busy || secure.encrypt}
               className={`${dirty || draftSaved ? '' : 'ml-auto '}flex min-h-11 min-w-11 items-center justify-center rounded-control p-2 text-ink-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-50 sm:min-h-0 sm:min-w-0`}
             >
               <Icon name="save" size={16} />
