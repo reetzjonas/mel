@@ -504,6 +504,201 @@ test('a signed message arrives with its signature intact', async ({ page, reques
   expect((await PostalMime.parse(raw)).text?.trim()).toBe(
     'Unterschrieben, nicht verschlüsselt: Grüße!',
   )
+  // The message mel wrote itself carries Alice's key for Autocrypt too.
+  expect(await autocryptFingerprint(raw)).toBe(alice.getFingerprint())
 
   await call([['Email/set', { accountId, destroy: [found!.id] }, 'd']])
+})
+
+/** The key in a raw message's Autocrypt header, by fingerprint, read outside mel. */
+async function autocryptFingerprint(raw: Buffer): Promise<string | null> {
+  const header = (await PostalMime.parse(raw)).headers.find((h) => h.key === 'autocrypt')
+  const keydata = /keydata=([\s\S]*)$/.exec(header?.value ?? '')?.[1]?.replace(/\s+/g, '')
+  if (!keydata) return null
+  const key = await openpgp.readKey({ binaryKey: Buffer.from(keydata, 'base64') })
+  return key.getFingerprint()
+}
+
+/** The raw copy of a message in Bob's account, polled for until it arrives. */
+async function rawAtBob(request: APIRequestContext, subject: string) {
+  const bobHeaders = { Authorization: `Basic ${btoa('bob@localhost:korrekt-pferd-batterie-bob')}` }
+  const session = (await (
+    await request.get('http://localhost:8080/jmap/session', { headers: bobHeaders })
+  ).json()) as { primaryAccounts: Record<string, string>; downloadUrl: string }
+  const accountId = session.primaryAccounts['urn:ietf:params:jmap:mail']!
+  const call = async (calls: unknown[]) =>
+    (
+      (await (
+        await request.post('http://localhost:8080/jmap', {
+          headers: bobHeaders,
+          data: {
+            using: ['urn:ietf:params:jmap:core', 'urn:ietf:params:jmap:mail'],
+            methodCalls: calls,
+          },
+        })
+      ).json()) as { methodResponses: [string, Record<string, unknown>][] }
+    ).methodResponses
+  let found: { id: string; blobId: string } | undefined
+  await expect
+    .poll(
+      async () => {
+        const r = await call([
+          ['Email/query', { accountId, filter: { subject } }, 'q'],
+          [
+            'Email/get',
+            {
+              accountId,
+              '#ids': { resultOf: 'q', name: 'Email/query', path: '/ids' },
+              properties: ['blobId'],
+            },
+            'g',
+          ],
+        ])
+        found = (r[1]![1] as { list: { id: string; blobId: string }[] }).list[0]
+        return Boolean(found)
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(true)
+  const raw = await (
+    await request.get(
+      session.downloadUrl
+        .replace('{accountId}', accountId)
+        .replace('{blobId}', found!.blobId)
+        .replace('{type}', 'message/rfc822')
+        .replace('{name}', 'm.eml'),
+      { headers: bobHeaders },
+    )
+  ).body()
+  return {
+    raw,
+    destroy: () => call([['Email/set', { accountId, destroy: [found!.id] }, 'd']]),
+  }
+}
+
+/*
+ * Autocrypt (issue #101), sending: once a key is stored, an ordinary message
+ * — built by the server, not by mel — carries the public key in a header,
+ * folded so every line stays within bounds, minimal (one user id).
+ */
+test('an ordinary message carries the key in an Autocrypt header', async ({ page, request }) => {
+  test.setTimeout(120_000)
+  const subject = `e2e-autocrypt-send-${Date.now()}`
+  const alice = (
+    await openpgp.generateKey({
+      userIDs: [{ email: ALICE[0] }, { email: 'alice-other@example.com' }],
+      format: 'object',
+    })
+  ).privateKey
+
+  await login(page)
+  await importInSettings(page, alice)
+  await page.getByRole('button', { name: 'New message' }).click()
+  await page.getByPlaceholder('To', { exact: true }).fill('bob@localhost')
+  await page.getByPlaceholder('Subject', { exact: true }).fill(subject)
+  await page.locator('.ProseMirror').click()
+  await page.keyboard.type('Ganz normal.')
+  await page.getByRole('button', { name: 'Send', exact: true }).click()
+  await expect(page.getByText('Sending in 10 s')).toBeVisible()
+
+  const { raw, destroy } = await rawAtBob(request, subject)
+  try {
+    expect(await autocryptFingerprint(raw)).toBe(alice.getFingerprint())
+    const text = raw.toString('latin1')
+    const head = text.slice(0, text.indexOf('\r\n\r\n'))
+    for (const line of head.split('\r\n')) expect(line.length).toBeLessThanOrEqual(998)
+    const header = (await PostalMime.parse(raw)).headers.find((h) => h.key === 'autocrypt')!
+    expect(header.value).toMatch(/^addr=alice@localhost; keydata=/)
+    const keydata = header.value.replace(/^.*keydata=/, '').replace(/\s+/g, '')
+    const key = await openpgp.readKey({ binaryKey: Buffer.from(keydata, 'base64') })
+    expect(key.getUserIDs()).toEqual(['<alice@localhost>'])
+  } finally {
+    await destroy()
+  }
+})
+
+/*
+ * Autocrypt, receiving: a message whose header carries the sender's key
+ * offers to save it, with the fingerprint, and saving it makes the card.
+ */
+test("a key in an Autocrypt header can be added to the sender's contact", async ({
+  page,
+  request,
+}) => {
+  test.setTimeout(90_000)
+  const stamp = Date.now()
+  const subject = `e2e-autocrypt-read-${stamp}`
+  const sender = `autocrypt-${stamp}@example.com`
+  const key = (await openpgp.generateKey({ userIDs: [{ email: sender }], format: 'object' }))
+    .privateKey
+  const keydata = Buffer.from(key.toPublic().write()).toString('base64')
+  const ids = await accountIds(request)
+  const emailId = await importMail(
+    request,
+    [
+      `From: Carla Crypt <${sender}>`,
+      `To: ${ALICE[0]}`,
+      `Subject: ${subject}`,
+      `Message-ID: <${subject}@example.com>`,
+      `Date: ${new Date().toUTCString()}`,
+      `Autocrypt: addr=${sender}; prefer-encrypt=mutual; keydata=`,
+      ...keydata.match(/.{1,76}/g)!.map((l) => ` ${l}`),
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      'Hallo, hier ist mein Schlüssel.',
+      '',
+    ].join('\r\n'),
+  )
+
+  const cardsFor = async () => {
+    const [[, q], [, got]] = (await jmap(request, [
+      ['ContactCard/query', { accountId: ids.contacts, filter: { email: sender } }, 'q'],
+      [
+        'ContactCard/get',
+        {
+          accountId: ids.contacts,
+          '#ids': { resultOf: 'q', name: 'ContactCard/query', path: '/ids' },
+          properties: ['id', 'name', 'cryptoKeys'],
+        },
+        'g',
+      ],
+    ])) as [
+      [string, { ids: string[] }],
+      [string, { list: { id: string; cryptoKeys?: Record<string, { uri: string }> }[] }],
+    ]
+    return { ids: q.ids, list: got.list }
+  }
+
+  try {
+    await login(page)
+    await page
+      .getByRole('button', { name: new RegExp(subject) })
+      .first()
+      .click()
+    await expect(
+      page.getByText('Carla Crypt sent their public key along with this message.'),
+    ).toBeVisible({
+      timeout: 15_000,
+    })
+    const spaced = key.getFingerprint().toUpperCase().match(/.{4}/g)!.join(' ')
+    await expect(page.getByText(spaced)).toBeVisible()
+    await page.getByRole('button', { name: 'Add key to contact' }).click()
+    await expect(page.getByText('Key saved to Carla Crypt’s contact')).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Add key to contact' })).toHaveCount(0)
+
+    await expect.poll(async () => (await cardsFor()).list.length, { timeout: 15_000 }).toBe(1)
+    const [card] = (await cardsFor()).list
+    const uri = Object.values(card!.cryptoKeys ?? {})[0]!.uri
+    const armored = Buffer.from(uri.slice(uri.indexOf(',') + 1), 'base64').toString()
+    expect((await openpgp.readKey({ armoredKey: armored })).getFingerprint()).toBe(
+      key.getFingerprint(),
+    )
+  } finally {
+    const { ids: cards } = await cardsFor()
+    await jmap(request, [
+      ['Email/set', { accountId: ids.mail, destroy: [emailId] }, 'd'],
+      ['ContactCard/set', { accountId: ids.contacts, destroy: cards }, 'c'],
+    ])
+  }
 })

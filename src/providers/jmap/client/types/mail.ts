@@ -82,6 +82,11 @@ export interface JmapEmail {
    */
   'header:List-Unsubscribe:asURLs'?: string[] | null
   'header:List-Unsubscribe-Post:asText'?: string | null
+  /*
+   * Autocrypt (issue #101), every one of them: the spec treats two valid
+   * headers for the sender as none, so the last one alone would not do.
+   */
+  'header:Autocrypt:asText:all'?: string[] | null
 }
 
 export interface JmapThread {
@@ -153,6 +158,7 @@ export const EMAIL_BODY_PROPS = [
   'inReplyTo',
   'header:List-Unsubscribe:asURLs',
   'header:List-Unsubscribe-Post:asText',
+  'header:Autocrypt:asText:all',
 ] as const
 
 export interface EmailFilterCondition {

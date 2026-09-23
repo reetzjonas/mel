@@ -35,4 +35,9 @@ export interface OutgoingEmail {
   attachments: OutgoingAttachment[]
   inReplyTo: string[] | null
   references: string[] | null
+  /**
+   * The sender's public key for the Autocrypt header, as base64 `keydata`
+   * (issue #101). Absent when the user has no key for the From address.
+   */
+  autocrypt?: string | null
 }

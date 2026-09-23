@@ -10,7 +10,7 @@ Everything here was established against the real server and the real code,
 not from the RFCs alone.
 
 S/MIME moved to its own issue (#100). Follow-ups that grew out of this one:
-Autocrypt (#101), WKD lookup (#102), Stalwart's encryption at rest (#103) and
+Autocrypt (#101, done, see below), WKD lookup (#102), Stalwart's encryption at rest (#103) and
 generating a key in mel (#104).
 
 ## Part 1: keys on the card (done)
@@ -202,7 +202,6 @@ forwarded file). The 10-second undo window is unchanged.
 
 **Not done:**
 
-- Autocrypt headers (#101).
 - WKD lookup for recipients without a key (#102).
 - Protected headers, which would encrypt the subject.
 - Saving encrypted drafts.
@@ -218,6 +217,57 @@ Tests:
 - `e2e/pgp.spec.ts`: Alice sends Bob an encrypted, signed message. Bob's copy
   is decrypted with Bob's key in Node, and Alice's Sent copy opens in mel. A
   signed-only message is verified from Bob's raw copy.
+
+## Autocrypt (issue #101, done)
+
+Header only (Autocrypt Level 1): the user's public key goes out with every
+message, and a correspondent's key can be picked up from theirs. Gossip and
+the setup message are out of scope.
+
+**Sending.** Every message from an address the stored key names gets an
+`Autocrypt:` header (`services/autocrypt.ts`, `ownAutocryptKeydata`). The key
+is cut down to what the spec asks for: the primary key, the one user id for
+that address, the encryption subkey, and their self-signatures. Other user
+ids, photos, signing subkeys and third-party certifications are left out, so
+the header stays at a kilobyte or two. No unlocking is needed, since the
+public half of a stored secret key is readable as it is. `prefer-encrypt` is
+not written (no preference); mel has no setting to ask it.
+
+How it reaches the wire was checked against Stalwart 0.16:
+
+- `header:Autocrypt:asText` comes out as RFC 2047 encoded words once it is
+  long. No Autocrypt reader decodes those.
+- `header:Autocrypt:asRaw` with line breaks of our own comes out with an
+  empty continuation line after each of them.
+- `header:Autocrypt:asRaw` with the key cut into pieces separated by
+  **spaces** is folded by Stalwart at those spaces, cleanly. That is what
+  `sendEmail` sends. Readers ignore whitespace inside `keydata`.
+
+OpenPGP mail, which mel writes itself, folds the header in `lib/mimeBuild.ts`.
+
+**Receiving.** The body fetch asks for `header:Autocrypt:asText:all`, all of
+them, because the spec treats two valid headers for the sender as none.
+`domain/autocrypt.ts` parses them: `addr` must be the From address, an unknown
+attribute without a leading underscore makes the header invalid. The reading
+pane then shows `AutocryptNotice`:
+
+- The sender has no key in the contacts: a band with the fingerprint and
+  "Add key to contact". It goes onto the first card with that address, or a
+  new card in the default address book when there is none. Never silently:
+  a key decides who can read what the user writes.
+- The contacts hold that very key (by fingerprint): nothing.
+- The contacts hold a different key: a warning in the danger tone, with the
+  new fingerprint, and nothing changes. It may be a new key, or someone else.
+  Replacing it is a deliberate edit on the card.
+
+Mail from the user's own address, or with several From addresses, is
+skipped. Bodies cached before this existed carry no header values, so older
+messages offer nothing until their body is fetched again.
+
+Tests: `domain/autocrypt.test.ts` (parsing), `services/autocrypt.test.ts`
+(minimal key, offer, saving), and in `e2e/pgp.spec.ts` an ordinary message
+whose raw copy at Bob carries the minimal key, plus a received header saved
+to a new card through the band.
 
 ## Where the private key lives (decided, built)
 
@@ -273,4 +323,5 @@ Two consequences worth stating in the UI rather than discovering:
 - **The private key does not sync.** There is no backend to sync it to, so it
   lives on one device by construction.
 - **Publishing the public half** is a separate problem. Attaching it to outgoing
-  mail is the answer that needs no infrastructure; WKD and keyservers need some.
+  mail is the answer that needs no infrastructure (Autocrypt, above); WKD and
+  keyservers need some.

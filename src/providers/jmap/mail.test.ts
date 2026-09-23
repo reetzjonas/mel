@@ -383,6 +383,21 @@ describe('sending a message', () => {
     expect(sent.map(([name]) => name)).toEqual(['Email/set', 'EmailSubmission/set'])
   })
 
+  it('adds the Autocrypt header as a raw value the server folds at its spaces', async () => {
+    const { mail, sent } = serverAnswering({
+      'Email/set': { created: { draft: { id: 'e1' } } },
+      'EmailSubmission/set': { created: { sub: {} } },
+    })
+    await mail.sendEmail({ ...outgoing, autocrypt: 'K'.repeat(100) } as never, boxes)
+    const create = (sent[0]![1]['create'] as Record<string, Record<string, unknown>>)['draft']!
+    expect(create['header:Autocrypt:asRaw']).toBe(
+      ` addr=${outgoing.from.email}; keydata= ${'K'.repeat(76)} ${'K'.repeat(24)}`,
+    )
+
+    await mail.sendEmail(outgoing as never, boxes)
+    expect(sent[2]![1]['create']).not.toHaveProperty(['draft', 'header:Autocrypt:asRaw'])
+  })
+
   it('has the server move it out of drafts once the send succeeded', async () => {
     /*
      * onSuccessUpdateEmail, not a follow-up call: the move has to happen only

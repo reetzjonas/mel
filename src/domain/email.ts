@@ -68,6 +68,11 @@ export interface EmailBody {
    * because bodies cached before this existed simply do not carry it.
    */
   unsubscribe?: Unsubscribe | null
+  /**
+   * The message's Autocrypt header values, unparsed (issue #101): whose key
+   * it is can only be judged against the From address, which is not here.
+   */
+  autocrypt?: string[] | null
 }
 
 export interface Thread {

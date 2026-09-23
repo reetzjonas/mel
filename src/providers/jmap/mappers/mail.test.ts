@@ -195,4 +195,14 @@ describe('toEmailBody, on the parts of a message', () => {
       oneClick: true,
     })
   })
+
+  it('carries every Autocrypt header through unparsed, and none as null', () => {
+    const values = ['addr=a@b; keydata=AAAA', 'addr=c@d; keydata=BBBB']
+    expect(
+      toEmailBody({ id: 'm1', 'header:Autocrypt:asText:all': values } as never).autocrypt,
+    ).toEqual(values)
+    expect(
+      toEmailBody({ id: 'm1', 'header:Autocrypt:asText:all': [] } as never).autocrypt,
+    ).toBeNull()
+  })
 })

@@ -887,6 +887,17 @@ const en = {
   'pgp.unavailable':
     'Could not load what is needed to check this message’s encryption or signature.',
   'pgp.checking': 'Checking…',
+  'autocrypt.offer': '{sender} sent their public key along with this message.',
+  'autocrypt.offerHint':
+    'Saved to the contact, it lets you send {sender} encrypted mail. Check the fingerprint with them if you can.',
+  'autocrypt.add': 'Add key to contact',
+  'autocrypt.adding': 'Adding…',
+  'autocrypt.added': 'Key saved to {sender}’s contact',
+  'autocrypt.addFailed': 'Could not save the key',
+  'autocrypt.differs':
+    'This message carries a different key for {sender} than the one in your contacts.',
+  'autocrypt.differsHint':
+    'Your contacts stay as they are. If {sender} has not told you about a new key, the message may not be from them.',
 
   'push.section': 'Push notifications (app closed)',
   'push.hint':
@@ -1800,6 +1811,17 @@ const de: Partial<Record<MsgKey, string>> = {
   'pgp.unavailable':
     'Was zum Prüfen von Verschlüsselung oder Signatur nötig ist, ließ sich nicht laden.',
   'pgp.checking': 'Prüfe…',
+  'autocrypt.offer': '{sender} hat mit dieser Nachricht einen öffentlichen Schlüssel mitgeschickt.',
+  'autocrypt.offerHint':
+    'Beim Kontakt gespeichert, kannst du {sender} damit verschlüsselt schreiben. Vergleiche den Fingerabdruck möglichst mit der Person selbst.',
+  'autocrypt.add': 'Schlüssel zum Kontakt hinzufügen',
+  'autocrypt.adding': 'Wird hinzugefügt…',
+  'autocrypt.added': 'Schlüssel beim Kontakt {sender} gespeichert',
+  'autocrypt.addFailed': 'Schlüssel konnte nicht gespeichert werden',
+  'autocrypt.differs':
+    'Diese Nachricht enthält für {sender} einen anderen Schlüssel als den in deinen Kontakten.',
+  'autocrypt.differsHint':
+    'Deine Kontakte bleiben unverändert. Hat {sender} dir keinen neuen Schlüssel angekündigt, stammt die Nachricht womöglich nicht von der Person.',
 
   'push.section': 'Push-Benachrichtigungen (App geschlossen)',
   'push.hint':

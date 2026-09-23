@@ -168,6 +168,7 @@ export async function buildSecureMessage(
       messageId: `${crypto.randomUUID()}@${domain}`,
       inReplyTo: mail.inReplyTo,
       references: mail.references,
+      autocrypt: mail.autocrypt,
     },
     body,
   )

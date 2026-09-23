@@ -1,3 +1,4 @@
+import { autocryptValue } from '../domain/autocrypt'
 import type { EmailAddress } from '../domain/email'
 
 /**
@@ -198,6 +199,8 @@ export interface MessageHeaders {
   messageId: string
   inReplyTo?: string[] | null
   references?: string[] | null
+  /** The sender's key as Autocrypt `keydata` (issue #101). */
+  autocrypt?: string | null
 }
 
 /**
@@ -216,6 +219,7 @@ export function message(h: MessageHeaders, entity: string): string {
     `Message-ID: <${h.messageId}>`,
     ...(h.inReplyTo?.length ? [`In-Reply-To: ${ids(h.inReplyTo)}`] : []),
     ...(h.references?.length ? [`References: ${ids(h.references)}`] : []),
+    ...(h.autocrypt ? [`Autocrypt:${autocryptValue(h.from.email, h.autocrypt, `${CRLF} `)}`] : []),
     'MIME-Version: 1.0',
   ]
   return `${lines.join(CRLF)}${CRLF}${entity}${CRLF}`

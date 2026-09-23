@@ -110,6 +110,7 @@ export function toEmailBody(e: JmapEmail): EmailBody {
       e['header:List-Unsubscribe:asURLs'] ?? null,
       e['header:List-Unsubscribe-Post:asText'] ?? null,
     ),
+    autocrypt: e['header:Autocrypt:asText:all']?.length ? e['header:Autocrypt:asText:all'] : null,
     attachments: (e.attachments ?? []).map((p) => ({
       partId: p.partId,
       blobId: p.blobId,

@@ -112,7 +112,19 @@ describe('a message round-trips through a real parser', () => {
       { ...headers, cc: [], inReplyTo: null, references: [] },
       bodyEntity({ text: 'x', html: null, attachments: [] }),
     )
-    expect(raw).not.toMatch(/^(Cc|In-Reply-To|References|Bcc):/m)
+    expect(raw).not.toMatch(/^(Cc|In-Reply-To|References|Bcc|Autocrypt):/m)
+  })
+
+  it('writes the Autocrypt header folded, for the From address', async () => {
+    const raw = message(
+      { ...headers, autocrypt: 'Q'.repeat(200) },
+      bodyEntity({ text: 'x', html: null, attachments: [] }),
+    )
+    const mail = await PostalMime.parse(raw)
+    const value = mail.headers.find((h) => h.key === 'autocrypt')!.value
+    expect(value.replace(/\s+/g, '')).toBe(`addr=joerg@example.com;keydata=${'Q'.repeat(200)}`)
+    const folded = raw.slice(raw.indexOf('Autocrypt:'), raw.indexOf('MIME-Version:'))
+    for (const line of folded.split('\r\n')) expect(line.length).toBeLessThanOrEqual(78)
   })
 })
 

@@ -15,7 +15,7 @@ const toneClass: Record<Tone, string> = {
   danger: 'bg-danger-wash text-danger',
 }
 
-function Band({ tone, icon, children }: { tone: Tone; icon: IconName; children: ReactNode }) {
+export function Band({ tone, icon, children }: { tone: Tone; icon: IconName; children: ReactNode }) {
   return (
     <div
       role="status"

@@ -160,7 +160,9 @@ working on that specific feature, not on every session:
   compose). Covers what Stalwart shows of PGP/MIME, why a signature needs the
   raw message, which keys may have signed, why mel writes the MIME itself and
   sends it with `Email/import`, why the message is built before it is queued,
-  and why replies quote the server's body. S/MIME is #100:
+  and why replies quote the server's body. Autocrypt (#101): the key sent in
+  a header of every message, and a sender's key offered for their card —
+  including why the header goes out as `asRaw` cut by spaces. S/MIME is #100:
   `docs/notes/pgp-smime.md`
 - **Settings sync** (issue #20): theme, language and a few other preferences
   mirrored to `.mel/settings.json` via JMAP FileNode — what syncs and what

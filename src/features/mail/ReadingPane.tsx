@@ -48,6 +48,7 @@ import { Tooltip } from '../../ui/Tooltip'
 import { usePopover } from '../../ui/usePopover'
 import { Skeleton } from '../../ui/Skeleton'
 import { useSettingsRoute } from '../settings/navigation'
+import { AutocryptNotice } from './AutocryptNotice'
 import { DeliveryNotice } from './DeliveryNotice'
 import { SecureNotice } from './SecureNotice'
 import { useSecureMessage } from './secureMessage'
@@ -1004,6 +1005,9 @@ export function ReadingPane({
         </div>
         <DeliveryNotice accountId={accountId} emailId={expanded.id} />
         {secureView && <SecureNotice accountId={accountId} view={secureView} />}
+        {body !== 'loading' && body?.autocrypt && (
+          <AutocryptNotice accountId={accountId} email={expanded} body={body} ownEmail={ownEmail} />
+        )}
         {invitePart && (
           // No fallback: the card appears when it has something to say, rather
           // than reserving a band above the message first.

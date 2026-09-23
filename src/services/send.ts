@@ -10,6 +10,7 @@ import { openEnvelope, sealPlain } from '../storage/envelope'
 import { connectionFor } from '../sync/connections'
 import { cancel, enqueue } from '../sync/outbox'
 import type { SecureOptions } from './pgpWrite'
+import { ownAutocryptKeydata } from './autocrypt'
 
 const UNDO_SEND_MS = 10_000
 
@@ -92,6 +93,7 @@ export async function sendMail(
     attachments: fields.attachments,
     inReplyTo: fields.inReplyTo ?? null,
     references: fields.references ?? null,
+    autocrypt: await ownAutocryptKeydata(accountId, identity.email).catch(() => null),
   }
   if (fields.secure?.encrypt || fields.secure?.sign) {
     return sendSecure(accountId, mail, fields.secure, { drafts, sent }, fields.draftId ?? undefined)

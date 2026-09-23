@@ -1,3 +1,4 @@
+import { autocryptValue } from '../../domain/autocrypt'
 import { Keyword, type EmailHeader } from '../../domain/email'
 import type { Identity } from '../../domain/identity'
 import type { Mailbox } from '../../domain/mailbox'
@@ -463,6 +464,15 @@ export function createJmapMail(
         subject: mail.subject,
         inReplyTo: mail.inReplyTo ?? undefined,
         references: mail.references ?? undefined,
+        /*
+         * asRaw, with the key cut by spaces rather than line breaks: Stalwart
+         * folds a long raw value at its spaces, but turns line breaks of our
+         * own into empty continuation lines, and asText comes out as RFC 2047
+         * encoded words no Autocrypt reader decodes (checked against 0.16).
+         */
+        ...(mail.autocrypt
+          ? { 'header:Autocrypt:asRaw': autocryptValue(mail.from.email, mail.autocrypt, ' ') }
+          : {}),
         ...outgoingBody(mail),
       }
       const b = new Batch(transport, USING_SUBMIT)
