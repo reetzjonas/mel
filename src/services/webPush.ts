@@ -122,27 +122,40 @@ export async function enableWebPush(accountId: string): Promise<void> {
   if (err) throw new Error(err.description ?? err.type)
 }
 
+/** How far ahead a refresh asks the subscription to live; servers cap it. */
+const EXPIRY_ASK_MS = 30 * 24 * 60 * 60 * 1000
+
 /**
- * Narrows this device's subscription to `PUSH_TYPES` where it was made before
- * it asked for them (`types: null`, everything). Run on start; a subscription
- * that already asks for the right types costs one `get` and nothing more.
+ * Keeps this device's subscription alive and asking for `PUSH_TYPES`. Run on
+ * start, while unlocked.
+ *
+ * A subscription expires (RFC 8620 §7.2): Stalwart gives it seven days and
+ * caps any longer `expires` asked for, so without a refresh push fell silent a
+ * week after it was switched on. Asking for more than the cap on every start
+ * leaves the length to the server — "seven days from the last time mel was
+ * open" on Stalwart. One that has already expired is gone from the server
+ * while the browser still holds its end, so it is registered again.
+ *
+ * Also narrows a subscription made before it named its types (`types: null`,
+ * which Stalwart reports as the full list).
  */
-export async function narrowPushSubscription(accountId: string): Promise<void> {
+export async function refreshPushSubscription(accountId: string): Promise<void> {
   if (!(await isSubscribed())) return
   const { transport } = await transportFor(accountId)
   const b = new Batch(transport, [Cap.core])
-  const get = b.call<GetResponse<{ id: string; deviceClientId: string; types?: string[] | null }>>(
-    'PushSubscription/get',
-    { ids: null },
-  )
+  const get = b.call<GetResponse<{ id: string; deviceClientId: string }>>('PushSubscription/get', {
+    ids: null,
+  })
   await b.send()
-  const stale = get.result.list.filter(
-    (s) => s.deviceClientId === deviceClientId() && (s.types ?? []).join() !== PUSH_TYPES.join(),
-  )
-  if (!stale.length) return
+  const mine = get.result.list.filter((s) => s.deviceClientId === deviceClientId())
+  if (!mine.length) {
+    await enableWebPush(accountId)
+    return
+  }
+  const expires = new Date(Date.now() + EXPIRY_ASK_MS).toISOString().replace(/\.\d{3}Z$/, 'Z')
   const b2 = new Batch(transport, [Cap.core])
   b2.call('PushSubscription/set', {
-    update: Object.fromEntries(stale.map((s) => [s.id, { types: PUSH_TYPES }])),
+    update: Object.fromEntries(mine.map((s) => [s.id, { types: PUSH_TYPES, expires }])),
   })
   await b2.send()
 }

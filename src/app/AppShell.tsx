@@ -17,7 +17,7 @@ import { Logo } from '../ui/Logo'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut } from '../services/accounts'
 import { startEventReminders } from '../services/eventReminders'
-import { narrowPushSubscription } from '../services/webPush'
+import { refreshPushSubscription } from '../services/webPush'
 import { startScheduler } from '../sync/scheduler'
 import { Snackbar } from '../ui/Snackbar'
 import { secondaryIconButtonClass } from '../ui/styles'
@@ -186,10 +186,10 @@ export function AppShell() {
     return startEventReminders(accountId)
   }, [accountId, locked])
 
-  // A push subscription from before it named its types still wakes this
-  // device for every change on any other one (see `PUSH_TYPES`).
+  // A push subscription expires unless it is renewed (a week on Stalwart),
+  // and one from before it named its types wakes this device for every change.
   useEffect(() => {
-    if (accountId && !locked) void narrowPushSubscription(accountId).catch(() => {})
+    if (accountId && !locked) void refreshPushSubscription(accountId).catch(() => {})
   }, [accountId, locked])
 
   if (lockedIds === undefined) return null

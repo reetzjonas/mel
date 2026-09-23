@@ -59,7 +59,7 @@ const {
   disableWebPush,
   enableWebPush,
   isSubscribed,
-  narrowPushSubscription,
+  refreshPushSubscription,
   pushDetailsEnabled,
   setPushDetails,
   webPushSupported,
@@ -278,43 +278,60 @@ describe('what a subscription wakes the device for', () => {
     expect(create['p0']!['types']).toEqual(['EmailDelivery'])
   })
 
-  it('narrows a subscription made before it asked for any', async () => {
+  it('renews the subscription of this device and narrows its types', async () => {
+    /*
+     * Stalwart gives a subscription seven days and caps a longer ask, so
+     * without this push fell silent a week after it was switched on. The
+     * types: one made before it named any reports every type there is.
+     */
+    vi.useFakeTimers({ now: new Date('2026-09-23T10:00:00.500Z'), toFake: ['Date'] })
     localStorage.setItem('mel:pushDeviceId', 'this-device')
     answers = {
       'PushSubscription/get': {
         list: [
-          { id: 'ps-1', deviceClientId: 'this-device', types: null },
+          { id: 'ps-1', deviceClientId: 'this-device', types: ['Email', 'EmailDelivery'] },
           { id: 'ps-phone', deviceClientId: 'another-device', types: null },
         ],
       },
     }
 
-    await narrowPushSubscription('acc')
+    try {
+      await refreshPushSubscription('acc')
+    } finally {
+      vi.useRealTimers()
+    }
 
-    // Another device's subscription is that device's to change.
+    // Another device's subscription is that device's to keep alive.
     expect(sent[1]).toEqual([
       'PushSubscription/set',
-      { update: { 'ps-1': { types: ['EmailDelivery'] } } },
+      {
+        update: {
+          'ps-1': { types: ['EmailDelivery'], expires: '2026-10-23T10:00:00Z' },
+        },
+      },
     ])
   })
 
-  it('leaves one that already asks for the right types alone', async () => {
+  it('registers again when the server has already let it expire', async () => {
+    // The browser still holds its end; only the server's half is gone.
     localStorage.setItem('mel:pushDeviceId', 'this-device')
     answers = {
-      'PushSubscription/get': {
-        list: [{ id: 'ps-1', deviceClientId: 'this-device', types: ['EmailDelivery'] }],
-      },
+      'PushSubscription/get': { list: [{ id: 'ps-phone', deviceClientId: 'another-device' }] },
+      'PushSubscription/set': [{ created: { p0: { id: 'ps-2' } } }, {}],
     }
+    onCall = (name) => name === 'PushSubscription/set' && pushVerification('ps-2', 'code-2')
 
-    await narrowPushSubscription('acc')
+    await refreshPushSubscription('acc')
 
-    expect(sent.map(([name]) => name)).toEqual(['PushSubscription/get'])
+    const create = sent[1]![1]['create'] as Record<string, Record<string, unknown>>
+    expect(create['p0']).toMatchObject({ deviceClientId: 'this-device', types: ['EmailDelivery'] })
+    expect(sent[2]![1]['update']).toEqual({ 'ps-2': { verificationCode: 'code-2' } })
   })
 
   it('asks the server nothing where this browser has no subscription', async () => {
     subscription = null
 
-    await narrowPushSubscription('acc')
+    await refreshPushSubscription('acc')
 
     expect(sent).toEqual([])
   })

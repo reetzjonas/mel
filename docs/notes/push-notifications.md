@@ -19,8 +19,24 @@ Asking for the type on the subscription, rather than only filtering in the
 worker, matters: a push the worker lets pass without a notification is not
 free under `userVisibleOnly`, the browser shows its own "updated in the
 background" notice for it. Subscriptions from before this carry
-`types: null` (everything); `narrowPushSubscription()` updates this device's
-one on start.
+`types: null` (everything, which Stalwart then reports as the full list);
+`refreshPushSubscription()` narrows this device's one on start.
+
+## Subscriptions expire
+
+RFC 8620 §7.2 lets the server give a subscription an `expires`, and Stalwart
+gives seven days and caps any longer value asked for (a shorter one is taken).
+Nothing renewed it, so push fell silent a week after it was switched on.
+`refreshPushSubscription()` asks for 30 days on every start while unlocked,
+leaving the real length to the server — on Stalwart, a week from the last time
+mel was open. A subscription that has already expired is gone from the server
+while the browser still holds its end; the refresh then registers again,
+verification and all.
+
+What this cannot cover: a device on which mel is not opened for longer than
+the server's limit. Renewing from the service worker on each push would, but
+only for unencrypted accounts (it needs the credentials — see below), and a
+subscription that has stopped receiving pushes is never woken to renew.
 
 ## Why it costs anything at all
 
