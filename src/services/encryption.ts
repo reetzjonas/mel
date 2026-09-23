@@ -24,6 +24,7 @@ const ACCOUNT_TABLES = [
   'calendars',
   'events',
   'submissions',
+  'pgpKeys',
 ] as const
 
 /** Load the encrypted-flag set into the middleware. Call once at startup. */

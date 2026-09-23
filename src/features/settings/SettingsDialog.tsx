@@ -11,6 +11,7 @@ import { DialogHeader } from '../../ui/DialogHeader'
 import { overlayPanelClass, scrimClass } from '../../ui/styles'
 import { useMobileViewport, useModal } from '../../ui/useModal'
 import { OutboxQueue } from './OutboxQueue'
+import { PgpKeySetting } from './PgpKeySetting'
 import { ThemeEditor } from './ThemeEditor'
 import { ServerCapabilities } from './ServerCapabilities'
 import { anchorId, settingsTabs, type SettingsAnchor, type SettingsTab } from './tabs'
@@ -294,9 +295,14 @@ export function SettingsDialog({
             )}
 
             {active === 'security' && account && (
-              <Section title={t('crypto.section')}>
-                <EncryptionSetting accountId={account.id} />
-              </Section>
+              <>
+                <Section title={t('crypto.section')}>
+                  <EncryptionSetting accountId={account.id} />
+                </Section>
+                <Section title={t('pgp.section')} anchor="pgp">
+                  <PgpKeySetting accountId={account.id} />
+                </Section>
+              </>
             )}
 
             {active === 'account' && account && (

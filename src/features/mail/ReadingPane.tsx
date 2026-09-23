@@ -1,11 +1,20 @@
 import { Link, useNavigate } from '@tanstack/react-router'
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { useUi } from '../../app/store'
 import type { EmailBody, EmailHeader } from '../../domain/email'
 import { formatFullDate, formatListDate } from '../../lib/dates'
 import { cleanPreview } from '../../lib/preview'
 import { hasRemoteContent, mailFrameDoc, textFrameDoc } from '../../lib/htmlSanitize'
-import { inlineParts, partCid, resolveCids } from '../../lib/inlineImages'
+import {
+  inlineParts,
+  isInlineImageType,
+  partCid,
+  referencedCids,
+  resolveCids,
+} from '../../lib/inlineImages'
+import { pgpMachinery } from '../../domain/pgp'
+import { saveBlob } from '../../lib/saveBlob'
+import type { OpenedAttachment } from '../../services/pgpRead'
 import { useImagePolicy } from '../../lib/imagePolicy'
 import { normalizeImageSender, setImageSender } from '../../services/imageSenders'
 import { useImageSenders } from './useImageSenders'
@@ -40,6 +49,8 @@ import { usePopover } from '../../ui/usePopover'
 import { Skeleton } from '../../ui/Skeleton'
 import { useSettingsRoute } from '../settings/navigation'
 import { DeliveryNotice } from './DeliveryNotice'
+import { SecureNotice } from './SecureNotice'
+import { useSecureMessage } from './secureMessage'
 
 /*
  * Loaded only once a message actually carries an event: reading the .ics costs
@@ -233,6 +244,29 @@ async function downloadAttachment(accountId: string, blobId: string, type: strin
   a.href = url
   a.download = name
   a.click()
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
+}
+
+function base64(bytes: Uint8Array): string {
+  let binary = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  }
+  return btoa(binary)
+}
+
+/*
+ * A file that came out of an encrypted message. It exists only in this page's
+ * memory, so it is handed to the browser directly rather than fetched.
+ */
+function openOpened(a: OpenedAttachment, download: boolean) {
+  const blob = new Blob([a.data as BlobPart], { type: a.type })
+  if (download || !PREVIEWABLE.test(a.type)) {
+    saveBlob(blob, a.name)
+    return
+  }
+  const url = URL.createObjectURL(blob)
+  window.open(url, '_blank', 'noopener')
   setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
 
@@ -463,6 +497,37 @@ export function ReadingPane({
   const [fetched, setFetched] = useState<{ id: string; body: EmailBody | null } | null>(null)
   const body: EmailBody | null | 'loading' =
     fetched && fetched.id === expanded.id ? fetched.body : 'loading'
+  /*
+   * OpenPGP (issue #63). `shown` is what the frame draws: the server's reading
+   * of the body, or what came out of the encryption. `body` stays the server's
+   * — replying and forwarding quote from it, so a decrypted message is never
+   * quoted in the clear into a reply that goes out unencrypted.
+   */
+  const secure = useSecureMessage(accountId, expanded, body, ownEmail)
+  const secureView = secure.view
+  const encryptedMail = secure.kind === 'mimeEncrypted' || secure.kind === 'inlineEncrypted'
+  const opened =
+    secureView !== 'pending' && secureView?.state === 'open' ? secureView.content : null
+  const shown: EmailBody | null | 'loading' =
+    body === 'loading' || body === null
+      ? body
+      : opened
+        ? { ...body, html: opened.html, text: opened.text, attachments: [] }
+        : encryptedMail && secureView === 'pending'
+          ? 'loading'
+          : body
+  // Pictures inside an encrypted message are part of it, already in memory.
+  const openedUrls = useMemo(
+    () =>
+      opened
+        ? Object.fromEntries(
+            opened.attachments
+              .filter((a) => a.cid && isInlineImageType(a.type))
+              .map((a) => [a.cid!, `data:${a.type};base64,${base64(a.data)}`]),
+          )
+        : null,
+    [opened],
+  )
   // The one-time release stays separate from persistent sender permission.
   const [release, setRelease] = useState({ accountId, id: expanded.id, allowed: false })
   const sameMessage = release.accountId === accountId && release.id === expanded.id
@@ -486,6 +551,9 @@ export function ReadingPane({
     released ||
     (imagesKnown &&
       !inJunk &&
+      // A remote picture in an encrypted message tells its sender the moment
+      // it was decrypted and read; like Junk, only a per-message release.
+      !encryptedMail &&
       (policy === 'always' || Boolean(imageSender && allowedSenders.includes(imageSender))))
   const [savingSender, setSavingSender] = useState(false)
   const navigate = useNavigate()
@@ -565,7 +633,7 @@ export function ReadingPane({
   // is the only thing to do with it.
   const isDraft = Boolean(expanded.keywords['$draft'])
   const flagged = Boolean(expanded.keywords['$flagged'])
-  const isHtmlMail = body !== 'loading' && body !== null && Boolean(body.html)
+  const isHtmlMail = shown !== 'loading' && shown !== null && Boolean(shown.html)
   /*
    * An HTML body whose image permission has not been read yet keeps the
    * skeleton up. Rendering it blocked and replacing the document once the
@@ -573,26 +641,47 @@ export function ReadingPane({
    * message — a race whose loser is the document the user ends up looking at.
    * Plain text never asks the network for anything, so it does not wait.
    */
-  const inlineUrls = useInlineImageUrls(accountId, body)
+  const fetchedUrls = useInlineImageUrls(accountId, shown)
+  const inlineUrls = openedUrls ?? fetchedUrls
   /*
    * Inline pictures (`cid:`) are fetched before the frame is drawn, for the
    * same reason: drawing it once without them and again with them is a
    * second navigation of the frame for the same message.
    */
   const framePending =
-    body !== 'loading' && Boolean(body?.html) && (!imagesKnown || inlineUrls === null)
+    shown !== 'loading' && Boolean(shown?.html) && (!imagesKnown || inlineUrls === null)
   const doc =
-    body !== 'loading' && body && !framePending
-      ? body.html
-        ? mailFrameDoc(resolveCids(body.html, inlineUrls ?? {}), allowRemote)
-        : textFrameDoc(body.text ?? '', frameTheme)
+    shown !== 'loading' && shown && !framePending
+      ? shown.html
+        ? mailFrameDoc(resolveCids(shown.html, inlineUrls ?? {}), allowRemote)
+        : textFrameDoc(shown.text ?? '', frameTheme)
       : null
   // A picture drawn in the body is not also offered as a file below it.
-  const shownInline = body !== 'loading' && body ? inlineParts(body) : null
+  const shownInline = shown !== 'loading' && shown ? inlineParts(shown) : null
+  /*
+   * The PGP parts themselves (version, ciphertext, signature) are left out
+   * while the band speaks for them. Only where mel cannot open the message at
+   * all — it is for someone else's key, or could not be fetched — do they
+   * stay, so the file can still be taken to a program that can.
+   */
+  const machinery =
+    secure.kind &&
+    body !== 'loading' &&
+    body &&
+    !(
+      secureView !== 'pending' &&
+      (secureView?.state === 'undecryptable' || secureView?.state === 'unavailable')
+    )
+      ? pgpMachinery(body, secure.kind)
+      : null
   const listedAttachments =
-    body !== 'loading' && body
-      ? body.attachments.filter((a) => !shownInline?.has(partCid(a) ?? ''))
+    shown !== 'loading' && shown
+      ? shown.attachments.filter((a) => !shownInline?.has(partCid(a) ?? '') && !machinery?.has(a))
       : []
+  const drawnCids = opened?.html ? referencedCids(opened.html) : null
+  const openedFiles = opened
+    ? opened.attachments.filter((a) => !(a.cid && openedUrls?.[a.cid] && drawnCids?.has(a.cid)))
+    : []
   const sender = expanded.from[0]
   const senderContact = sender?.email ? contacts?.get(sender.email.toLowerCase()) : undefined
   // Senders, oldest first, each named once: the same shape the list row uses.
@@ -602,8 +691,8 @@ export function ReadingPane({
     ).values(),
   ].join(', ')
   const blocked =
-    !allowRemote && !framePending && body !== 'loading' && body?.html
-      ? hasRemoteContent(body.html)
+    !allowRemote && !framePending && shown !== 'loading' && shown?.html
+      ? hasRemoteContent(shown.html)
       : false
   /*
    * An event travelling with the message. Senders label it inconsistently
@@ -908,6 +997,7 @@ export function ReadingPane({
           </div>
         </div>
         <DeliveryNotice accountId={accountId} emailId={expanded.id} />
+        {secureView && <SecureNotice accountId={accountId} view={secureView} />}
         {invitePart && (
           // No fallback: the card appears when it has something to say, rather
           // than reserving a band above the message first.
@@ -919,7 +1009,7 @@ export function ReadingPane({
             folded rows, and without one they would squeeze the body it belongs
             to down to nothing instead of letting the column scroll. */}
         <div className="min-h-96 flex-1 border-t border-line">
-          {(body === 'loading' || framePending) && (
+          {(shown === 'loading' || framePending) && (
             <div className="animate-fade space-y-3 p-5">
               <Skeleton className="h-3 w-4/5" />
               <Skeleton className="h-3 w-full" />
@@ -1037,6 +1127,40 @@ export function ReadingPane({
                 </span>
               ) : null,
             )}
+          </footer>
+        )}
+        {openedFiles.length > 0 && (
+          <footer className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2.5">
+            {openedFiles.map((a, i) => (
+              <span
+                key={i}
+                className="flex items-center overflow-hidden rounded-full bg-surface-2 text-xs transition-shadow hover:shadow-raised"
+              >
+                <Tooltip label={t('mail.openAttachment')}>
+                  <button
+                    type="button"
+                    onClick={() => openOpened(a, false)}
+                    className="flex items-center gap-1.5 py-1.5 pr-1.5 pl-3 transition-colors hover:text-accent"
+                  >
+                    <Icon name="lock" size={11} />
+                    {a.name}
+                    <span className="text-ink-muted">
+                      ({Math.max(1, Math.round(a.data.length / 1024))} KB)
+                    </span>
+                  </button>
+                </Tooltip>
+                <Tooltip label={t('mail.downloadAttachment')}>
+                  <button
+                    type="button"
+                    aria-label={t('mail.downloadAttachment')}
+                    onClick={() => openOpened(a, true)}
+                    className="border-l border-line px-2 py-1 text-ink-muted hover:text-accent"
+                  >
+                    <Icon name="download" size={12} />
+                  </button>
+                </Tooltip>
+              </span>
+            ))}
           </footer>
         )}
         {/* oxlint-disable-next-line refs */}

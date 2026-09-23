@@ -132,6 +132,7 @@ async function seed() {
     await db.events.put({ accountId, id: 'ev', calendarIds: ['cal'], payload: stub() })
     await db.eventNotifications.put({ accountId, id: 'n', payload: stub() })
     await db.submissions.put({ accountId, id: 's', emailId: 'e', payload: stub() })
+    await db.pgpKeys.put({ accountId, fingerprint: 'f', payload: stub() })
     await db.files.put({
       accountId,
       id: 'f',

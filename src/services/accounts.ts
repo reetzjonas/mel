@@ -6,6 +6,7 @@ import { fetchSession, sessionUrlFor } from '../providers/jmap/client/session'
 import { JmapError } from '../providers/jmap/client/transport'
 import { providerFor } from '../providers/registry'
 import { db } from '../storage/db'
+import { lockOwnKeys } from './pgpKeys'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { connectionFor, dropConnection, storedAccount } from '../sync/connections'
 import { syncAccount, syncSettled } from '../sync/engine'
@@ -178,6 +179,7 @@ export async function removeAccount(accountId: string): Promise<void> {
     db.events,
     db.eventNotifications,
     db.submissions,
+    db.pgpKeys,
     db.files,
     db.notes,
   ]
@@ -208,6 +210,7 @@ export async function signOut(accountId: string): Promise<void> {
   dropConnection(accountId)
   await syncSettled(accountId)
   await removeAccount(accountId)
+  lockOwnKeys(accountId)
   // The icon badge outlives the tab, so an unread count left behind would
   // keep pointing at mail this device no longer has.
   clearAppBadge()

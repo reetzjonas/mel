@@ -2,7 +2,15 @@ import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useUi } from '../../app/store'
 import { displayName, type LabeledValue } from '../../domain/contact'
-import { keyBytes, keyFileName, keyKind, keySize, type ContactKey } from '../../domain/contactKey'
+import {
+  keyBytes,
+  keyFileName,
+  keyKind,
+  keySize,
+  keyText,
+  type ContactKey,
+} from '../../domain/contactKey'
+import { ArmoredKeyFacts } from '../../features/pgp/KeyFacts'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
 import { useContact } from '../../features/contacts/hooks'
 import { birthdayLabel } from '../../features/contacts/birthday'
@@ -35,11 +43,10 @@ function keyLabel(key: ContactKey): string {
 }
 
 /**
- * The public keys on a card.
- *
- * Nothing here reads the key — that arrives with the mail side of #63. What it
- * can do is say which kind it is and hand it back out, so a key that reached
- * mel from another client is not trapped in it.
+ * The public keys on a card: which kind each is, a way to hand it back out
+ * (a key that reached mel from another client is not trapped in it), and for
+ * a PGP key the fingerprint — the one thing that lets someone check, with the
+ * owner, that it is the right key.
  */
 function KeyList({ contact }: { contact: { cryptoKeys: ContactKey[]; name: string } }) {
   if (contact.cryptoKeys.length === 0) return null
@@ -49,43 +56,51 @@ function KeyList({ contact }: { contact: { cryptoKeys: ContactKey[]; name: strin
       <ul className="mt-1 space-y-1">
         {contact.cryptoKeys.map((key, i) => {
           const bytes = keyBytes(key.uri)
+          const armored = keyKind(key) === 'pgp' ? keyText(key) : null
           return (
-            <li key={i} className="flex items-center gap-2 text-sm">
-              <Icon name="lock" size={13} className="shrink-0 text-ink-muted" />
-              <span className="min-w-0 flex-1 truncate">
-                {keyLabel(key)}
-                <span className="ml-2 text-xs text-ink-muted">
-                  {bytes ? formatBytes(keySize(key)) : key.uri}
+            <li key={i} className="text-sm">
+              <div className="flex items-center gap-2">
+                <Icon name="lock" size={13} className="shrink-0 text-ink-muted" />
+                <span className="min-w-0 flex-1 truncate">
+                  {keyLabel(key)}
+                  <span className="ml-2 text-xs text-ink-muted">
+                    {bytes ? formatBytes(keySize(key)) : key.uri}
+                  </span>
                 </span>
-              </span>
-              {/* A key the card only points at is a link, not a download: mel
+                {/* A key the card only points at is a link, not a download: mel
                   would have to fetch it from a third party to save it, and
                   opening a message must not reach out to one. */}
-              {bytes ? (
-                <button
-                  type="button"
-                  className={`${actionClass} shrink-0`}
-                  aria-label={`${t('contacts.key.download')}: ${keyLabel(key)}`}
-                  onClick={() =>
-                    saveBlob(
-                      new Blob([bytes as BlobPart], {
-                        type: key.mediaType || 'application/octet-stream',
-                      }),
-                      keyFileName(key, contact.name),
-                    )
-                  }
-                >
-                  {t('contacts.key.download')}
-                </button>
-              ) : (
-                <a
-                  href={key.uri}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={`${actionClass} shrink-0`}
-                >
-                  {t('contacts.key.open')}
-                </a>
+                {bytes ? (
+                  <button
+                    type="button"
+                    className={`${actionClass} shrink-0`}
+                    aria-label={`${t('contacts.key.download')}: ${keyLabel(key)}`}
+                    onClick={() =>
+                      saveBlob(
+                        new Blob([bytes as BlobPart], {
+                          type: key.mediaType || 'application/octet-stream',
+                        }),
+                        keyFileName(key, contact.name),
+                      )
+                    }
+                  >
+                    {t('contacts.key.download')}
+                  </button>
+                ) : (
+                  <a
+                    href={key.uri}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`${actionClass} shrink-0`}
+                  >
+                    {t('contacts.key.open')}
+                  </a>
+                )}
+              </div>
+              {armored && (
+                <div className="mt-1 ml-5">
+                  <ArmoredKeyFacts armored={armored} />
+                </div>
               )}
             </li>
           )

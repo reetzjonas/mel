@@ -29,6 +29,7 @@ const ENCRYPTED_TABLES = new Set([
   'calendars',
   'events',
   'submissions',
+  'pgpKeys',
 ])
 
 // Which accounts have encryption enabled — kept in memory so the middleware

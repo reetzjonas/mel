@@ -59,6 +59,7 @@ export default defineConfig({
         '**/capabilities.spec.ts',
         '**/initial-sync.spec.ts',
         '**/unsubscribe.spec.ts',
+        '**/pgp.spec.ts',
         '**/mail-actions.spec.ts',
         '**/contacts.spec.ts',
         '**/calendar.spec.ts',

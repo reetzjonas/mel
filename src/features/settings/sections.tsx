@@ -26,6 +26,7 @@ import {
   webPushSupported,
 } from '../../services/webPush'
 import { requestNotificationPermission } from '../../services/notifications'
+import { lockOwnKeys } from '../../services/pgpKeys'
 import { hasStoredWidths, resetPanelWidths } from '../../lib/panelWidths'
 import { connectionFor } from '../../sync/connections'
 import { scheduleSettingsSync } from '../../services/settings'
@@ -338,6 +339,9 @@ export function EncryptionSetting({ accountId }: { accountId: string }) {
               className={secondaryButtonClass}
               onClick={() => {
                 lock(accountId)
+                // Locking mel is the "walking away" button: an OpenPGP key
+                // left open behind it would read mail the lock just hid.
+                lockOwnKeys(accountId)
                 bumpUnlock()
               }}
             >

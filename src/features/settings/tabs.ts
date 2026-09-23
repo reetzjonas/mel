@@ -23,7 +23,7 @@ export function isSettingsTab(value: unknown): value is SettingsTab {
  * long tab. A closed list for the same reason the tabs are one: the root
  * route validates `?at=` without importing any component.
  */
-export const settingsAnchors = ['sieve', 'capabilities', 'storage'] as const
+export const settingsAnchors = ['sieve', 'capabilities', 'storage', 'pgp'] as const
 
 export type SettingsAnchor = (typeof settingsAnchors)[number]
 

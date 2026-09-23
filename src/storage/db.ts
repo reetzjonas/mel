@@ -6,6 +6,7 @@ import type { EmailBody, EmailHeader, Thread } from '../domain/email'
 import type { FileNode } from '../domain/file'
 import type { Mailbox } from '../domain/mailbox'
 import type { Note } from '../domain/note'
+import type { OwnKey } from '../domain/pgp'
 import type { Submission } from '../domain/submission'
 import { cryptoMiddleware } from './crypto/middleware'
 import { mailboxDateKey } from './emailRow'
@@ -153,6 +154,17 @@ export interface SubmissionRow {
   payload: Envelope<Submission>
 }
 
+/**
+ * The user's own OpenPGP secret key, as exported: still sealed by its own
+ * passphrase (issue #63). Kept on this device only — there is nothing to sync
+ * it to — and never stored without that protection.
+ */
+export interface PgpKeyRow {
+  accountId: string
+  fingerprint: string
+  payload: Envelope<OwnKey>
+}
+
 export interface EventRow {
   accountId: string
   id: string
@@ -229,6 +241,7 @@ export class MelDb extends Dexie {
   notes!: Table<NoteRow, AccountScopedKey>
   imageSenders!: Table<ImageSendersRow, string>
   submissions!: Table<SubmissionRow, AccountScopedKey>
+  pgpKeys!: Table<PgpKeyRow, AccountScopedKey>
 
   constructor() {
     super('mel')
@@ -277,6 +290,7 @@ export class MelDb extends Dexie {
     this.version(8).stores({ imageSenders: '&accountId' })
     this.version(9).stores({ eventNotifications: '&[accountId+id], accountId' })
     this.version(10).stores({ submissions: '&[accountId+id], accountId, [accountId+emailId]' })
+    this.version(11).stores({ pgpKeys: '&[accountId+fingerprint], accountId' })
     this.use(cryptoMiddleware)
   }
 }
