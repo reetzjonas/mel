@@ -24,21 +24,26 @@ function toFailure(e: SetError | undefined): SetFailure {
   }
 }
 
-export function createJmapContacts(transport: Transport, accountId: string): ContactsProvider {
+export function createJmapContacts(
+  transport: Transport,
+  accountId: string,
+  /** The server's maxObjectsInGet, for paging a full fetch. */
+  pageSize?: number,
+): ContactsProvider {
   const batch = () => new Batch(transport, USING)
 
   return {
     syncAddressBooks(sinceState) {
       return syncCollection<JmapAddressBook, AddressBook>(
         batch,
-        { type: 'AddressBook', accountId, map: toAddressBook },
+        { type: 'AddressBook', accountId, map: toAddressBook, pageSize },
         sinceState,
       )
     },
     syncContacts(sinceState) {
       return syncCollection<JmapContactCard, Contact>(
         batch,
-        { type: 'ContactCard', accountId, map: toContact },
+        { type: 'ContactCard', accountId, map: toContact, pageSize },
         sinceState,
       )
     },

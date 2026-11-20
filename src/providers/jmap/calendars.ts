@@ -324,21 +324,26 @@ export function fromEvent(ev: CalendarEvent): Record<string, unknown> {
   }
 }
 
-export function createJmapCalendars(transport: Transport, accountId: string): CalendarProvider {
+export function createJmapCalendars(
+  transport: Transport,
+  accountId: string,
+  /** The server's maxObjectsInGet, for paging a full fetch. */
+  pageSize?: number,
+): CalendarProvider {
   const batch = () => new Batch(transport, USING)
 
   return {
     syncCalendars(sinceState) {
       return syncCollection<JmapCalendar, Calendar>(
         batch,
-        { type: 'Calendar', accountId, map: toCalendar },
+        { type: 'Calendar', accountId, map: toCalendar, pageSize },
         sinceState,
       )
     },
     syncEvents(sinceState) {
       return syncCollection<JmapCalendarEvent, CalendarEvent>(
         batch,
-        { type: 'CalendarEvent', accountId, map: toEvent },
+        { type: 'CalendarEvent', accountId, map: toEvent, pageSize },
         sinceState,
       )
     },

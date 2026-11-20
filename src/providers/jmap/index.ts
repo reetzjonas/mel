@@ -42,8 +42,12 @@ async function buildConnection(
     mail: capabilities.mail
       ? createJmapMail(transport, remoteAccountId, limits, resolved.uploadUrl, resolved.downloadUrl)
       : null,
-    contacts: capabilities.contacts ? createJmapContacts(transport, remoteAccountId) : null,
-    calendars: capabilities.calendars ? createJmapCalendars(transport, remoteAccountId) : null,
+    contacts: capabilities.contacts
+      ? createJmapContacts(transport, remoteAccountId, limits.maxObjectsInGet)
+      : null,
+    calendars: capabilities.calendars
+      ? createJmapCalendars(transport, remoteAccountId, limits.maxObjectsInGet)
+      : null,
     files: capabilities.files
       ? createJmapFiles(transport, remoteAccountId, resolved.uploadUrl, resolved.downloadUrl)
       : null,
