@@ -38,16 +38,41 @@ function fakeUtcToInstant(fake: Date, timeZone: string): Date {
   return new Date(pdt.toZonedDateTime(timeZone).epochMilliseconds)
 }
 
+/**
+ * A JSCalendar duration (RFC 8984 S1.4.6) — which may be in weeks, "P1W3D".
+ *
+ * Weeks come back as days. Temporal refuses `total()` on a duration with
+ * weeks unless given a `relativeTo` ("Missing relativeTo"), and a week is
+ * always seven days here, so adding either to a date gives the same answer.
+ */
 export function parseDuration(iso: string): Temporal.Duration {
+  let d: Temporal.Duration
   try {
-    return Temporal.Duration.from(iso || 'PT0S')
+    d = Temporal.Duration.from(iso || 'PT0S')
   } catch {
     return Temporal.Duration.from('PT0S')
   }
+  return d.weeks ? d.with({ weeks: 0, days: d.days + d.weeks * 7 }) : d
 }
 
 function durationMs(iso: string): number {
   return parseDuration(iso).total({ unit: 'milliseconds' })
+}
+
+/**
+ * Where an occurrence starting at `start` ends, by RFC 8984 S1.4.6: days go
+ * on the local date — the same wall-clock time, however long that day was —
+ * and hours, minutes and seconds are added in absolute time. Temporal's
+ * zoned `add` does exactly that. An all-day event lasts at least its day.
+ */
+function endOf(start: Date, duration: Temporal.Duration, zone: string, allDay: boolean): Date {
+  const zoned = Temporal.Instant.fromEpochMilliseconds(start.getTime()).toZonedDateTimeISO(zone)
+  let end = zoned.add(duration)
+  if (allDay) {
+    const nextDay = zoned.add({ days: 1 })
+    if (Temporal.ZonedDateTime.compare(end, nextDay) < 0) end = nextDay
+  }
+  return new Date(end.epochMilliseconds)
 }
 
 const MAX_OCCURRENCES = 500
@@ -70,15 +95,13 @@ export function expandOccurrences(
     recurrenceId: string | null = null,
     forEvent: CalendarEvent = event,
   ): Occurrence => {
-    const start = forEvent.showWithoutTime
-      ? fakeUtcToInstant(fakeStart, viewerZone)
-      : fakeUtcToInstant(fakeStart, forEvent.timeZone ?? viewerZone)
-    const ms = forEvent === event ? durMs : durationMs(forEvent.duration)
+    const zone = forEvent.showWithoutTime ? viewerZone : (forEvent.timeZone ?? viewerZone)
+    const start = fakeUtcToInstant(fakeStart, zone)
     return {
       eventId: event.id,
       recurrenceId,
       start,
-      end: new Date(start.getTime() + Math.max(ms, forEvent.showWithoutTime ? 86_400_000 : 0)),
+      end: endOf(start, parseDuration(forEvent.duration), zone, forEvent.showWithoutTime),
       allDay: forEvent.showWithoutTime,
     }
   }
@@ -153,7 +176,10 @@ export function expandAll(
  * an hour every time someone travels.
  *
  * The duration is rewritten too, since that is the only place an event's
- * length lives — there is no end field to move.
+ * length lives — there is no end field to move. Unless the event still ends
+ * where its own duration says: a move that keeps the length keeps "P3D" as
+ * it was, rather than turning it into hours that come out an hour wrong once
+ * the event is moved across a DST change.
  */
 export function rescheduleEvent(
   event: CalendarEvent,
@@ -161,11 +187,14 @@ export function rescheduleEvent(
   end: Date,
   viewerZone: string,
 ): CalendarEvent {
-  const zone = event.timeZone ?? viewerZone
+  const zone = event.showWithoutTime ? viewerZone : (event.timeZone ?? viewerZone)
   const local = Temporal.Instant.fromEpochMilliseconds(start.getTime())
     .toZonedDateTimeISO(zone)
     .toPlainDateTime()
     .toString({ smallestUnit: 'second' })
+  if (endOf(start, parseDuration(event.duration), zone, false).getTime() === end.getTime()) {
+    return { ...event, start: local }
+  }
   const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000))
   return {
     ...event,

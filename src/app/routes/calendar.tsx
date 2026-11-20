@@ -12,9 +12,10 @@ import { CALENDAR_SWATCHES, FALLBACK_COLORS } from '../../features/calendar/cale
 import { EventDialog } from '../../features/calendar/EventDialog'
 import { NotificationsDialog } from '../../features/calendar/NotificationsDialog'
 import { ScopeDialog } from '../../features/calendar/ScopeDialog'
+import { MonthGrid } from '../../features/calendar/MonthGrid'
+import { segmentsByDay, shiftDays } from '../../features/calendar/multiDay'
 import { TimeGrid } from '../../features/calendar/TimeGrid'
 import { dayKey } from '../../lib/dates'
-import { instantAt } from '../../features/calendar/dragGeometry'
 import {
   useCalendars,
   useEventNotifications,
@@ -73,7 +74,6 @@ export const Route = createFileRoute('/calendar')({
 const VIEWER_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone
 
 /** Marks an event in flight; a day cell answers "may I take this?" from it. */
-const EVENT_DRAG_TYPE = 'application/x-mel-event'
 type ViewMode = 'month' | 'week' | 'day'
 
 /** How far ahead the sidebar's "Upcoming" list looks. */
@@ -304,10 +304,6 @@ function CalendarApp() {
     toggleHiddenCalendar(calendarId)
     if (account?.id) void scheduleSettingsSync(account.id, ['hiddenCalendars'])
   }
-  /* The occurrence in flight across the month grid, and the cell under it. The
-     payload cannot be read during a dragover, so the source keeps it here. */
-  const dragged = useRef<Occurrence | null>(null)
-  const [dropDay, setDropDay] = useState<string | null>(null)
   const self = useSelfIdentity(account)
 
   const visibleEvents = useMemo(
@@ -338,10 +334,10 @@ function CalendarApp() {
     [birthdays, hidden],
   )
 
-  const byDay = useMemo(() => {
-    const map = new Map<string, Occurrence[]>()
+  /** Every occurrence on any of the days on screen, in start order. */
+  const occurrences = useMemo(() => {
     const all = [...visibleEvents, ...shownBirthdays]
-    if (!all.length || !grid.length) return map
+    if (!all.length || !grid.length) return []
     // Normalize to midnight: `anchor` (and thus week/day grids derived from
     // it) carries the real current time-of-day, which would otherwise shift
     // this window away from a clean day boundary and drop early events.
@@ -349,14 +345,10 @@ function CalendarApp() {
     const last = grid[grid.length - 1]!
     const from = new Date(first.getFullYear(), first.getMonth(), first.getDate())
     const to = new Date(last.getFullYear(), last.getMonth(), last.getDate() + 1)
-    for (const occ of expandAll(all, from, to, VIEWER_ZONE)) {
-      const key = dayKey(occ.start)
-      const list = map.get(key) ?? []
-      list.push(occ)
-      map.set(key, list)
-    }
-    return map
+    return expandAll(all, from, to, VIEWER_ZONE)
   }, [visibleEvents, shownBirthdays, grid])
+  /** The agenda's days: an event on several is listed under each. */
+  const byDay = useMemo(() => segmentsByDay(occurrences, grid), [occurrences, grid])
 
   /*
    * The sidebar's "Upcoming" list — independent of `grid`/`anchor`, so
@@ -538,19 +530,15 @@ function CalendarApp() {
   }
 
   /**
-   * Moving an event to another day in the month grid.
+   * Moving an event some days on in the month grid.
    *
-   * Keeps the time of day and the length, changes only which day it is on —
+   * Keeps the time of day and the length, changes only which days it is on —
    * the month grid has no time axis, so that is the whole of what a drop here
-   * can mean.
+   * can mean. Both ends move by local days, so a move across a DST change
+   * keeps the wall-clock times, and the event keeps its own duration.
    */
-  function dropOnDay(day: Date) {
-    const occ = dragged.current
-    dragged.current = null
-    if (!occ || dayKey(occ.start) === dayKey(day)) return
-    const minutes = occ.start.getHours() * 60 + occ.start.getMinutes()
-    const start = instantAt(day, minutes)
-    onEventDrop(occ, start, new Date(start.getTime() + (occ.end.getTime() - occ.start.getTime())))
+  function moveByDays(occ: Occurrence, days: number) {
+    onEventDrop(occ, shiftDays(occ.start, days), shiftDays(occ.end, days))
   }
 
   function onEventDrop(occ: Occurrence, start: Date, end: Date) {
@@ -893,79 +881,18 @@ function CalendarApp() {
                 </div>
               ))}
             </div>
-            <div className="grid min-h-0 flex-1 grid-cols-7 grid-rows-6">
-              {grid.map((day) => {
-                const key = dayKey(day)
-                const occs = byDay.get(key) ?? []
-                const inMonth = day.getMonth() === anchor.getMonth()
-                return (
-                  <div
-                    key={key}
-                    onClick={() => openNew(day)}
-                    onDragOver={(e) => {
-                      // Only the *types* are readable before the drop, which is
-                      // exactly what "may I take this?" has to be answered from.
-                      if (!e.dataTransfer.types.includes(EVENT_DRAG_TYPE)) return
-                      e.preventDefault()
-                      e.dataTransfer.dropEffect = 'move'
-                      setDropDay(key)
-                    }}
-                    onDragLeave={() => setDropDay((d) => (d === key ? null : d))}
-                    onDrop={(e) => {
-                      e.preventDefault()
-                      setDropDay(null)
-                      dropOnDay(day)
-                    }}
-                    className={`min-h-0 cursor-pointer overflow-hidden border-r border-b border-line p-1 transition-colors hover:bg-surface-2/50 ${inMonth ? '' : 'bg-surface-2/30 text-ink-subtle'} ${dropDay === key ? 'bg-accent-wash ring-1 ring-accent ring-inset' : ''}`}
-                  >
-                    <span
-                      className={`mb-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] ${key === today ? 'bg-accent font-semibold text-accent-ink shadow-raised' : ''}`}
-                    >
-                      {day.getDate()}
-                    </span>
-                    {occs.slice(0, 3).map((o, i) => {
-                      const ev = eventFor(o)
-                      const color = ev ? eventColor(ev) : null
-                      const movable = Boolean(ev) && canMove(ev!)
-                      return (
-                        <button
-                          key={`${o.eventId}-${i}`}
-                          type="button"
-                          draggable={movable}
-                          onDragStart={(e) => {
-                            e.stopPropagation()
-                            dragged.current = o
-                            // The payload is a type more than a value: both ends
-                            // are this component, and a day cell only ever needs
-                            // to recognise the kind of thing in flight.
-                            e.dataTransfer.setData(EVENT_DRAG_TYPE, o.eventId)
-                            e.dataTransfer.effectAllowed = 'move'
-                          }}
-                          onDragEnd={() => {
-                            dragged.current = null
-                            setDropDay(null)
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openEdit(o)
-                          }}
-                          style={color ? { backgroundColor: `${color}26`, color } : undefined}
-                          className={`mb-0.5 block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity select-none hover:opacity-80 ${movable ? 'cursor-grab' : ''} ${!color ? 'bg-accent-wash text-accent' : ''}`}
-                        >
-                          {!o.allDay && (
-                            <span className="tabular-nums">{timeFmt.format(o.start)} </span>
-                          )}
-                          {ev?.title || '—'}
-                        </button>
-                      )
-                    })}
-                    {occs.length > 3 && (
-                      <span className="text-[10px] text-ink-muted">+{occs.length - 3}</span>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+            <MonthGrid
+              days={grid}
+              month={anchor.getMonth()}
+              occurrences={occurrences}
+              eventFor={eventFor}
+              eventColor={eventColor}
+              canMove={canMove}
+              today={today}
+              onDayClick={openNew}
+              onEventClick={openEdit}
+              onMoveDays={moveByDays}
+            />
           </div>
         )}
 
@@ -974,7 +901,7 @@ function CalendarApp() {
           <div className="hidden min-h-0 flex-1 sm:flex">
             <TimeGrid
               days={grid}
-              eventsByDay={byDay}
+              occurrences={occurrences}
               eventFor={eventFor}
               calendarColor={eventColor}
               onSlotClick={openNew}
@@ -1001,7 +928,8 @@ function CalendarApp() {
                   >
                     {agendaFmt.format(new Date(`${key}T12:00:00`))}
                   </div>
-                  {occs.map((o, i) => {
+                  {occs.map((seg, i) => {
+                    const o = seg.occ
                     const ev = eventFor(o)
                     const color = ev ? eventColor(ev) : null
                     return (
@@ -1016,7 +944,13 @@ function CalendarApp() {
                           style={{ backgroundColor: color ?? 'var(--mel-accent)' }}
                         />
                         <span className="w-14 shrink-0 text-xs text-ink-subtle tabular-nums">
-                          {o.allDay ? '—' : timeFmt.format(o.start)}
+                          {/* A day it carries on from: when it ends, if it
+                              ends that day; a dash for a day it fills. */}
+                          {o.allDay || (seg.continuesBefore && seg.continuesAfter)
+                            ? '—'
+                            : seg.continuesBefore
+                              ? `– ${timeFmt.format(o.end)}`
+                              : timeFmt.format(o.start)}
                         </span>
                         <span className="truncate text-sm">{ev?.title}</span>
                       </button>
