@@ -82,3 +82,114 @@ describe('what goes over the wire', () => {
     expect(sent[0]![1]).toMatchObject({ ids: null, properties: ['id'] })
   })
 })
+
+/**
+ * A server holding `count` objects that refuses `ids: null` past `max` of
+ * them, as RFC 8620 S5.1 has it, and caps a query's `limit` at `cap`.
+ * `onQuery` runs before each query is answered, to change things mid-fetch.
+ */
+function bigServer(opts: {
+  count: number
+  max: number
+  cap?: number
+  onQuery?: (n: number) => void
+}) {
+  let ids = Array.from({ length: opts.count }, (_, i) => `id${i}`)
+  let queryState = 'q1'
+  let queries = 0
+  const sent: Array<[string, Record<string, unknown>]> = []
+  const transport = {
+    fetchRaw: vi.fn(),
+    request: (req: JmapRequest) => {
+      const responses: Invocation[] = []
+      const byCall = new Map<string, Record<string, unknown>>()
+      for (const [name, rawArgs, id] of req.methodCalls) {
+        const args = JSON.parse(JSON.stringify(rawArgs)) as Record<string, unknown>
+        sent.push([name, args])
+        if (name.endsWith('/query')) {
+          opts.onQuery?.(queries++)
+          const position = args['position'] as number
+          const limit = Math.min(args['limit'] as number, opts.cap ?? Infinity)
+          const result = { queryState, ids: ids.slice(position, position + limit), position }
+          byCall.set(id, result)
+          responses.push([name, result as never, id])
+        } else {
+          let want = args['ids'] as string[] | null | undefined
+          const ref = args['#ids'] as { resultOf: string } | undefined
+          if (ref) want = byCall.get(ref.resultOf)!['ids'] as string[]
+          if (want == null && ids.length > opts.max) {
+            responses.push(['error', { type: 'requestTooLarge' } as never, id])
+            continue
+          }
+          const list = (want ?? ids).map((x) => ({ id: x }))
+          responses.push([name, { list, state: 's1', notFound: [] } as never, id])
+        }
+      }
+      return Promise.resolve({ methodResponses: responses, sessionState: 's' })
+    },
+  } as unknown as Transport
+  return {
+    batch: () => new Batch(transport, ['urn:core']),
+    sent,
+    removeFirst: () => {
+      ids = ids.slice(1)
+      queryState = `q${Number(queryState.slice(1)) + 1}`
+    },
+  }
+}
+
+describe('a collection larger than the server will return at once', () => {
+  it('pages through /query when ids: null is requestTooLarge', async () => {
+    const { batch, sent } = bigServer({ count: 25, max: 10 })
+
+    const page = await fetchAll(batch, { ...spec, pageSize: 10 })
+
+    expect(page.created.map((c) => (c as { id: string }).id)).toEqual(
+      Array.from({ length: 25 }, (_, i) => `id${i}`),
+    )
+    expect(page.newState).toBe('s1')
+    const queries = sent.filter(([name]) => name === 'ContactCard/query')
+    expect(queries.map(([, a]) => a['position'])).toEqual([0, 10, 20, 25])
+    for (const [, a] of queries) expect(a['limit']).toBe(10)
+  })
+
+  it('advances by what the server returned when it caps the limit', async () => {
+    // Asked for 10, given 4: stepping by 10 would skip six on every page.
+    const { batch } = bigServer({ count: 9, max: 3, cap: 4 })
+
+    const page = await fetchAll(batch, { ...spec, pageSize: 10 })
+
+    expect(page.created).toHaveLength(9)
+  })
+
+  it('starts over when the query state moves between pages', async () => {
+    // One object gone after the first page shifts the rest up by one, so the
+    // first object of the second page would never be read.
+    const server = bigServer({
+      count: 6,
+      max: 2,
+      onQuery: (n) => {
+        if (n === 1) server.removeFirst()
+      },
+    })
+
+    const page = await fetchAll(server.batch, { ...spec, pageSize: 3 })
+
+    expect(page.created.map((c) => (c as { id: string }).id)).toEqual([
+      'id1',
+      'id2',
+      'id3',
+      'id4',
+      'id5',
+    ])
+  })
+
+  it('still fetches in one go when the server allows it', async () => {
+    const { batch, sent } = bigServer({ count: 5, max: 10 })
+
+    const page = await fetchAll(batch, { ...spec, pageSize: 10 })
+
+    expect(page.created).toHaveLength(5)
+    expect(sent.map(([name]) => name)).toEqual(['ContactCard/get'])
+  })
+})
