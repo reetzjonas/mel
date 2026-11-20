@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import { Link, createFileRoute, useNavigate } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useUi } from '../../app/store'
@@ -182,7 +183,7 @@ function FieldList({
 function ContactDetail() {
   const { contactId } = Route.useParams()
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const contact = useContact(account?.id, contactId)
   const navigate = useNavigate()
   const { openCompose, showSnackbar } = useUi()

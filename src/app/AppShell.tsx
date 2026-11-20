@@ -1,20 +1,23 @@
+import { setActiveAccount, useActiveAccount } from '../lib/activeAccount'
 import { Link, Outlet, useNavigate, useRouter, useRouterState } from '@tanstack/react-router'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState } from 'react'
+import { AddAccountForm } from '../features/auth/AddAccountForm'
 import { ReauthPrompt } from '../features/auth/ReauthPrompt'
 import { Compose } from '../features/mail/Compose'
 import { HelpOverlay } from '../features/mail/HelpOverlay'
 import { useAppBadge } from '../features/mail/appBadge'
-import { useAccounts } from '../features/mail/hooks'
+import { useAccounts, useSessions } from '../features/mail/hooks'
 import { SettingsDialog } from '../features/settings/SettingsDialog'
 import { StorageWarning } from '../features/settings/StorageQuota'
 import { useSettingsRoute } from '../features/settings/navigation'
 import { t } from '../lib/i18n'
-import { dekFor } from '../storage/crypto/keyring'
-import { db } from '../storage/db'
+import { lockedSessionIds } from '../services/encryption'
+import { migrateLegacySessions } from '../storage/sessions'
 import { Icon, type IconName } from '../ui/Icon'
 import { ConfirmDialog } from '../ui/ConfirmDialog'
 import { Logo } from '../ui/Logo'
+import { OverflowMenu } from '../ui/OverflowMenu'
 import { Tooltip } from '../ui/Tooltip'
 import { signOut, upgradeToTokens } from '../services/accounts'
 import { showDeliveryAlert } from '../services/deliveryAlerts'
@@ -95,16 +98,16 @@ export function AppShell() {
   const navigate = useNavigate()
   const router = useRouter()
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
+  const sessions = useSessions()
+  const session = sessions?.find((s) => s.id === account?.sessionId)
   const { compose, closeCompose } = useUi()
   const [confirmingSignOut, setConfirmingSignOut] = useState(false)
+  const [addingAccount, setAddingAccount] = useState(false)
   const settings = useSettingsRoute()
   useAppBadge(account?.id)
   const unlockVersion = useUi((s) => s.unlockVersion)
-  const lockedIds = useLiveQuery(async () => {
-    const rows = await db.accounts.toArray()
-    return rows.filter((r) => r.encrypted && !dekFor(r.id)).map((r) => r.id)
-  }, [unlockVersion])
+  const lockedIds = useLiveQuery(() => lockedSessionIds(), [unlockVersion])
 
   /*
    * Live updates belong to the app, not to the mail screen.
@@ -117,10 +120,18 @@ export function AppShell() {
    *
    * Not while an account is still locked: a sync would write rows the crypto
    * middleware has no key to seal, and every one of those writes throws.
-   * Depends on the id rather than the account object, so switching accounts
-   * restarts it but a changed label or capability list does not.
+   * Every account, not just the one on screen: switching to another shows
+   * mail that is already there, and its reminders and delivery alerts come
+   * in all along. Keyed on the ids rather than the account objects, so a
+   * changed label or capability list restarts nothing.
    */
-  const accountId = account?.id
+  const accountIdList = (accounts ?? []).map((a) => a.id).join(' ')
+  // One account of each session, for what is the session's: its token, its push.
+  const sessionLeads = [
+    ...new Map((accounts ?? []).map((a) => [a.sessionId, a.id] as const)).entries(),
+  ]
+    .map(([sessionId, accountId]) => `${sessionId}=${accountId}`)
+    .join(' ')
   const locked = Boolean(lockedIds?.length)
   const pathname = useRouterState({ select: (state) => state.location.pathname })
   const composeHistoryEntry = useRef(false)
@@ -179,44 +190,74 @@ export function AppShell() {
     else closeCompose()
   }
   useEffect(() => {
-    if (accountId && !locked) startScheduler(accountId)
-  }, [accountId, locked])
+    if (locked) return
+    for (const id of accountIdList.split(' ').filter(Boolean)) startScheduler(id)
+  }, [accountIdList, locked])
 
   // Reads decrypted events, so like the scheduler it waits for the unlock, and
-  // unlike it stops when the account or the lock changes: it holds no connection.
+  // unlike it stops when the accounts or the lock change: it holds no connection.
   useEffect(() => {
-    if (!accountId || locked) return
-    return startEventReminders(accountId)
-  }, [accountId, locked])
+    if (locked) return
+    const stops = accountIdList.split(' ').filter(Boolean).map(startEventReminders)
+    return () => stops.forEach((stop) => stop())
+  }, [accountIdList, locked])
 
   // A stored password becomes a refresh token where the server has learnt the
   // token login since the account was added (issue #97). Unlocked only: the
-  // password is sealed behind the passphrase until then.
+  // password is sealed behind the passphrase until then. A push subscription
+  // expires unless it is renewed (a week on Stalwart), and one from before it
+  // named its types wakes this device for every change.
   useEffect(() => {
-    if (accountId && !locked) void upgradeToTokens(accountId).catch(() => {})
-  }, [accountId, locked])
-
-  // A push subscription expires unless it is renewed (a week on Stalwart),
-  // and one from before it named its types wakes this device for every change.
-  useEffect(() => {
-    if (accountId && !locked) void refreshPushSubscription(accountId).catch(() => {})
-  }, [accountId, locked])
+    if (locked) return
+    void migrateLegacySessions().catch(() => {})
+    for (const lead of sessionLeads.split(' ').filter(Boolean)) {
+      const [sessionId, accountId] = lead.split('=') as [string, string]
+      void upgradeToTokens(sessionId).catch(() => {})
+      void refreshPushSubscription(accountId).catch(() => {})
+    }
+  }, [sessionLeads, locked])
 
   // A sent message refused by a recipient's server says so where it will be
-  // seen, not only in Sent (issue #70).
+  // seen, not only in Sent (issue #70) — from whichever account sent it.
   useEffect(() => {
-    if (!accountId || locked) return
+    if (locked) return
     return onNewDeliveryFailures((id, submissions) => {
-      if (id !== accountId) return
-      void showDeliveryAlert(id, submissions, (url) => void navigate({ to: url })).catch(() => {})
+      void showDeliveryAlert(id, submissions, (url) => {
+        setActiveAccount(id)
+        void navigate({ to: url })
+      }).catch(() => {})
     })
-  }, [accountId, locked, navigate])
+  }, [locked, navigate])
 
   if (lockedIds === undefined) return null
-  if (lockedIds.length > 0) return <UnlockGate accountIds={lockedIds} />
+  if (lockedIds.length > 0) return <UnlockGate sessionIds={lockedIds} />
 
   const apps = visibleApps(account)
   const activeApp = apps.find((app) => pathname === app.to || pathname.startsWith(`${app.to}/`))
+
+  /*
+   * The account menu: every account, the one on screen ticked, and another to
+   * add. Switching lands on the same app's start, since a folder, message or
+   * contact open now belongs to the account being left.
+   */
+  const accountMenu = account && accounts && (
+    <OverflowMenu
+      label={t('account.menu')}
+      text={account.label}
+      actions={[
+        ...accounts.map((a) => ({
+          label: a.label,
+          pressed: a.id === account.id,
+          onSelect: () => {
+            if (a.id === account.id) return
+            setActiveAccount(a.id)
+            void navigate({ to: activeApp?.to ?? '/mail' })
+          },
+        })),
+        { label: t('login.title'), icon: 'plus' as const, onSelect: () => setAddingAccount(true) },
+      ]}
+    />
+  )
   return (
     <div className="flex h-full flex-col bg-canvas">
       <header className="glass sticky top-0 z-30 hidden h-13 shrink-0 items-center gap-5 px-4 sm:flex">
@@ -235,6 +276,7 @@ export function AppShell() {
           {account && (
             <StorageWarning accountId={account.id} enabled={account.capabilities.quota} />
           )}
+          {accountMenu}
           <ThemeToggle />
           {account && <SignOutButton onClick={() => setConfirmingSignOut(true)} />}
           <Tooltip label={t('settings.title')}>
@@ -257,6 +299,7 @@ export function AppShell() {
           {activeApp ? t(activeApp.key) : 'mel'}
         </span>
         {account && <StorageWarning accountId={account.id} enabled={account.capabilities.quota} />}
+        {accountMenu}
         <button
           type="button"
           aria-label={t('settings.title')}
@@ -268,8 +311,12 @@ export function AppShell() {
       </header>
       {account && confirmingSignOut && (
         <ConfirmDialog
-          title={t('settings.signOut')}
-          message={t('settings.signOut.confirm')}
+          title={`${t('settings.signOut')}: ${session?.label ?? account.label}`}
+          message={
+            (accounts ?? []).filter((a) => a.sessionId === account.sessionId).length > 1
+              ? `${t('settings.signOut.confirm')} ${t('settings.signOut.allAccounts')}`
+              : t('settings.signOut.confirm')
+          }
           cancelLabel={t('folder.cancel')}
           confirmLabel={t('settings.signOut')}
           onClose={() => setConfirmingSignOut(false)}
@@ -279,7 +326,27 @@ export function AppShell() {
           }}
         />
       )}
-      {account && <ReauthPrompt accountId={account.id} label={account.label} />}
+      {/* One per login: its accounts share the credentials, and so the refusal. */}
+      {[...new Map((accounts ?? []).map((a) => [a.sessionId, a] as const)).values()].map((a) => (
+        <ReauthPrompt
+          key={a.sessionId}
+          accountId={a.id}
+          label={sessions?.find((s) => s.id === a.sessionId)?.label ?? a.label}
+          named={(sessions?.length ?? 0) > 1}
+        />
+      ))}
+      {addingAccount && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-canvas">
+          <AddAccountForm
+            onCancel={() => setAddingAccount(false)}
+            onDone={(id) => {
+              setAddingAccount(false)
+              setActiveAccount(id)
+              void navigate({ to: '/mail' })
+            }}
+          />
+        </div>
+      )}
       <main className="min-h-0 min-w-0 flex-1 overflow-x-hidden">
         <Outlet />
       </main>

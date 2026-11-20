@@ -1,4 +1,4 @@
-import type { Account, Credentials } from '../domain/account'
+import type { Account, Credentials, Session } from '../domain/account'
 import { fetchSession } from '../providers/jmap/client/session'
 import { createTransport } from '../providers/jmap/client/transport'
 import { Cap, type GetResponse } from '../providers/jmap/client/types/core'
@@ -20,9 +20,25 @@ import { t } from '../lib/i18n'
 
 interface AccountRecord {
   id: string
+  sessionId?: string
+  /** Before sessions: the flags and credentials were the account's. */
   encrypted: boolean
   pushDetails?: boolean
-  payload: { plain?: { account: Account; credentials: Credentials } }
+  payload: { plain?: { account: Account; credentials?: Credentials } }
+}
+
+interface SessionRecord {
+  id: string
+  encrypted: boolean
+  pushDetails?: boolean
+  payload: { plain?: { session: Session; credentials: Credentials } }
+}
+
+/** An opted-in account, with the credentials of its session. */
+interface OptedIn {
+  id: string
+  account: Account
+  credentials: Credentials
 }
 
 export interface MailNotification {
@@ -48,23 +64,35 @@ function openDb(): Promise<IDBDatabase | null> {
   })
 }
 
-/** The unencrypted, opted-in account the changed JMAP account id belongs to. */
-async function optedInAccount(
-  db: IDBDatabase,
-  remoteAccountId: string,
-): Promise<AccountRecord | null> {
+/**
+ * The unencrypted, opted-in account the changed JMAP account id belongs to.
+ * Opting in and encryption are its session's; an account from before
+ * sessions that has not moved yet still carries both, and its credentials.
+ */
+async function optedInAccount(db: IDBDatabase, remoteAccountId: string): Promise<OptedIn | null> {
   if (!db.objectStoreNames.contains('accounts')) return null
   const rows = await request<AccountRecord[]>(
     db.transaction('accounts', 'readonly').objectStore('accounts').getAll(),
   )
-  return (
-    rows.find(
-      (r) =>
-        !r.encrypted &&
-        r.pushDetails &&
-        r.payload.plain?.account.remoteAccountId === remoteAccountId,
-    ) ?? null
-  )
+  const sessions = db.objectStoreNames.contains('sessions')
+    ? await request<SessionRecord[]>(
+        db.transaction('sessions', 'readonly').objectStore('sessions').getAll(),
+      )
+    : []
+  for (const row of rows) {
+    const account = row.payload.plain?.account
+    if (account?.remoteAccountId !== remoteAccountId) continue
+    const session = sessions.find((s) => s.id === (row.sessionId ?? row.id))
+    if (session) {
+      const credentials = session.payload.plain?.credentials
+      if (!session.encrypted && session.pushDetails && credentials) {
+        return { id: row.id, account, credentials }
+      }
+    } else if (!row.encrypted && row.pushDetails && row.payload.plain?.credentials) {
+      return { id: row.id, account, credentials: row.payload.plain.credentials }
+    }
+  }
+  return null
 }
 
 /**
@@ -145,12 +173,11 @@ export async function mailNotificationFor(
     const db = await openDb()
     if (!db) return null
     try {
-      const row = await optedInAccount(db, remoteAccountId)
-      const stored = row?.payload.plain
-      if (!row || !stored) return null
-      const mailboxId = await inboxId(db, row.id)
+      const found = await optedInAccount(db, remoteAccountId)
+      if (!found) return null
+      const mailboxId = await inboxId(db, found.id)
       if (!mailboxId) return null
-      return await newestUnread(stored.account, stored.credentials, mailboxId)
+      return await newestUnread(found.account, found.credentials, mailboxId)
     } finally {
       db.close()
     }

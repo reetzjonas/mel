@@ -20,7 +20,16 @@ export interface OverflowAction {
  * spells every action out. Arrow keys move between entries, and selecting an
  * item or pressing Escape returns focus to the trigger.
  */
-export function OverflowMenu({ label, actions }: { label: string; actions: OverflowAction[] }) {
+export function OverflowMenu({
+  label,
+  actions,
+  text,
+}: {
+  label: string
+  actions: OverflowAction[]
+  /** Shown on the trigger in place of the "more" dots: a menu named by what it holds. */
+  text?: string
+}) {
   const [open, setOpen] = useState(false)
   const root = useRef<HTMLSpanElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
@@ -56,9 +65,16 @@ export function OverflowMenu({ label, actions }: { label: string; actions: Overf
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((shown) => !shown)}
-        className={secondaryIconButtonClass}
+        className={text ? `${secondaryIconButtonClass} gap-1 text-sm` : secondaryIconButtonClass}
       >
-        <Icon name="more" />
+        {text ? (
+          <>
+            <span className="max-w-40 truncate">{text}</span>
+            <Icon name="chevronDown" size={14} className="shrink-0" />
+          </>
+        ) : (
+          <Icon name="more" />
+        )}
       </button>
       {open && (
         <span

@@ -48,6 +48,8 @@ const en = {
     'The server no longer accepts this device’s sign-in — it expired, was revoked, or the password changed. Nothing stored here is lost.',
   'reauth.submit': 'Sign in',
   'login.noMailAccount': 'Server reports no mail account',
+  'login.accountGone': 'This account is no longer on the server',
+  'account.menu': 'Accounts',
 
   'mail.refresh': 'Refresh',
   'mail.syncing': 'Syncing…',
@@ -446,6 +448,7 @@ const en = {
   'settings.signOut.hint': 'Removes the account and all of its data from this device.',
   'settings.signOut.confirm':
     'Sign out? The account and all of its mail, contacts and events are removed from this device.',
+  'settings.signOut.allAccounts': 'Every account of this login goes with it.',
 
   'rule.add': 'Add rule',
   'rule.name': 'Rule name',
@@ -966,6 +969,8 @@ const de: Partial<Record<MsgKey, string>> = {
     'Der Server nimmt die Anmeldung dieses Geräts nicht mehr an — sie ist abgelaufen, wurde widerrufen oder das Passwort hat sich geändert. Hier gespeichert bleibt alles erhalten.',
   'reauth.submit': 'Anmelden',
   'login.noMailAccount': 'Server meldet keinen Mail-Account',
+  'login.accountGone': 'Dieses Konto gibt es auf dem Server nicht mehr',
+  'account.menu': 'Konten',
 
   'mail.refresh': 'Aktualisieren',
   'mail.syncing': 'Synchronisiere…',
@@ -1367,6 +1372,7 @@ const de: Partial<Record<MsgKey, string>> = {
   'settings.signOut.hint': 'Entfernt das Konto und alle seine Daten von diesem Gerät.',
   'settings.signOut.confirm':
     'Abmelden? Das Konto und alle Mails, Kontakte und Termine werden von diesem Gerät entfernt.',
+  'settings.signOut.allAccounts': 'Alle Konten dieser Anmeldung gehen mit.',
 
   'rule.add': 'Regel hinzufügen',
   'rule.name': 'Regelname',

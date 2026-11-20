@@ -23,7 +23,14 @@ function hostOf(url: string): string {
  * discoveryCandidates() probes the conventional hosts, and only if all of them
  * miss do the wider options (DNS lookup, manual URL) appear — see below.
  */
-export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void }) {
+export function AddAccountForm({
+  onDone,
+  onCancel,
+}: {
+  onDone: (accountId: string) => void
+  /** Offered when there is already an account to go back to. */
+  onCancel?: () => void
+}) {
   const [email, setEmail] = useState('')
   const [secret, setSecret] = useState('')
   const [method, setMethod] = useState<AuthMethod>('basic')
@@ -180,6 +187,11 @@ export function AddAccountForm({ onDone }: { onDone: (accountId: string) => void
         <button type="submit" disabled={busy} className={`w-full ${primaryButtonClass}`}>
           {busy ? t('login.connecting') : t('login.connect')}
         </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className={`w-full ${secondaryButtonClass}`}>
+            {t('folder.cancel')}
+          </button>
+        )}
       </form>
     </div>
   )

@@ -126,3 +126,67 @@ describe('mailNotificationFor', () => {
     expect(await mailNotificationFor(REMOTE)).toBeNull()
   })
 })
+
+describe('mailNotificationFor, with accounts under a session', () => {
+  const SESSION = 'session-1'
+
+  async function seedSession(flags: { encrypted?: boolean; pushDetails?: boolean } = {}) {
+    await db.sessions.put({
+      id: SESSION,
+      provider: 'jmap',
+      encrypted: false,
+      pushDetails: true,
+      ...flags,
+      payload: sealPlain({
+        session: { id: SESSION, provider: 'jmap', sessionUrl: account.sessionUrl, label: 'me' },
+        credentials,
+      }),
+    })
+    // Two accounts of the one login, neither holding credentials of its own.
+    for (const [id, remote] of [
+      [ACC, REMOTE],
+      ['acc-2', 'remote-2'],
+    ] as const) {
+      await db.accounts.put({
+        id,
+        sessionId: SESSION,
+        provider: 'jmap',
+        encrypted: false,
+        payload: sealPlain({
+          account: { ...account, id, sessionId: SESSION, remoteAccountId: remote },
+        }),
+      })
+      await db.mailboxes.put({
+        accountId: id,
+        id: `inbox-${id}`,
+        parentId: null,
+        role: 'inbox',
+        sortOrder: 0,
+        payload: sealPlain({ id: `inbox-${id}`, name: 'Inbox' } as never),
+      })
+    }
+  }
+
+  beforeEach(async () => {
+    await db.sessions.clear()
+    await db.accounts.clear()
+    await db.mailboxes.clear()
+    list = [{ subject: 'Lunch?', from: [{ name: 'Bob', email: 'bob@test' }] }]
+    mockFetch()
+  })
+
+  it('names the message for any account of an opted-in session, with its credentials', async () => {
+    await seedSession()
+    expect(await mailNotificationFor('remote-2')).toEqual({ title: 'Bob', body: 'Lunch?' })
+    expect(lastRequest.methodCalls[0]?.[1]['accountId']).toBe('remote-2')
+    expect(lastRequest.methodCalls[0]?.[1]['filter']).toMatchObject({ inMailbox: 'inbox-acc-2' })
+  })
+
+  it('takes the opt-in and encryption from the session, not the account', async () => {
+    await seedSession({ pushDetails: false })
+    expect(await mailNotificationFor(REMOTE)).toBeNull()
+
+    await seedSession({ encrypted: true })
+    expect(await mailNotificationFor(REMOTE)).toBeNull()
+  })
+})

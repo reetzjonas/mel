@@ -75,18 +75,19 @@ const sealed = () => ({
 const bytes = (v: unknown): number[] => Object.values(v as Record<string, number>)
 
 /** What is really on disk, past Dexie and past the middleware. */
-async function rawEmail(): Promise<Record<string, unknown>> {
+async function raw(store: string, key: IDBValidKey): Promise<Record<string, unknown>> {
   return new Promise((resolve) => {
     const req = indexedDB.open(OLD_DB)
     req.onsuccess = () => {
-      const tx = req.result.transaction('emails', 'readonly')
-      tx.objectStore('emails').get([ACC, 'm1']).onsuccess = function () {
+      const tx = req.result.transaction(store, 'readonly')
+      tx.objectStore(store).get(key).onsuccess = function () {
         resolve(this.result as Record<string, unknown>)
         req.result.close()
       }
     }
   })
 }
+const rawEmail = () => raw('emails', [ACC, 'm1'])
 
 describe('upgrading a database written by an older version', () => {
   it('backfills the folder index of a locked, encrypted account without opening it', async () => {
@@ -108,6 +109,14 @@ describe('upgrading a database written by an older version', () => {
       payload: sealed(),
       // No mailboxDates: the column did not exist yet. That is what the
       // upgrade is for.
+    })
+    // And the account itself, from before sessions: credentials sealed in its
+    // payload, no session of its own.
+    await old.table('accounts').put({
+      id: ACC,
+      provider: 'jmap',
+      encrypted: true,
+      payload: sealed(),
     })
     old.close()
 
@@ -137,6 +146,18 @@ describe('upgrading a database written by an older version', () => {
     expect(payload.plain).toBeUndefined()
     expect(bytes(payload.enc!.iv)).toEqual(Array(12).fill(7))
     expect(bytes(payload.enc!.ct)).toEqual(Array(16).fill(9))
+
+    /*
+     * The account becomes its own session, under its own id — so the keyring
+     * already keyed by that id is the session's — with nothing opened: moving
+     * the credentials out of the sealed payload waits for the passphrase.
+     */
+    const account = await raw('accounts', ACC)
+    expect(account['sessionId']).toBe(ACC)
+    expect(account['encrypted']).toBe(true)
+    const sealedAccount = account['payload'] as { plain?: unknown; enc?: { ct: unknown } }
+    expect(sealedAccount.plain).toBeUndefined()
+    expect(bytes(sealedAccount.enc!.ct)).toEqual(Array(16).fill(9))
 
     markAccountEncrypted(ACC, false)
     db.close()

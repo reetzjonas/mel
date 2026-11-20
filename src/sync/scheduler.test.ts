@@ -35,9 +35,13 @@ vi.mock('../services/notifications', () => ({ notifyNewMail: (id: string) => not
  */
 let push: unknown = null
 let connectionFails: Error | null = null
+/** Which session, and which of its accounts on the server, each local account is. */
+let accountOf: Record<string, { sessionId: string; remoteAccountId: string }> = {}
 vi.mock('./connections', () => ({
-  connectionFor: () =>
-    connectionFails ? Promise.reject(connectionFails) : Promise.resolve({ push }),
+  connectionFor: (id: string) =>
+    connectionFails
+      ? Promise.reject(connectionFails)
+      : Promise.resolve({ push, account: accountOf[id] }),
 }))
 
 /** The SSE handlers the scheduler installed, so a test can drive them. */
@@ -419,5 +423,72 @@ describe('what notifications are allowed to announce', () => {
     const fresh = await inboxUnreadSince(ACC, 0)
 
     expect(fresh.map((m) => m.id)).toEqual(['mine'])
+  })
+})
+
+describe('several accounts behind one login', () => {
+  /** Every stream opened, in order. */
+  const opened: string[] = []
+  beforeEach(() => {
+    vi.clearAllMocks()
+    sse = null
+    opened.length = 0
+    connectionFails = null
+    accountOf = {
+      one: { sessionId: 's1', remoteAccountId: 'r1' },
+      two: { sessionId: 's1', remoteAccountId: 'r2' },
+    }
+    push = {
+      eventSourceUrl: 'https://jmap.test/events?types={types}&closeafter={closeafter}&ping={ping}',
+      credentials: { method: 'basic', username: 'alice', secret: 'pw' },
+    }
+  })
+  afterEach(async () => {
+    await stopScheduler('one')
+    await stopScheduler('two')
+    push = null
+    accountOf = {}
+    endSse()
+  })
+
+  async function bothConnected() {
+    startScheduler('one')
+    await vi.waitFor(() => expect(sse).not.toBeNull())
+    const first = sse
+    await sse!.onopen!({ ok: true, status: 200 })
+    startScheduler('two')
+    await vi.waitFor(() => expect(getSyncStatus('two').mode).toBe('push'))
+    await vi.waitFor(() => {
+      expect(getSyncStatus('one').syncing).toBe(false)
+      expect(getSyncStatus('two').syncing).toBe(false)
+    })
+    return first
+  }
+
+  it('share the session’s one event stream', async () => {
+    const first = await bothConnected()
+
+    // The second joined the stream already open rather than opening its own.
+    expect(sse).toBe(first)
+  })
+
+  it('wake only the account a change names', async () => {
+    await bothConnected()
+    syncAccount.mockClear()
+
+    sse!.onmessage!({ event: 'state', data: JSON.stringify({ changed: { r2: { Email: 's9' } } }) })
+
+    await vi.waitFor(() => expect(syncAccount).toHaveBeenCalledWith('two'))
+    expect(syncAccount).not.toHaveBeenCalledWith('one')
+  })
+
+  it('keep the stream open while any of them is still running', async () => {
+    const first = await bothConnected()
+
+    await stopScheduler('one')
+    sse!.onmessage!({ event: 'state', data: JSON.stringify({ changed: { r2: { Email: 's9' } } }) })
+
+    expect(sse).toBe(first)
+    await vi.waitFor(() => expect(syncAccount).toHaveBeenCalledWith('two'))
   })
 })

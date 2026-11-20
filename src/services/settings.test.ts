@@ -144,6 +144,7 @@ describe('scheduleSettingsSync', () => {
       payload: sealPlain({
         account: {
           id: ACC,
+          sessionId: ACC,
           provider: 'jmap',
           label: 'a@b.c',
           remoteAccountId: 'r1',

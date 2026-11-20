@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { matchesFilter, type MailFilter } from '../../domain/email'
@@ -77,7 +78,7 @@ function MailboxView() {
   const params = useParams({ strict: false }) as { emailId?: string }
   const navigate = useNavigate()
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const accountId = account?.id
   const grouped = useUi((s) => s.conversationView)
   const mailbox = useMailboxEmails(accountId, mailboxId, filter, grouped)

@@ -2,8 +2,9 @@ import { Batch } from '../providers/jmap/client/request'
 import { createTransport } from '../providers/jmap/client/transport'
 import { fetchSession } from '../providers/jmap/client/session'
 import { Cap, type GetResponse, type SetResponse } from '../providers/jmap/client/types/core'
-import { db } from '../storage/db'
 import { connectionFor, storedAccount } from '../sync/connections'
+import { sessionOf } from '../storage/crypto/middleware'
+import { sessionFlags, setSessionFlags } from '../storage/sessions'
 
 /**
  * Web Push via JMAP PushSubscription (RFC 8620 §7.2) + VAPID (RFC 9749):
@@ -170,14 +171,15 @@ export async function refreshPushSubscription(accountId: string): Promise<void> 
  * for the UI and the service worker even if the two ever drift.
  */
 export async function pushDetailsEnabled(accountId: string): Promise<boolean> {
-  const row = await db.accounts.get(accountId)
-  return Boolean(row && !row.encrypted && row.pushDetails)
+  const { encrypted, pushDetails } = await sessionFlags(sessionOf(accountId))
+  return !encrypted && pushDetails
 }
 
+/** The session's: a push is for the login, and names which of its accounts it is about. */
 export async function setPushDetails(accountId: string, on: boolean): Promise<void> {
-  const row = await db.accounts.get(accountId)
-  if (!row) return
-  await db.accounts.put({ ...row, pushDetails: on && !row.encrypted })
+  const sessionId = sessionOf(accountId)
+  const { encrypted } = await sessionFlags(sessionId)
+  await setSessionFlags(sessionId, { pushDetails: on && !encrypted })
 }
 
 export async function disableWebPush(accountId: string): Promise<void> {

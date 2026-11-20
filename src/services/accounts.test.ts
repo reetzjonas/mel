@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Account, Credentials } from '../domain/account'
+import type { ProviderSession } from '../providers/types'
 import { JmapError } from '../providers/jmap/client/transport'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
@@ -21,18 +22,39 @@ const stub = <T>() => sealPlain({} as T)
 
 /** Everything the module reaches for, in the order it was reached for. */
 const order: string[] = []
-/** The candidate URLs connect() was tried against. */
+/** The candidate servers a session was opened on. */
 const attempts: string[] = []
 
-/** What connect() does for a given candidate URL; a test may replace it. */
-let connectTo: (server: string) => Promise<{ account: Account }> = (server) =>
-  Promise.resolve({ account: { id: 'x', label: server } as Account })
+/** The accounts the session lists, by the server's ids. */
+let listed: string[] = ['r1']
+
+/** A session on `server`, reaching the accounts in `listed`. */
+const sessionOn = (server: string, credentials: Credentials, sessionId: string) =>
+  ({
+    session: { id: sessionId, provider: 'jmap', sessionUrl: server, label: 'alice' },
+    credentials,
+    accounts: [...listed],
+    account: (forSession: string, id: string, remoteAccountId: string) => ({
+      account: {
+        id,
+        sessionId: forSession,
+        provider: 'jmap',
+        label: `${remoteAccountId}@${server}`,
+        remoteAccountId,
+        sessionUrl: server,
+      } as Account,
+    }),
+  }) as unknown as ProviderSession
+
+/** What opening a session does for a given candidate; a test may replace it. */
+let openOn: (server: string) => Promise<void> = () => Promise.resolve()
 
 vi.mock('../providers/registry', () => ({
   providerFor: () => ({
-    connect: (server: string, _creds: Credentials, localId: string) => {
+    openSession: (sessionUrl: string, credentials: Credentials, sessionId: string) => {
+      const server = sessionUrl.replace(/\/\.well-known\/jmap$/, '')
       attempts.push(server)
-      return connectTo(server).then((c) => ({ ...c, account: { ...c.account, id: localId } }))
+      return openOn(server).then(() => sessionOn(server, credentials, sessionId))
     },
   }),
 }))
@@ -69,10 +91,7 @@ vi.mock('../sync/connections', () => ({
     return Promise.resolve({ account: { id: 'acc', capabilities: { mail: true } } })
   },
   dropConnection: () => void order.push('dropConnection'),
-  storedAccount: async (id: string) => {
-    const row = await db.accounts.get(id)
-    return openEnvelope(row!.payload)
-  },
+  dropSession: async () => void order.push('dropSession'),
 }))
 
 const MINE = 'account-1'
@@ -85,6 +104,8 @@ async function seed() {
   for (const accountId of [MINE, OTHER]) {
     await db.accounts.put({
       id: accountId,
+      // Each its own session, as every account from before sessions is.
+      sessionId: accountId,
       provider: 'jmap',
       encrypted: false,
       payload: stub(),
@@ -156,15 +177,25 @@ async function seed() {
  * `seed()` or the second test below fails.
  */
 const perAccount = () =>
-  db.tables.filter((tbl) => tbl.name !== 'accounts' && tbl.name !== 'keyring')
+  db.tables.filter(
+    (tbl) => tbl.name !== 'accounts' && tbl.name !== 'keyring' && tbl.name !== 'sessions',
+  )
 
 const clearAll = () =>
-  Promise.all([db.accounts, db.keyring, ...perAccount()].map((tbl) => tbl.clear()))
+  Promise.all([db.sessions, db.accounts, db.keyring, ...perAccount()].map((tbl) => tbl.clear()))
+
+/** The credentials stored for the session an account is reached through. */
+const credentialsOf = async (accountId: string) => {
+  const row = await db.accounts.get(accountId)
+  const session = await db.sessions.get(row!.sessionId!)
+  return openEnvelope(session!.payload).credentials
+}
 
 beforeEach(() => {
   order.length = 0
   attempts.length = 0
-  connectTo = (server) => Promise.resolve({ account: { id: 'x', label: server } as Account })
+  listed = ['r1']
+  openOn = () => Promise.resolve()
   tokenLoginAnswer = () => Promise.resolve(null)
   sessionAccepts = () => true
 })
@@ -181,16 +212,16 @@ describe('adding an account', () => {
   beforeEach(clearAll)
 
   it('takes the first candidate that answers, and stops looking', async () => {
-    connectTo = (server) =>
+    openOn = (server) =>
       server.includes('mail.')
         ? Promise.reject(new JmapError('nope', 'network'))
-        : Promise.resolve({ account: { id: 'x', label: server } as Account })
+        : Promise.resolve()
 
     const id = await addAccount(['https://mail.example.test', 'https://example.test'], creds)
 
     expect(attempts).toEqual(['https://mail.example.test', 'https://example.test'])
     expect(openEnvelope((await db.accounts.get(id))!.payload).account.label).toBe(
-      'https://example.test',
+      'r1@https://example.test',
     )
   })
 
@@ -200,7 +231,7 @@ describe('adding an account', () => {
      * Trying the remaining hosts would swap a useful error for a misleading
      * "no server found", and send someone hunting in the wrong place.
      */
-    connectTo = () => Promise.reject(new JmapError('bad password', 'auth', undefined, 401))
+    openOn = () => Promise.reject(new JmapError('bad password', 'auth', undefined, 401))
 
     await expect(
       addAccount(['https://mail.example.test', 'https://example.test'], creds),
@@ -212,7 +243,7 @@ describe('adding an account', () => {
   it('reports what it tried, and why the last one failed', async () => {
     // A browser cannot tell a CORS rejection from a DNS miss, so the reason is
     // kept verbatim rather than flattened into "not found".
-    connectTo = () => Promise.reject(new JmapError('CORS', 'network'))
+    openOn = () => Promise.reject(new JmapError('CORS', 'network'))
 
     const error = (await addAccount(['https://a.test', 'https://b.test'], creds).catch(
       (e: unknown) => e,
@@ -223,38 +254,86 @@ describe('adding an account', () => {
     expect(error.lastError).not.toBeNull()
     // And nothing half-written stays behind to be picked up as a real account.
     expect(await db.accounts.count()).toBe(0)
+    expect(await db.sessions.count()).toBe(0)
   })
 
-  it('stores the credentials with the account, since nothing else holds them', async () => {
+  it('stores the credentials with the session, since nothing else holds them', async () => {
     // There is no backend: these live in IndexedDB or the account cannot be
     // opened again after a reload.
     const id = await addAccount(['https://example.test'], creds)
 
-    expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toEqual(creds)
+    expect(await credentialsOf(id)).toEqual(creds)
+    expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toBeUndefined()
     // The first sync starts without being waited for, so the form can close.
     expect(order).toContain('syncAccount')
+  })
+
+  it('adds every account the login reaches, under one session, and shows the primary', async () => {
+    listed = ['primary', 'shared']
+
+    const id = await addAccount(['https://example.test'], creds)
+
+    const rows = await db.accounts.toArray()
+    expect(rows.map((r) => openEnvelope(r.payload).account.remoteAccountId).sort()).toEqual([
+      'primary',
+      'shared',
+    ])
+    expect(new Set(rows.map((r) => r.sessionId)).size).toBe(1)
+    expect(await db.sessions.count()).toBe(1)
+    expect(openEnvelope((await db.accounts.get(id))!.payload).account.remoteAccountId).toBe(
+      'primary',
+    )
+  })
+
+  it('signs the same login in again as the session it is, adding only what is new', async () => {
+    const first = await addAccount(['https://example.test'], creds)
+    listed = ['r1', 'r2']
+    const fresh = { ...creds, secret: 'new-pw' }
+
+    const again = await addAccount(['https://example.test'], fresh)
+
+    expect(again).toBe(first)
+    expect(await db.sessions.count()).toBe(1)
+    expect(await db.accounts.count()).toBe(2)
+    expect(await credentialsOf(first)).toEqual(fresh)
   })
 })
 
 describe('signing in with a token instead of a stored password', () => {
   beforeEach(clearAll)
 
-  const account = { id: MINE, label: 'alice', sessionUrl: 'https://example.test/jmap' }
-  const seedAccount = (credentials: Credentials) =>
-    db.accounts.put({
+  const account = {
+    id: MINE,
+    sessionId: MINE,
+    label: 'alice',
+    sessionUrl: 'https://example.test/jmap',
+  }
+  const seedAccount = async (credentials: Credentials) => {
+    await db.sessions.put({
       id: MINE,
       provider: 'jmap',
       encrypted: false,
-      payload: sealPlain({ account: account as Account, credentials }),
+      payload: sealPlain({
+        session: { id: MINE, provider: 'jmap', sessionUrl: account.sessionUrl, label: 'alice' },
+        credentials,
+      }),
     })
-  const stored = async () => openEnvelope((await db.accounts.get(MINE))!.payload).credentials
+    await db.accounts.put({
+      id: MINE,
+      sessionId: MINE,
+      provider: 'jmap',
+      encrypted: false,
+      payload: sealPlain({ account: account as Account }),
+    })
+  }
+  const stored = () => credentialsOf(MINE)
 
   it('stores the refresh token, not the password, where the server offers one', async () => {
     tokenLoginAnswer = (password) => Promise.resolve(password === 'pw' ? tokens : null)
 
     const id = await addAccount(['https://example.test'], creds)
 
-    expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toEqual(tokens)
+    expect(await credentialsOf(id)).toEqual(tokens)
   })
 
   it('hands a request for a code back to the form without trying other hosts', async () => {
@@ -267,7 +346,7 @@ describe('signing in with a token instead of a stored password', () => {
 
     tokenLoginAnswer = (_pw, totp) => Promise.resolve(totp === '123456' ? tokens : null)
     const id = await addAccount(['https://example.test'], creds, '123456')
-    expect(openEnvelope((await db.accounts.get(id))!.payload).credentials).toEqual(tokens)
+    expect(await credentialsOf(id)).toEqual(tokens)
   })
 
   it('swaps an existing account’s stored password for a token once', async () => {
@@ -277,7 +356,7 @@ describe('signing in with a token instead of a stored password', () => {
     await upgradeToTokens(MINE)
 
     expect(await stored()).toEqual(tokens)
-    expect(order).toContain('dropConnection')
+    expect(order).toContain('dropSession')
   })
 
   it('leaves the password where the swap cannot happen', async () => {
@@ -302,7 +381,7 @@ describe('signing in with a token instead of a stored password', () => {
     await reauthenticate(MINE, 'new-pw')
 
     expect(await stored()).toEqual(tokens)
-    expect(order.slice(-3)).toEqual(['stopScheduler', 'dropConnection', 'startScheduler'])
+    expect(order.slice(-3)).toEqual(['stopScheduler', 'dropSession', 'startScheduler'])
   })
 
   it('keeps what was stored when the new password is refused too', async () => {
@@ -331,8 +410,27 @@ describe('signing out', () => {
      */
     await signOut(MINE)
 
-    expect(order).toEqual(['stopScheduler', 'dropConnection', 'syncSettled'])
+    expect(order).toEqual(['stopScheduler', 'dropSession', 'dropConnection', 'syncSettled'])
     expect(await db.emails.where('accountId').equals(MINE).count()).toBe(0)
+  })
+
+  it('takes every account of the login with it, and no other login’s', async () => {
+    await db.accounts.update(OTHER, { sessionId: 'elsewhere' })
+    await db.accounts.put({
+      id: 'mine-too',
+      sessionId: MINE,
+      provider: 'jmap',
+      encrypted: false,
+      payload: stub(),
+    })
+    await db.sessions.put({ id: MINE, provider: 'jmap', encrypted: false, payload: stub() })
+
+    await signOut(MINE)
+
+    expect(await db.sessions.get(MINE)).toBeUndefined()
+    expect(await db.accounts.get('mine-too')).toBeUndefined()
+    expect(await db.accounts.get(OTHER)).toBeDefined()
+    expect(await db.emails.where('accountId').equals(OTHER).count()).toBe(1)
   })
 })
 
@@ -375,7 +473,7 @@ describe('re-reading what the server can do', () => {
      */
     const account = await refreshCapabilities(MINE)
 
-    expect(order).toEqual(['dropConnection', 'connectionFor'])
+    expect(order).toEqual(['dropSession', 'connectionFor'])
     expect(account.capabilities).toEqual({ mail: true })
   })
 })

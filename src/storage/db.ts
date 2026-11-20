@@ -1,5 +1,5 @@
 import Dexie, { type Table, type Transaction } from 'dexie'
-import type { Account, Credentials } from '../domain/account'
+import type { Account, Credentials, Session } from '../domain/account'
 import type { Calendar, CalendarEvent, EventNotification } from '../domain/calendar'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, Thread } from '../domain/email'
@@ -15,9 +15,30 @@ import type { Envelope } from './envelope'
 // Rows carry plaintext index columns (ids, timestamps, flags only) plus the
 // payload envelope holding everything human-readable. See envelope.ts.
 
-export interface AccountRow {
+/**
+ * A login. `encrypted` and `pushDetails` are the session's: one passphrase
+ * covers all its accounts, and a push names the session's subscription.
+ */
+export interface SessionRow {
   id: string
   provider: string
+  encrypted: boolean
+  pushDetails?: boolean
+  payload: Envelope<{ session: Session; credentials: Credentials }>
+}
+
+export interface AccountRow {
+  id: string
+  /**
+   * The session it belongs to. Version 12 set it to the account's own id on
+   * every account from before sessions, whose credentials still sit in its
+   * payload until the first unlocked start moves them to that session
+   * (storage/sessions.ts) — a schema upgrade cannot open a sealed payload.
+   * Absent reads the same way: the account is its own session.
+   */
+  sessionId?: string
+  provider: string
+  /** Before sessions only: now the session's (SessionRow). */
   encrypted: boolean
   /**
    * Whether a push notification may name the sender and subject.
@@ -28,7 +49,8 @@ export interface AccountRow {
    * encryption clears it (services/encryption.ts).
    */
   pushDetails?: boolean
-  payload: Envelope<{ account: Account; credentials: Credentials }>
+  /** `credentials` only on an account from before sessions, not yet moved. */
+  payload: Envelope<{ account: Account; credentials?: Credentials }>
 }
 
 export interface SyncStateRow {
@@ -223,6 +245,7 @@ export interface ImageSendersRow {
 }
 
 export class MelDb extends Dexie {
+  sessions!: Table<SessionRow, string>
   accounts!: Table<AccountRow, string>
   syncState!: Table<SyncStateRow, AccountScopedKey>
   mailboxes!: Table<MailboxRow, AccountScopedKey>
@@ -291,6 +314,23 @@ export class MelDb extends Dexie {
     this.version(9).stores({ eventNotifications: '&[accountId+id], accountId' })
     this.version(10).stores({ submissions: '&[accountId+id], accountId, [accountId+emailId]' })
     this.version(11).stores({ pgpKeys: '&[accountId+fingerprint], accountId' })
+    /*
+     * Sessions: logins, each reaching one or more accounts. Every account
+     * from before is its own session, under its own id — so an encrypted
+     * one's keyring, already keyed by that id, is the session's keyring with
+     * nothing rewritten. Only the plaintext column is touched here; moving the
+     * credentials out of the (possibly sealed) payload waits for a key.
+     */
+    this.version(12)
+      .stores({ sessions: '&id', accounts: '&id, sessionId' })
+      .upgrade((tx) =>
+        tx
+          .table('accounts')
+          .toCollection()
+          .modify((row: { id: string; sessionId?: string }) => {
+            row.sessionId ??= row.id
+          }),
+      )
     this.use(cryptoMiddleware)
   }
 }

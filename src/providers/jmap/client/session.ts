@@ -192,6 +192,17 @@ export function capabilitiesFor(
   }
 }
 
+/** Every account in the session with mail, the primary first. */
+export function mailAccounts(session: JmapSession): string[] {
+  const primary = primaryMailAccount(session)
+  const rest = Object.keys(session.accounts).filter(
+    (id) =>
+      id !== primary &&
+      Object.keys(session.accounts[id]?.accountCapabilities ?? {}).includes(Cap.mail),
+  )
+  return primary ? [primary, ...rest] : rest
+}
+
 /** Primary mail account id within the session, if any. */
 export function primaryMailAccount(session: JmapSession): string | null {
   return (

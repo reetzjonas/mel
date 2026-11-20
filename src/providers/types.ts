@@ -1,4 +1,4 @@
-import type { Account, AccountCapabilities, Credentials } from '../domain/account'
+import type { Account, AccountCapabilities, Credentials, Session } from '../domain/account'
 import type { AddressBook, Contact } from '../domain/contact'
 import type { EmailBody, EmailHeader, MailFilter } from '../domain/email'
 import type { MessageMetadata } from '../domain/messageMetadata'
@@ -273,10 +273,25 @@ export interface ProviderConnection {
   push: PushInfo | null
 }
 
+/**
+ * A login, opened: the session resource fetched and the credentials taken.
+ * Its accounts' connections are made from it and share its transport and
+ * its credentials object, so a renewed token reaches all of them at once.
+ */
+export interface ProviderSession {
+  session: Session
+  credentials: Credentials
+  /** The provider-side ids of the accounts mel can show (each with mail), primary first. */
+  accounts: string[]
+  /** One of `accounts`, as an account of the local session `sessionId`. */
+  account(sessionId: string, localId: string, remoteAccountId: string): ProviderConnection
+}
+
 export interface Provider {
   kind: Account['provider']
-  /** Validate credentials against a server and derive the account object. */
-  connect(server: string, creds: Credentials, localId: string): Promise<ProviderConnection>
-  /** Re-open a connection for a stored account. */
-  open(account: Account, creds: Credentials): Promise<ProviderConnection>
+  /**
+   * Fetch a session resource, validating the credentials: `sessionUrl` as
+   * stored, or as derived from what was typed at login.
+   */
+  openSession(sessionUrl: string, creds: Credentials, sessionId: string): Promise<ProviderSession>
 }

@@ -46,6 +46,14 @@ beforeEach(() => {
   session = sessionWith([MAIL, CONTACTS, CALENDARS])
 })
 
+const URL = 'https://example.test/.well-known/jmap'
+
+/** The session's first account, as the local account `local-1` of session `s-1`. */
+async function connect(c: Credentials = creds) {
+  const opened = await jmapProvider.openSession(URL, c, 's-1')
+  return opened.account('s-1', 'local-1', opened.accounts[0]!)
+}
+
 describe('opening a connection to a JMAP server', () => {
   it('builds only the providers the account actually offers', async () => {
     /*
@@ -56,7 +64,7 @@ describe('opening a connection to a JMAP server', () => {
      */
     session = sessionWith([MAIL])
 
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    const conn = await connect()
 
     expect(conn.mail).not.toBeNull()
     expect(conn.contacts).toBeNull()
@@ -65,7 +73,7 @@ describe('opening a connection to a JMAP server', () => {
   })
 
   it('builds all three when the account has all three', async () => {
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    const conn = await connect()
 
     expect(conn.mail).not.toBeNull()
     expect(conn.contacts).not.toBeNull()
@@ -74,34 +82,41 @@ describe('opening a connection to a JMAP server', () => {
 
   it('leaves out file storage unless the account offers the draft extension', async () => {
     // FileNode is an unfinished draft that most servers do not implement.
-    const without = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    const without = await connect()
     expect(without.files).toBeNull()
     expect(without.capabilities.files).toBe(false)
 
     session = sessionWith([MAIL, FILENODE])
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    const conn = await connect()
     expect(conn.files).not.toBeNull()
     expect(conn.capabilities.files).toBe(true)
   })
 
-  it('keeps the local id rather than the server’s account id', async () => {
+  it('keeps the local ids rather than the server’s account id', async () => {
     /*
      * Every row in IndexedDB is keyed by the local id, and the same server
      * account may be added twice. The server's id lives on as
      * remoteAccountId, which is what the requests carry.
      */
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    const conn = await connect()
 
     expect(conn.account.id).toBe('local-1')
+    expect(conn.account.sessionId).toBe('s-1')
     expect(conn.account.remoteAccountId).toBe('a1')
   })
 
-  it('stores the resolved session URL, not what was typed into the form', async () => {
-    // Reopening the account must not redo the autodiscovery walk, so what is
-    // kept is the URL that answered.
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+  it('keeps the session URL it was opened with, without rediscovering', async () => {
+    /*
+     * Autodiscovery is a walk over several candidate hosts. Repeating it on
+     * every app start would add that walk to the critical path of seeing any
+     * mail at all.
+     */
+    const opened = await jmapProvider.openSession('https://mail.example.test/jmap', creds, 's-1')
 
-    expect(conn.account.sessionUrl).toBe('https://example.test/.well-known/jmap')
+    expect(opened.session.sessionUrl).toBe('https://mail.example.test/jmap')
+    expect(opened.account('s-1', 'local-1', 'a1').account.sessionUrl).toBe(
+      'https://mail.example.test/jmap',
+    )
   })
 
   it('refuses a server with no mail account to work with', async () => {
@@ -109,37 +124,34 @@ describe('opening a connection to a JMAP server', () => {
     // and the login form has a message for exactly this.
     session = sessionWith([MAIL], { primaryAccounts: {}, accounts: {} })
 
-    await expect(jmapProvider.connect('https://example.test', creds, 'local-1')).rejects.toThrow()
+    await expect(jmapProvider.openSession(URL, creds, 's-1')).rejects.toThrow()
   })
 
-  it('labels the account by what the server calls the user', async () => {
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
-    expect(conn.account.label).toBe('alice@example.test')
+  it('labels the account by its own name, and the session by the user', async () => {
+    const opened = await jmapProvider.openSession(URL, creds, 's-1')
+    expect(opened.session.label).toBe('alice@example.test')
+    expect(opened.account('s-1', 'local-1', 'a1').account.label).toBe('alice@example.test')
   })
 
-  it('falls back to the typed username, then to the account id', async () => {
-    // Some servers send no username at all; an empty label leaves the account
+  it('falls back to the username, then the typed one, then the account id', async () => {
+    // Some servers send no names at all; an empty label leaves the account
     // switcher showing a blank row.
-    session = sessionWith([MAIL], { username: '' })
-    const withCreds = await jmapProvider.connect('https://example.test', creds, 'local-1')
-    expect(withCreds.account.label).toBe('alice@example.test')
+    const nameless = { a1: { name: '', accountCapabilities: { [MAIL]: {} } } }
+    session = sessionWith([MAIL], { accounts: nameless })
+    expect((await connect()).account.label).toBe('alice@example.test')
 
-    session = sessionWith([MAIL], { username: '' })
-    const bearer = await jmapProvider.connect(
-      'https://example.test',
-      {
-        method: 'bearer',
-        secret: 'token',
-      } as Credentials,
-      'local-1',
-    )
+    session = sessionWith([MAIL], { username: '', accounts: nameless })
+    expect((await connect()).account.label).toBe('alice@example.test')
+
+    session = sessionWith([MAIL], { username: '', accounts: nameless })
+    const bearer = await connect({ method: 'bearer', secret: 'token' } as Credentials)
     expect(bearer.account.label).toBe('a1')
   })
 
   it('carries the push endpoint and the credentials it needs', async () => {
     // The EventSource connection is opened outside the transport and has to
     // authenticate itself.
-    const conn = await jmapProvider.connect('https://example.test', creds, 'local-1')
+    const conn = await connect()
 
     expect(conn.push).toEqual({
       eventSourceUrl: 'https://jmap.test/events',
@@ -148,22 +160,33 @@ describe('opening a connection to a JMAP server', () => {
   })
 })
 
-describe('reopening a stored account', () => {
-  it('goes straight to the session URL it kept, without rediscovering', async () => {
-    /*
-     * Autodiscovery is a walk over several candidate hosts. Repeating it on
-     * every app start would add that walk to the critical path of seeing any
-     * mail at all.
-     */
-    const account = {
-      id: 'local-9',
-      provider: 'jmap' as const,
-      sessionUrl: 'https://mail.example.test/.well-known/jmap',
-    }
+describe('a session reaching several accounts', () => {
+  beforeEach(() => {
+    session = sessionWith([MAIL], {
+      primaryAccounts: { [MAIL]: 'a2' },
+      accounts: {
+        a1: { name: 'shared@example.test', accountCapabilities: { [MAIL]: {} } },
+        a2: { name: 'alice@example.test', accountCapabilities: { [MAIL]: {} } },
+        c1: { name: 'calendars only', accountCapabilities: { [CALENDARS]: {} } },
+      },
+    })
+  })
 
-    const conn = await jmapProvider.open(account as never, creds)
+  it('lists every account with mail, the primary first', async () => {
+    const opened = await jmapProvider.openSession(URL, creds, 's-1')
+    expect(opened.accounts).toEqual(['a2', 'a1'])
+  })
 
-    expect(conn.account.sessionUrl).toBe('https://mail.example.test/.well-known/jmap')
-    expect(conn.account.id).toBe('local-9')
+  it('gives each its own name and its own capabilities, over one set of credentials', async () => {
+    const opened = await jmapProvider.openSession(URL, creds, 's-1')
+    const shared = opened.account('s-1', 'local-2', 'a1')
+
+    expect(shared.account).toMatchObject({ label: 'shared@example.test', remoteAccountId: 'a1' })
+    expect(shared.push?.credentials).toBe(opened.account('s-1', 'local-1', 'a2').push?.credentials)
+  })
+
+  it('refuses one the session does not list', async () => {
+    const opened = await jmapProvider.openSession(URL, creds, 's-1')
+    expect(() => opened.account('s-1', 'local-3', 'c1')).toThrow()
   })
 })

@@ -41,9 +41,29 @@ export interface AccountCapabilities {
   webPush: boolean
 }
 
+/**
+ * One login: a server's session resource and the credentials it was opened
+ * with. A session can reach several accounts — the user's own, shared or
+ * delegated ones, or several mailboxes a proxy pools — and they share
+ * everything that belongs to the login: one token, one event stream, one push
+ * subscription, one passphrase, one sign-out.
+ */
+export interface Session {
+  /** Local UUID. */
+  id: string
+  provider: ProviderKind
+  /** JMAP session URL (or provider equivalent). */
+  sessionUrl: string
+  /** Who is logged in, e.g. the email address. */
+  label: string
+}
+
+/** One account within a session: the unit that is synced and shown. */
 export interface Account {
   /** Local UUID, stable across sessions. Not the provider's account id. */
   id: string
+  /** The session it is reached through. */
+  sessionId: string
   provider: ProviderKind
   /** Display name, e.g. the email address. */
   label: string

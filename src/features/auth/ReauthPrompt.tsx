@@ -15,7 +15,16 @@ import { useMobileViewport, useModal } from '../../ui/useModal'
  * already on the device stays readable, and a modal springing up over it would
  * be the louder of the two. Nothing local is touched either way.
  */
-export function ReauthPrompt({ accountId, label }: { accountId: string; label: string }) {
+export function ReauthPrompt({
+  accountId,
+  label,
+  named = false,
+}: {
+  accountId: string
+  label: string
+  /** Say which account: there is more than one on this device. */
+  named?: boolean
+}) {
   const status = useSyncExternalStore(
     subscribeSyncStatus,
     () => getSyncStatus(accountId),
@@ -30,7 +39,10 @@ export function ReauthPrompt({ accountId, label }: { accountId: string; label: s
         className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-danger-wash px-4 py-2 text-sm text-danger"
       >
         <Icon name="offline" size={15} className="shrink-0" />
-        <span className="min-w-0 flex-[1_1_12rem]">{t('auth.expired')}</span>
+        <span className="min-w-0 flex-[1_1_12rem]">
+          {named && <span className="font-semibold">{label}: </span>}
+          {t('auth.expired')}
+        </span>
         <button
           type="button"
           onClick={() => setOpen(true)}

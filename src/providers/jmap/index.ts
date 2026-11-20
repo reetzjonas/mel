@@ -2,13 +2,7 @@ import type { Account, Credentials } from '../../domain/account'
 import { t } from '../../lib/i18n'
 import type { Provider, ProviderConnection } from '../types'
 import { createTransport } from './client/transport'
-import {
-  capabilitiesFor,
-  coreLimits,
-  fetchSession,
-  primaryMailAccount,
-  sessionUrlFor,
-} from './client/session'
+import { capabilitiesFor, coreLimits, fetchSession, mailAccounts } from './client/session'
 import { createJmapCalendars } from './calendars'
 import { createJmapContacts } from './contacts'
 import { createJmapFiles } from './files'
@@ -16,21 +10,31 @@ import { createJmapSieve } from './sieve'
 import { createJmapMail } from './mail'
 import { createJmapQuota } from './quota'
 
-async function buildConnection(
-  sessionUrl: string,
+/**
+ * One account of an opened session. Nothing is fetched: the transport, the
+ * limits and the credentials are the session's.
+ */
+function accountConnection(
+  resolved: Awaited<ReturnType<typeof fetchSession>>,
   creds: Credentials,
+  sessionId: string,
   localId: string,
-): Promise<ProviderConnection> {
-  const resolved = await fetchSession(sessionUrl, creds)
-  const remoteAccountId = primaryMailAccount(resolved.session)
-  if (!remoteAccountId) throw new Error(t('login.noMailAccount'))
+  remoteAccountId: string,
+  transport: ReturnType<typeof createTransport>,
+): ProviderConnection {
   const capabilities = capabilitiesFor(resolved.session, remoteAccountId)
-  const transport = createTransport(resolved.apiUrl, creds)
   const limits = coreLimits(resolved.session)
   const account: Account = {
     id: localId,
+    sessionId,
     provider: 'jmap',
-    label: resolved.session.username || creds.username || remoteAccountId,
+    // The account's own name: several behind one login would otherwise all
+    // carry the login's.
+    label:
+      resolved.session.accounts[remoteAccountId]?.name ||
+      resolved.session.username ||
+      creds.username ||
+      remoteAccountId,
     remoteAccountId,
     sessionUrl: resolved.sessionUrl,
     capabilities,
@@ -60,10 +64,24 @@ async function buildConnection(
 
 export const jmapProvider: Provider = {
   kind: 'jmap',
-  connect(server, creds, localId) {
-    return buildConnection(sessionUrlFor(server), creds, localId)
-  },
-  open(account, creds) {
-    return buildConnection(account.sessionUrl, creds, account.id)
+  async openSession(sessionUrl, creds, sessionId) {
+    const resolved = await fetchSession(sessionUrl, creds)
+    const accounts = mailAccounts(resolved.session)
+    if (!accounts.length) throw new Error(t('login.noMailAccount'))
+    const transport = createTransport(resolved.apiUrl, creds)
+    return {
+      session: {
+        id: sessionId,
+        provider: 'jmap',
+        sessionUrl: resolved.sessionUrl,
+        label: resolved.session.username || creds.username || accounts[0]!,
+      },
+      credentials: creds,
+      accounts,
+      account(forSession, localId, remoteAccountId) {
+        if (!accounts.includes(remoteAccountId)) throw new Error(t('login.accountGone'))
+        return accountConnection(resolved, creds, forSession, localId, remoteAccountId, transport)
+      },
+    }
   },
 }
