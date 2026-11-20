@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CalendarEvent, Occurrence } from '../../domain/calendar'
 import { dayKey } from '../../lib/dates'
 import { currentLocale } from '../../lib/i18n'
 import { instantAt, isMoved, placementFor, type DragMode, type DragOrigin } from './dragGeometry'
+import { barEnds, isBanner, layoutBars, segmentsByDay, type Segment } from './multiDay'
 
 const HOUR_HEIGHT = 48 // px
 /** The hour gutter; must match the `w-12` column that draws it. */
@@ -29,13 +30,13 @@ function minutesOfDay(d: Date): number {
   return d.getHours() * 60 + d.getMinutes()
 }
 
-interface Positioned extends Occurrence {
+type Positioned = Segment & {
   col: number
   cols: number
 }
 
 /** Greedy overlap layout: side-by-side columns for events that collide. */
-function layoutDay(occs: Occurrence[]): Positioned[] {
+function layoutDay(occs: Segment[]): Positioned[] {
   const sorted = [...occs].sort((a, b) => a.start.getTime() - b.start.getTime())
   const out: Positioned[] = []
   let cluster: Positioned[] = []
@@ -64,7 +65,7 @@ function layoutDay(occs: Occurrence[]): Positioned[] {
 
 export function TimeGrid({
   days,
-  eventsByDay,
+  occurrences,
   eventFor,
   calendarColor,
   onSlotClick,
@@ -74,7 +75,8 @@ export function TimeGrid({
   today,
 }: {
   days: Date[]
-  eventsByDay: Map<string, Occurrence[]>
+  /** Every occurrence on screen, however many of the days it is on. */
+  occurrences: Occurrence[]
   /** The event as this occurrence stands, which for a series is not the series. */
   eventFor: (occ: Occurrence) => CalendarEvent | undefined
   calendarColor: (event: CalendarEvent) => string | null
@@ -154,6 +156,19 @@ export function TimeGrid({
     scrollRef.current?.scrollTo({ top: 7 * HOUR_HEIGHT })
   }, [])
 
+  /* All-day events, and timed ones of a day or more, are bars across the
+     all-day row; the rest are blocks in the time grid, one per day they are on,
+     so one past midnight carries on at the top of the next day. */
+  const bars = useMemo(() => layoutBars(occurrences.filter(isBanner), days), [occurrences, days])
+  const timedByDay = useMemo(
+    () =>
+      segmentsByDay(
+        occurrences.filter((o) => !isBanner(o)),
+        days,
+      ),
+    [occurrences, days],
+  )
+
   const now = new Date()
   const nowTop = (minutesOfDay(now) / 60) * HOUR_HEIGHT
 
@@ -175,31 +190,41 @@ export function TimeGrid({
       {/* All-day row */}
       <div className="flex border-b border-line">
         <div className="w-12 shrink-0" />
-        {days.map((d) => {
-          const allDay = (eventsByDay.get(dayKey(d)) ?? []).filter((o) => o.allDay)
-          return (
-            <div
-              key={dayKey(d)}
-              className="min-h-[1.5rem] flex-1 space-y-0.5 border-l border-line p-0.5"
-            >
-              {allDay.map((o, i) => {
-                const ev = eventFor(o)
-                const color = ev ? calendarColor(ev) : null
-                return (
-                  <button
-                    key={`${o.eventId}-${i}`}
-                    type="button"
-                    onClick={() => onEventClick(o)}
-                    style={color ? { backgroundColor: `${color}26`, color } : undefined}
-                    className={`block w-full truncate rounded px-1 text-left text-[11px] leading-4 transition-opacity hover:opacity-80 ${!color ? 'bg-accent-wash text-accent' : ''}`}
-                  >
-                    {ev?.title || '—'}
-                  </button>
-                )
-              })}
-            </div>
-          )
-        })}
+        <div className="relative min-h-[1.5rem] flex-1">
+          <div aria-hidden className="absolute inset-0 flex">
+            {days.map((d) => (
+              <div key={dayKey(d)} className="flex-1 border-l border-line" />
+            ))}
+          </div>
+          <div
+            data-testid="all-day-row"
+            className="relative grid auto-rows-[1rem] gap-y-0.5 px-px py-0.5"
+            style={{ gridTemplateColumns: `repeat(${days.length}, minmax(0, 1fr))` }}
+          >
+            {bars.map((b) => {
+              const ev = eventFor(b.occ)
+              const color = ev ? calendarColor(ev) : null
+              return (
+                <button
+                  key={`${b.occ.eventId}-${b.occ.recurrenceId ?? ''}`}
+                  type="button"
+                  onClick={() => onEventClick(b.occ)}
+                  style={{
+                    gridColumn: `${b.first + 1} / ${b.last + 2}`,
+                    gridRow: b.lane + 1,
+                    ...(color ? { backgroundColor: `${color}26`, color } : {}),
+                  }}
+                  className={`mx-0.5 truncate px-1 text-left text-[11px] leading-4 transition-opacity hover:opacity-80 ${barEnds(b.continuesBefore, b.continuesAfter)} ${!color ? 'bg-accent-wash text-accent' : ''}`}
+                >
+                  {!b.occ.allDay && !b.continuesBefore && (
+                    <span className="tabular-nums">{timeFmt.format(b.occ.start)} </span>
+                  )}
+                  {ev?.title || '—'}
+                </button>
+              )
+            })}
+          </div>
+        </div>
       </div>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div ref={columnsRef} className="relative flex">
@@ -216,8 +241,7 @@ export function TimeGrid({
           </div>
           {days.map((d, dayIndex) => {
             const key = dayKey(d)
-            const timed = (eventsByDay.get(key) ?? []).filter((o) => !o.allDay)
-            const positioned = layoutDay(timed)
+            const positioned = layoutDay(timedByDay.get(key) ?? [])
             return (
               <div key={key} className="relative flex-1 border-l border-line">
                 {Array.from({ length: 24 }, (_, h) => (
@@ -245,17 +269,20 @@ export function TimeGrid({
                     style={{ top: nowTop }}
                   />
                 )}
-                {positioned.map((o, i) => {
+                {positioned.map((seg, i) => {
+                  const o = seg.occ
                   const ev = eventFor(o)
                   const color = ev ? calendarColor(ev) : null
                   const blockKey = `${key}-${o.eventId}-${i}`
-                  const startMinutes = minutesOfDay(o.start)
-                  const endMinutes =
-                    startMinutes + Math.round((o.end.getTime() - o.start.getTime()) / 60_000)
-                  /* Events running past midnight are already drawn as a block
-                     that overflows its column; dragging one would have to
-                     decide which day it belongs to, so they stay put. */
-                  const movable = Boolean(ev) && canMove(ev!) && endMinutes <= 24 * 60
+                  const startMinutes = minutesOfDay(seg.start)
+                  const endMinutes = seg.continuesAfter
+                    ? 24 * 60
+                    : startMinutes + Math.round((seg.end.getTime() - seg.start.getTime()) / 60_000)
+                  /* A block that is only part of its event, the rest being on
+                     the day before or after, stays put: dragging it would have
+                     to say what becomes of the rest. */
+                  const split = seg.continuesBefore || seg.continuesAfter
+                  const movable = Boolean(ev) && canMove(ev!) && !split
                   const dragging = drag?.key === blockKey && drag.past
                   const shown =
                     dragging && placement ? placement : { dayIndex, startMinutes, endMinutes }
@@ -264,7 +291,7 @@ export function TimeGrid({
                     18,
                     ((shown.endMinutes - shown.startMinutes) / 60) * HOUR_HEIGHT,
                   )
-                  const width = 100 / o.cols
+                  const width = 100 / seg.cols
                   // A block being dragged leaves its column's stacking and
                   // spans the day it is heading for, so it can cross columns.
                   const offColumn = dragging && shown.dayIndex !== dayIndex
@@ -309,14 +336,14 @@ export function TimeGrid({
                         top,
                         height,
                         left: offColumn
-                          ? `calc(${(shown.dayIndex - dayIndex) * 100}% + ${o.col * width}%)`
-                          : `${o.col * width}%`,
+                          ? `calc(${(shown.dayIndex - dayIndex) * 100}% + ${seg.col * width}%)`
+                          : `${seg.col * width}%`,
                         width: `calc(${width}% - 2px)`,
                         ...(color
                           ? { backgroundColor: `${color}26`, color, borderColor: color }
                           : {}),
                       }}
-                      className={`absolute overflow-hidden rounded-md border px-1.5 py-0.5 text-left text-[11px] leading-tight shadow-raised ${
+                      className={`absolute overflow-hidden rounded-md border px-1.5 ${seg.continuesBefore ? 'rounded-t-none border-t-0' : ''} ${seg.continuesAfter ? 'rounded-b-none border-b-0' : ''} py-0.5 text-left text-[11px] leading-tight shadow-raised ${
                         dragging
                           ? 'z-20 cursor-grabbing opacity-90 shadow-overlay'
                           : `z-[5] transition-transform hover:scale-[1.01] ${movable ? 'cursor-grab' : 'cursor-pointer'}`
@@ -327,8 +354,9 @@ export function TimeGrid({
                           the only other clue to how long it runs, and reading
                           a length off a rectangle is guesswork. */}
                       <span className="block opacity-80">
-                        {timeFmt.format(instantAt(d, shown.startMinutes))} –{' '}
-                        {timeFmt.format(instantAt(d, shown.endMinutes))}
+                        {dragging
+                          ? `${timeFmt.format(instantAt(d, shown.startMinutes))} – ${timeFmt.format(instantAt(d, shown.endMinutes))}`
+                          : `${timeFmt.format(o.start)} – ${timeFmt.format(o.end)}`}
                       </span>
                       {movable && (
                         <>

@@ -176,7 +176,10 @@ export function expandAll(
  * an hour every time someone travels.
  *
  * The duration is rewritten too, since that is the only place an event's
- * length lives — there is no end field to move.
+ * length lives — there is no end field to move. Unless the event still ends
+ * where its own duration says: a move that keeps the length keeps "P3D" as
+ * it was, rather than turning it into hours that come out an hour wrong once
+ * the event is moved across a DST change.
  */
 export function rescheduleEvent(
   event: CalendarEvent,
@@ -184,11 +187,14 @@ export function rescheduleEvent(
   end: Date,
   viewerZone: string,
 ): CalendarEvent {
-  const zone = event.timeZone ?? viewerZone
+  const zone = event.showWithoutTime ? viewerZone : (event.timeZone ?? viewerZone)
   const local = Temporal.Instant.fromEpochMilliseconds(start.getTime())
     .toZonedDateTimeISO(zone)
     .toPlainDateTime()
     .toString({ smallestUnit: 'second' })
+  if (endOf(start, parseDuration(event.duration), zone, false).getTime() === end.getTime()) {
+    return { ...event, start: local }
+  }
   const minutes = Math.max(1, Math.round((end.getTime() - start.getTime()) / 60_000))
   return {
     ...event,

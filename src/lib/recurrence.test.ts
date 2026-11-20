@@ -316,6 +316,36 @@ describe('rescheduleEvent', () => {
     expect(occ!.end.toISOString()).toBe(end.toISOString())
   })
 
+  it('keeps the duration as written when the move keeps the length', () => {
+    // Three days from Friday 27 March, moved a day on: the old way it became
+    // its length in hours, PT71H, which ended an hour early at the new place.
+    const trip: CalendarEvent = { ...single, start: '2026-03-26T10:00:00', duration: 'P3D' }
+    const moved = rescheduleEvent(
+      trip,
+      new Date('2026-03-27T09:00:00Z'), // Fri 10:00 CET
+      new Date('2026-03-30T08:00:00Z'), // Mon 10:00 CEST
+      'Europe/Berlin',
+    )
+    expect(moved).toMatchObject({ start: '2026-03-27T10:00:00', duration: 'P3D' })
+  })
+
+  it('reads an all-day event in the viewer’s zone', () => {
+    const holiday: CalendarEvent = {
+      ...single,
+      start: '2026-03-27T00:00:00',
+      timeZone: null,
+      showWithoutTime: true,
+      duration: 'P3D',
+    }
+    const moved = rescheduleEvent(
+      holiday,
+      new Date('2026-03-27T23:00:00Z'), // Sat 28 March, Berlin midnight
+      new Date('2026-03-30T22:00:00Z'), // Tue 31 March, after the switch
+      'Europe/Berlin',
+    )
+    expect(moved).toMatchObject({ start: '2026-03-28T00:00:00', duration: 'P3D' })
+  })
+
   it('leaves everything else about the event alone', () => {
     const moved = rescheduleEvent(
       single,

@@ -17,7 +17,7 @@ function renderGrid(onEventDrop: (o: Occurrence, s: Date, e: Date) => void) {
   render(
     <TimeGrid
       days={[day]}
-      eventsByDay={new Map([[dayKey(day), [occ]]])}
+      occurrences={[occ]}
       eventFor={() => ({ id: 'e1', title: 'Standup' }) as unknown as CalendarEvent}
       calendarColor={() => null}
       onSlotClick={() => {}}
@@ -81,5 +81,64 @@ describe('dragging a block in the time grid', () => {
       fireEvent.pointerUp(block, { clientX: 100, clientY: 148, pointerId: 1 })
     })
     expect(onEventDrop).not.toHaveBeenCalled()
+  })
+})
+
+describe('events on more than one day', () => {
+  afterEach(cleanup)
+  Element.prototype.scrollTo ??= () => {}
+
+  const week = Array.from({ length: 7 }, (_, i) => new Date(2026, 8, 14 + i))
+  const titles: Record<string, string> = { late: 'Late shift', trip: 'Trip' }
+  function renderWeek(occurrences: Occurrence[]) {
+    render(
+      <TimeGrid
+        days={week}
+        occurrences={occurrences}
+        eventFor={(o) => ({ id: o.eventId, title: titles[o.eventId] }) as unknown as CalendarEvent}
+        calendarColor={() => null}
+        onSlotClick={() => {}}
+        onEventClick={() => {}}
+        onEventDrop={() => {}}
+        canMove={() => true}
+        today={dayKey(week[0]!)}
+      />,
+    )
+  }
+
+  it('splits a timed one past midnight into a block on each day, which stay put', () => {
+    renderWeek([
+      {
+        eventId: 'late',
+        recurrenceId: null,
+        start: new Date(2026, 8, 15, 22),
+        end: new Date(2026, 8, 16, 2),
+        allDay: false,
+      },
+    ])
+    const blocks = screen.getAllByRole('button', { name: /Late shift/ })
+    expect(blocks).toHaveLength(2)
+    expect(blocks[0]!.style.top).toBe(`${22 * 48}px`)
+    expect(blocks[1]!.style.top).toBe('0px')
+    expect(blocks[1]!.style.height).toBe(`${2 * 48}px`)
+    for (const b of blocks) expect(b.className).not.toContain('cursor-grab')
+  })
+
+  it('draws a day or more as one bar across the all-day row', () => {
+    renderWeek([
+      {
+        eventId: 'trip',
+        recurrenceId: null,
+        start: new Date(2026, 8, 12, 9),
+        end: new Date(2026, 8, 16, 18),
+        allDay: false,
+      },
+    ])
+    const [bar, ...rest] = screen.getAllByRole('button', { name: /Trip/ })
+    expect(rest).toHaveLength(0)
+    expect(bar!.closest('[data-testid="all-day-row"]')).not.toBeNull()
+    // It began before Monday, so it runs from the first column, square there.
+    expect(bar!.style.gridColumn).toBe('1 / 4')
+    expect(bar!.className).toContain('rounded-l-none')
   })
 })
