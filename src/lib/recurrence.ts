@@ -59,6 +59,22 @@ function durationMs(iso: string): number {
   return parseDuration(iso).total({ unit: 'milliseconds' })
 }
 
+/**
+ * Where an occurrence starting at `start` ends, by RFC 8984 S1.4.6: days go
+ * on the local date — the same wall-clock time, however long that day was —
+ * and hours, minutes and seconds are added in absolute time. Temporal's
+ * zoned `add` does exactly that. An all-day event lasts at least its day.
+ */
+function endOf(start: Date, duration: Temporal.Duration, zone: string, allDay: boolean): Date {
+  const zoned = Temporal.Instant.fromEpochMilliseconds(start.getTime()).toZonedDateTimeISO(zone)
+  let end = zoned.add(duration)
+  if (allDay) {
+    const nextDay = zoned.add({ days: 1 })
+    if (Temporal.ZonedDateTime.compare(end, nextDay) < 0) end = nextDay
+  }
+  return new Date(end.epochMilliseconds)
+}
+
 const MAX_OCCURRENCES = 500
 
 /** The local date-time an occurrence is keyed by, from its fake-UTC start. */
@@ -79,15 +95,13 @@ export function expandOccurrences(
     recurrenceId: string | null = null,
     forEvent: CalendarEvent = event,
   ): Occurrence => {
-    const start = forEvent.showWithoutTime
-      ? fakeUtcToInstant(fakeStart, viewerZone)
-      : fakeUtcToInstant(fakeStart, forEvent.timeZone ?? viewerZone)
-    const ms = forEvent === event ? durMs : durationMs(forEvent.duration)
+    const zone = forEvent.showWithoutTime ? viewerZone : (forEvent.timeZone ?? viewerZone)
+    const start = fakeUtcToInstant(fakeStart, zone)
     return {
       eventId: event.id,
       recurrenceId,
       start,
-      end: new Date(start.getTime() + Math.max(ms, forEvent.showWithoutTime ? 86_400_000 : 0)),
+      end: endOf(start, parseDuration(forEvent.duration), zone, forEvent.showWithoutTime),
       allDay: forEvent.showWithoutTime,
     }
   }

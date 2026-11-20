@@ -38,8 +38,35 @@ describe('expandOccurrences', () => {
     const [from, to] = win('2026-03-20T00:00:00Z', '2026-04-10T00:00:00Z')
     const occ = expandOccurrences(long, from, to, 'Europe/Berlin')
     expect(occ).toHaveLength(1)
-    // nine days after Monday 23 March
-    expect(occ[0]!.end.toISOString().slice(0, 10)).toBe('2026-04-01')
+    // nine days of wall-clock time across the DST change: 10:00 CEST
+    expect(occ[0]!.end.toISOString()).toBe('2026-04-01T08:00:00.000Z')
+  })
+
+  it('adds days on the wall clock and hours in absolute time (RFC 8984 S1.4.6)', () => {
+    // Saturday 28 March 10:00 CET; the clocks go forward that night.
+    const sat = { ...base, recurrenceRule: null, start: '2026-03-28T10:00:00' }
+    const [from, to] = win('2026-03-27T00:00:00Z', '2026-04-01T00:00:00Z')
+    const endOf = (duration: string) =>
+      expandOccurrences({ ...sat, duration }, from, to, 'Europe/Berlin')[0]!.end.toISOString()
+    expect(endOf('P1D')).toBe('2026-03-29T08:00:00.000Z') // Sunday 10:00 CEST, 23 hours on
+    expect(endOf('PT24H')).toBe('2026-03-29T09:00:00.000Z') // Sunday 11:00 CEST
+    expect(endOf('P1DT2H')).toBe('2026-03-29T10:00:00.000Z') // Sunday 12:00 CEST
+  })
+
+  it('ends an all-day event at midnight on a short day', () => {
+    // Sunday 29 March in Berlin is 23 hours long.
+    const day = {
+      ...base,
+      recurrenceRule: null,
+      start: '2026-03-29T00:00:00',
+      duration: 'P1D',
+      showWithoutTime: true,
+      timeZone: null,
+    }
+    const [from, to] = win('2026-03-27T00:00:00Z', '2026-04-01T00:00:00Z')
+    const occ = expandOccurrences(day, from, to, 'Europe/Berlin')[0]!
+    expect(occ.start.toISOString()).toBe('2026-03-28T23:00:00.000Z') // midnight CET
+    expect(occ.end.toISOString()).toBe('2026-03-29T22:00:00.000Z') // midnight CEST
   })
 
   it('handles single events and window clipping', () => {
