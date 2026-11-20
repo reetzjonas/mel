@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import { useEffect, useRef } from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { ReadingPane } from '../../features/mail/ReadingPane'
@@ -12,7 +13,7 @@ export const Route = createFileRoute('/mail/$mailboxId/$emailId')({
 function EmailView() {
   const { mailboxId, emailId } = Route.useParams()
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const email = useEmail(account?.id, emailId)
   useCloseWhenMovedAway(mailboxId, emailId, email)
 

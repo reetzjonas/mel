@@ -3,10 +3,16 @@ import type { EmailHeader } from '../domain/email'
 import { db } from '../storage/db'
 import { openEnvelope, sealPlain } from '../storage/envelope'
 import { lock } from '../storage/crypto/keyring'
-import { isAccountEncrypted, markAccountEncrypted } from '../storage/crypto/middleware'
+import {
+  forgetAccount,
+  isAccountEncrypted,
+  markAccountEncrypted,
+  registerAccount,
+} from '../storage/crypto/middleware'
 import {
   disableEncryption,
   enableEncryption,
+  encryptedSessionIds,
   initEncryptionState,
   unlockAccount,
 } from './encryption'
@@ -82,6 +88,7 @@ beforeEach(async () => {
   lock()
   for (const id of [ACC, OTHER]) markAccountEncrypted(id, false)
   await db.keyring.clear()
+  await db.sessions.clear()
   await db.accounts.clear()
   await db.emails.clear()
   await db.contacts.clear()
@@ -114,12 +121,28 @@ describe('turning encryption on', () => {
     expect(openEnvelope(row!.payload).subject).toBe('Rechnung')
   })
 
-  it('marks the account row too, so a reload knows to ask for the passphrase', async () => {
+  it('marks the session too, so a reload knows to ask for the passphrase', async () => {
     await seed(ACC)
 
     await enableEncryption(ACC, PASS)
 
-    expect((await db.accounts.get(ACC))!.encrypted).toBe(true)
+    // An account from before sessions becomes its own, under its own id.
+    expect((await db.sessions.get(ACC))!.encrypted).toBe(true)
+    expect(await encryptedSessionIds()).toEqual([ACC])
+  })
+
+  it('covers every account of the login, under one passphrase', async () => {
+    await seed(ACC)
+    await seed(OTHER)
+    await db.accounts.update(OTHER, { sessionId: ACC })
+    registerAccount(OTHER, ACC)
+
+    await enableEncryption(ACC, PASS)
+
+    expect((await rawEmailPayload(OTHER)).enc).toBeDefined()
+    lock()
+    expect(await unlockAccount(OTHER, PASS)).toBe(true)
+    forgetAccount(OTHER)
   })
 
   it('stops naming senders in push notifications', async () => {
@@ -131,7 +154,7 @@ describe('turning encryption on', () => {
 
     await enableEncryption(ACC, PASS)
 
-    expect((await db.accounts.get(ACC))!.pushDetails).toBe(false)
+    expect((await db.sessions.get(ACC))!.pushDetails).toBe(false)
   })
 
   it('reports its progress, so a long migration is not a frozen screen', async () => {
@@ -173,7 +196,7 @@ describe('turning encryption off', () => {
 
     await expect(disableEncryption(ACC, 'falsch-falsch-falsch')).resolves.toBe(false)
 
-    expect((await db.accounts.get(ACC))!.encrypted).toBe(true)
+    expect((await db.sessions.get(ACC))!.encrypted).toBe(true)
     expect((await rawEmailPayload(ACC)).enc).toBeDefined()
   })
 
@@ -213,9 +236,10 @@ describe('what the app knows at startup', () => {
     lock()
     for (const id of [ACC, OTHER]) markAccountEncrypted(id, false)
 
-    const { lockedAccountIds } = await initEncryptionState()
+    const { lockedSessionIds } = await initEncryptionState()
 
-    expect(lockedAccountIds).toEqual([ACC])
+    // An account from before sessions is its own session, under its own id.
+    expect(lockedSessionIds).toEqual([ACC])
     expect(isAccountEncrypted(ACC)).toBe(true)
   })
 

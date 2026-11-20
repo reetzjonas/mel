@@ -145,6 +145,36 @@ function schedulePoll(accountId: string, ctl: Controller) {
   }, interval)
 }
 
+/**
+ * One event stream per session, shared by its accounts.
+ *
+ * The stream is the session's (RFC 8620 S7.3): it reports changes for every
+ * account the login reaches, each under its own id, so a second account of a
+ * session joins the stream already open rather than opening another, and a
+ * change wakes only the accounts it names.
+ */
+interface Stream {
+  abort: AbortController
+  /** Local account id → the provider's id for it (unknown: woken by any change). */
+  members: Map<string, string | undefined>
+  open: boolean
+  failures: number
+}
+
+const streams = new Map<string, Stream>()
+const streamOf = new Map<string, string>()
+
+function leaveStream(accountId: string) {
+  const key = streamOf.get(accountId)
+  streamOf.delete(accountId)
+  const stream = key ? streams.get(key) : undefined
+  if (!key || !stream) return
+  stream.members.delete(accountId)
+  if (stream.members.size) return
+  streams.delete(key)
+  stream.abort.abort()
+}
+
 async function startSse(accountId: string, ctl: Controller) {
   let conn
   try {
@@ -157,10 +187,30 @@ async function startSse(accountId: string, ctl: Controller) {
     schedulePoll(accountId, ctl)
     return
   }
+  if (ctl.stopped) return
   if (!conn.push) {
     schedulePoll(accountId, ctl)
     return
   }
+  const key = conn.account?.sessionId ?? accountId
+  streamOf.set(accountId, key)
+  const joined = streams.get(key)
+  if (joined) {
+    joined.members.set(accountId, conn.account?.remoteAccountId)
+    if (joined.open) {
+      setStatus(accountId, { mode: 'push', intervalMs: 0 })
+      void runTick(accountId)
+    }
+    return
+  }
+  const stream: Stream = {
+    abort: new AbortController(),
+    members: new Map([[accountId, conn.account?.remoteAccountId]]),
+    open: false,
+    failures: 0,
+  }
+  streams.set(key, stream)
+
   const credentials = conn.push.credentials
   const url = conn.push.eventSourceUrl
     .replace('{types}', '*')
@@ -169,15 +219,15 @@ async function startSse(accountId: string, ctl: Controller) {
 
   try {
     await fetchEventSource(url, {
-      signal: ctl.abort.signal,
-      // Through the account's own fetch rather than a fixed header, so a token
+      signal: stream.abort.signal,
+      // Through the session's own fetch rather than a fixed header, so a token
       // that expires is renewed on the reconnect instead of failing it.
       fetch: (input, init) => authorizedFetch(credentials, input, init),
       openWhenHidden: true,
       onopen: async (res) => {
         if (!res.ok) throw new Error(`SSE ${res.status}`)
-        ctl.sseFailures = 0
-        setStatus(accountId, { mode: 'push', intervalMs: 0 })
+        stream.failures = 0
+        stream.open = true
         /*
          * Catch up once now. The stream announces changes from the moment it
          * is open and polling is off while it is, so anything that changed
@@ -187,27 +237,40 @@ async function startSse(accountId: string, ctl: Controller) {
          * going, which has read part of the account before the change. The
          * same goes for a reconnect after the connection dropped.
          */
-        if (!ctl.stopped) void runTick(accountId)
+        for (const id of stream.members.keys()) {
+          setStatus(id, { mode: 'push', intervalMs: 0 })
+          void runTick(id)
+        }
       },
       onmessage: (ev) => {
         if (ev.event !== 'state' || !ev.data) return
         try {
           const change = JSON.parse(ev.data) as StateChange
-          if (change.changed) void runTick(accountId)
+          if (!change.changed) return
+          for (const [id, remote] of stream.members) {
+            if (remote === undefined || remote in change.changed) void runTick(id)
+          }
         } catch {
           /* malformed event */
         }
       },
       onerror: (err) => {
-        ctl.sseFailures++
-        if (ctl.sseFailures >= SSE_MAX_FAILURES) {
+        stream.failures++
+        if (stream.failures >= SSE_MAX_FAILURES) {
           throw err instanceof Error ? err : new Error('SSE failed')
         }
         // returning undefined lets fetch-event-source retry with backoff
       },
     })
   } catch {
-    if (!ctl.stopped) schedulePoll(accountId, ctl)
+    // Given up on: every account it served polls instead.
+    stream.open = false
+    if (streams.get(key) === stream) streams.delete(key)
+    for (const id of stream.members.keys()) {
+      streamOf.delete(id)
+      const c = controllers.get(id)
+      if (c && !c.stopped) schedulePoll(id, c)
+    }
   }
 }
 
@@ -240,6 +303,7 @@ export function stopScheduler(accountId: string): Promise<void> {
   if (!ctl) return settled
   ctl.stopped = true
   ctl.abort.abort()
+  leaveStream(accountId)
   if (ctl.pollTimer) clearTimeout(ctl.pollTimer)
   controllers.delete(accountId)
   statuses.delete(accountId)

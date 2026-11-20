@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import { Outlet, createFileRoute, useNavigate, useParams } from '@tanstack/react-router'
 import { useMemo, useRef, useState } from 'react'
 import { useAccounts } from '../../features/mail/hooks'
@@ -38,7 +39,7 @@ export const Route = createFileRoute('/notes')({
  */
 function NotesLayout() {
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const notes = useNotes(account?.id)
   const params = useParams({ strict: false }) as { noteId?: string }
   const navigate = useNavigate()

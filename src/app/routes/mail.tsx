@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import {
   Outlet,
   createFileRoute,
@@ -27,7 +28,7 @@ export const Route = createFileRoute('/mail')({
 
 function MailLayout() {
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const accountId = account?.id
   const mailboxes = useMailboxes(accountId)
   const params = useParams({ strict: false }) as { mailboxId?: string; emailId?: string }

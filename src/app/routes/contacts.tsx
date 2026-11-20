@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import {
   Link,
   Outlet,
@@ -37,7 +38,7 @@ export const Route = createFileRoute('/contacts')({
 
 function ContactsLayout() {
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const contacts = useContacts(account?.id)
   const params = useParams({ strict: false }) as { contactId?: string }
   const pathname = useRouterState({ select: (state) => state.location.pathname })

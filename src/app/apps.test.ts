@@ -19,6 +19,7 @@ const caps = (over: Partial<AccountCapabilities> = {}): AccountCapabilities => (
 
 const account = (over: Partial<AccountCapabilities> = {}): Account => ({
   id: 'account-1',
+  sessionId: 'account-1',
   provider: 'jmap',
   label: 'alice@example.test',
   remoteAccountId: 'remote-1',

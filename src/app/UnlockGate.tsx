@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { t } from '../lib/i18n'
-import { unlockAccount } from '../services/encryption'
+import { unlockSession } from '../services/encryption'
 import { Icon } from '../ui/Icon'
 import { inputClass, primaryButtonClass } from '../ui/styles'
 import { useUi } from './store'
 
-export function UnlockGate({ accountIds }: { accountIds: string[] }) {
+export function UnlockGate({ sessionIds }: { sessionIds: string[] }) {
   const [passphrase, setPassphrase] = useState('')
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -16,8 +16,8 @@ export function UnlockGate({ accountIds }: { accountIds: string[] }) {
     setBusy(true)
     setError(false)
     let allOk = true
-    for (const id of accountIds) {
-      if (!(await unlockAccount(id, passphrase))) allOk = false
+    for (const id of sessionIds) {
+      if (!(await unlockSession(id, passphrase))) allOk = false
     }
     setBusy(false)
     if (allOk) bumpUnlock()

@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { emptyContact } from '../../domain/contact'
 import { ContactEditor } from '../../features/contacts/ContactEditor'
@@ -11,7 +12,7 @@ export const Route = createFileRoute('/contacts/new')({
 
 function NewContact() {
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const bookId = useDefaultAddressBookId(account?.id)
   const navigate = useNavigate()
 

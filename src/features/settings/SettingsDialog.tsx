@@ -4,6 +4,7 @@
  * (`?settings=<tab>`), so the back button closes the dialog and the sync bar
  * can still link straight at the capability list.
  */
+import { useActiveAccount } from '../../lib/activeAccount'
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useAccounts } from '../mail/hooks'
 import { t, type MsgKey } from '../../lib/i18n'
@@ -62,7 +63,7 @@ export function SettingsDialog({
   anchor?: SettingsAnchor | undefined
 }) {
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   // The account arrives a tick after the dialog does. Assuming one exists
   // until proven otherwise keeps a deep link to an account tab from being
   // rewritten to the first tab in that gap — the correction below would fire

@@ -1,3 +1,4 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { memo, useDeferredValue, useMemo, useRef, useState } from 'react'
 import { useUi } from '../store'
@@ -277,7 +278,7 @@ function CalendarSidebarSheet({
 
 function CalendarApp() {
   const accounts = useAccounts()
-  const account = accounts?.[0]
+  const account = useActiveAccount(accounts)
   const calendars = useCalendars(account?.id)
   const contacts = useContacts(account?.id)
   const events = useEvents(account?.id)

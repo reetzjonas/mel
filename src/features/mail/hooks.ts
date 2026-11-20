@@ -1,8 +1,9 @@
+import { useActiveAccount } from '../../lib/activeAccount'
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useUi } from '../../app/store'
-import type { Account } from '../../domain/account'
+import type { Account, Session } from '../../domain/account'
 import { storedContact } from '../../domain/contact'
 import { matchesFilter, type EmailHeader, type MailFilter } from '../../domain/email'
 import type { Mailbox } from '../../domain/mailbox'
@@ -21,9 +22,26 @@ export function useAccounts() {
     const out: Account[] = []
     for (const r of rows) {
       try {
-        out.push(openEnvelope(r.payload).account)
+        // An account from before sessions is its own session until moved.
+        out.push({ ...openEnvelope(r.payload).account, sessionId: r.sessionId ?? r.id })
       } catch {
         // Sealed (locked) account — the UnlockGate handles it.
+      }
+    }
+    return out
+  }, [unlockVersion])
+}
+
+/** The logins on this device. One from before sessions shows once it has moved. */
+export function useSessions() {
+  const unlockVersion = useUi((s) => s.unlockVersion)
+  return useLiveQuery(async () => {
+    const out: Session[] = []
+    for (const r of await db.sessions.toArray()) {
+      try {
+        out.push(openEnvelope(r.payload).session)
+      } catch {
+        // Sealed (locked) — the UnlockGate handles it.
       }
     }
     return out
@@ -53,13 +71,13 @@ export function useFullSyncProgress(accountId: string | undefined): FullSyncProg
  */
 export function useCanSend(): boolean {
   const accounts = useAccounts()
-  return accounts?.[0]?.capabilities.submission ?? false
+  return useActiveAccount(accounts)?.capabilities.submission ?? false
 }
 
 /** Whether the server takes filter rules, which is what offers them anywhere. */
 export function useCanFilter(): boolean {
   const accounts = useAccounts()
-  return accounts?.[0]?.capabilities.sieve ?? false
+  return useActiveAccount(accounts)?.capabilities.sieve ?? false
 }
 
 const ROLE_ORDER: Record<string, number> = {
