@@ -33,6 +33,15 @@ describe('expandOccurrences', () => {
     expect(occ[2]!.start.toISOString()).toBe('2026-04-06T08:00:00.000Z')
   })
 
+  it('expands an event lasting weeks', () => {
+    const long = { ...base, recurrenceRule: null, duration: 'P1W2D' }
+    const [from, to] = win('2026-03-20T00:00:00Z', '2026-04-10T00:00:00Z')
+    const occ = expandOccurrences(long, from, to, 'Europe/Berlin')
+    expect(occ).toHaveLength(1)
+    // nine days after Monday 23 March
+    expect(occ[0]!.end.toISOString().slice(0, 10)).toBe('2026-04-01')
+  })
+
   it('handles single events and window clipping', () => {
     const single = { ...base, recurrenceRule: null }
     const [from, to] = win('2026-03-23T00:00:00Z', '2026-03-24T00:00:00Z')
@@ -158,6 +167,14 @@ describe('parseDuration', () => {
     // One malformed event must not empty the calendar around it.
     expect(parseDuration('not-a-duration').total({ unit: 'seconds' })).toBe(0)
     expect(parseDuration('P1X').total({ unit: 'seconds' })).toBe(0)
+  })
+
+  it('reads a duration in weeks, which JSCalendar allows (RFC 8984 S1.4.6)', () => {
+    // Temporal will not total() weeks without a relativeTo ("Missing
+    // relativeTo"): one such event took the whole calendar down.
+    expect(parseDuration('P1W').total({ unit: 'days' })).toBe(7)
+    expect(parseDuration('P1W3D').total({ unit: 'days' })).toBe(10)
+    expect(parseDuration('P2WT12H').total({ unit: 'hours' })).toBe(14 * 24 + 12)
   })
 })
 

@@ -38,12 +38,21 @@ function fakeUtcToInstant(fake: Date, timeZone: string): Date {
   return new Date(pdt.toZonedDateTime(timeZone).epochMilliseconds)
 }
 
+/**
+ * A JSCalendar duration (RFC 8984 S1.4.6) — which may be in weeks, "P1W3D".
+ *
+ * Weeks come back as days. Temporal refuses `total()` on a duration with
+ * weeks unless given a `relativeTo` ("Missing relativeTo"), and a week is
+ * always seven days here, so adding either to a date gives the same answer.
+ */
 export function parseDuration(iso: string): Temporal.Duration {
+  let d: Temporal.Duration
   try {
-    return Temporal.Duration.from(iso || 'PT0S')
+    d = Temporal.Duration.from(iso || 'PT0S')
   } catch {
     return Temporal.Duration.from('PT0S')
   }
+  return d.weeks ? d.with({ weeks: 0, days: d.days + d.weeks * 7 }) : d
 }
 
 function durationMs(iso: string): number {
